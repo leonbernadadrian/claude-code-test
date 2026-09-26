@@ -1909,6 +1909,134 @@ class Ped{
 }
 
 buildAirport();
+/* ================= aviones y helicópteros =================
+   Física arcade. Avioneta: potencia (W/S), carrera de despegue, sustentación según la velocidad, entrada en pérdida, alabeo y giro (A/D),
+   morro arriba/abajo (Espacio/X), aterrizaje suave o accidente. Helicóptero: rotor que arranca, subir/bajar (Espacio/X), avance (W/S),
+   giro (A/D) y desplazamiento lateral (Z/C). La misma física sirve para pilotos IA (a.ai): de momento un helicóptero de policía que patrulla
+   la ciudad y te sigue desde el aire con 3+ estrellas; queda lista para despegues/aterrizajes automáticos y tráfico aéreo. */
+const AIRCRAFT=[], INTERACT_SOURCES=[];   // (fuentes de interacción: ver interactCandidates)
+function makeCessna(livery){
+  const g=new THREE.Group(), w=paint('#f4f5f2'), l=paint(livery), dk=lambert('#22262b');
+  part(g,w,1.25,1.3,6.6,0,1.25,0); part(g,glassMat,1.27,0.55,1.4,0,1.75,0.9,false); part(g,l,1.27,0.18,6.62,0,1.0,0,false);
+  part(g,w,11,0.12,1.55,0,2.0,0.4); part(g,l,11.02,0.13,0.3,0,2.0,-0.2,false);
+  part(g,w,0.7,0.8,2.6,0,1.35,-4.3); part(g,w,3.6,0.1,0.9,0,1.45,-5.3); part(g,l,0.1,1.5,1.1,0,2.2,-5.3);
+  for (const sx of [-1,1]){ part(g,dk,0.08,1.0,0.08,sx*0.9,0.55,0.6,false); part(g,dk,0.22,0.5,0.5,sx*1.0,0.25,0.6,false); }
+  part(g,dk,0.2,0.5,0.4,0,0.25,2.6,false);
+  const prop=new THREE.Group(); prop.position.set(0,1.25,3.42); part(prop,dk,0.16,1.9,0.06,0,0,0,false); part(prop,l,0.3,0.3,0.3,0,0,0,false); g.add(prop);
+  g.traverse(o=>{ if (o.isMesh) o.castShadow=true; }); return {g,prop};
+}
+function makeHeli(body,stripe){
+  const g=new THREE.Group(), b=paint(body), s=paint(stripe), dk=lambert('#1c1f23');
+  const cab=new THREE.Mesh(new THREE.SphereGeometry(1,16,12),b); cab.scale.set(1.25,1.15,2.0); cab.position.set(0,1.55,0.2); g.add(cab);
+  const gl=new THREE.Mesh(new THREE.SphereGeometry(1,16,12,0,Math.PI*2,0,Math.PI/2.2),glassMat); gl.scale.set(1.18,1.0,1.5); gl.rotation.x=1.1; gl.position.set(0,1.75,1.1); g.add(gl);
+  part(g,s,2.52,0.22,3.4,0,1.2,0.1,false);
+  const boom=new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.38,5.2,10),b); boom.rotation.x=Math.PI/2; boom.position.set(0,1.85,-3.9); g.add(boom);
+  part(g,s,0.12,1.3,0.9,0,2.35,-6.3); part(g,b,1.8,0.1,0.6,0,1.9,-5.9);
+  for (const sx of [-1,1]){ part(g,dk,0.1,0.1,3.4,sx*1.0,0.1,0.2,false); part(g,dk,0.08,0.7,0.08,sx*0.9,0.45,0.9,false); part(g,dk,0.08,0.7,0.08,sx*0.9,0.45,-0.6,false); }
+  part(g,dk,0.3,0.45,0.3,0,2.85,0.1,false);
+  const rotor=new THREE.Group(); rotor.position.set(0,3.1,0.1); part(rotor,dk,10.4,0.05,0.32,0,0,0,false); part(rotor,dk,0.32,0.05,10.4,0,0,0,false); g.add(rotor);
+  const tail=new THREE.Group(); tail.position.set(0.18,2.35,-6.4); part(tail,dk,0.04,1.6,0.14,0,0,0,false); g.add(tail);
+  g.traverse(o=>{ if (o.isMesh) o.castShadow=true; }); return {g,rotor,tail};
+}
+function airGround(x,z){ let h=inRect(AP,x,z)?0.2:0; for (const c of query(x,z,0.2)){ if (c.h<=h) continue; const inside=c.poly?(x>=c.x0&&x<=c.x1&&z>=c.z0&&z<=c.z1&&pointInPoly(x,z,c.poly)):(x>=c.x0&&x<=c.x1&&z>=c.z0&&z<=c.z1); if (inside) h=c.h; } return h; }
+class Aircraft{
+  constructor(kind,name,x,z,h,o={}){
+    this.kind=kind; this.name=name; this.x=x; this.z=z; this.h=h; this.y=airGround(x,z); this.pitch=0; this.roll=0; this.v=0; this.vy=0; this.side=0; this.thr=0; this.rpm=0;
+    this.health=100; this.dead=false; this.pilot=null; this.ai=o.ai||null; this.len=kind==='plane'?8:10;
+    const M=kind==='plane'?makeCessna(o.color||'#1f4fa3'):makeHeli(o.color||'#f4f4f0',o.stripe||'#d7262e'); this.mesh=M.g; this.prop=M.prop; this.rotor=M.rotor; this.tailRotor=M.tail;
+    this.mesh.rotation.order='YXZ'; scene.add(this.mesh); AIRCRAFT.push(this); this.sync();
+  }
+  sync(){ this.mesh.position.set(this.x,this.y,this.z); this.mesh.rotation.set(-this.pitch,this.h,this.roll);
+    if (this.prop) this.prop.rotation.z+=this.rpm*1.9; if (this.rotor) this.rotor.rotation.y+=this.rpm*0.9; if (this.tailRotor) this.tailRotor.rotation.x+=this.rpm*1.6; }
+}
+let flyUp=false, flyDown=false;
+function playerFlightInput(){ const ax=axis(); return {thr:ax.y, turn:ax.x, up:keys.has('Space')||flyUp, down:keys.has('KeyX')||flyDown, strafe:(keys.has('KeyC')?1:0)-(keys.has('KeyZ')?1:0)}; }
+function aircraftAIInput(a){   // piloto automático: patrulla por puntos de ruta o sigue al jugador desde el aire
+  const A=a.ai, inp={thr:0,turn:0,up:false,down:false,strafe:0};
+  let tx,tz,alt=A.alt||90;
+  if (A.mode==='follow'){ const P=player.inCar||player; tx=P.x+Math.sin(now*0.3)*35; tz=P.z+Math.cos(now*0.3)*35; alt=55; }
+  else { const w=A.wps[A.i]; tx=w[0]; tz=w[1]; if (d2(a.x,a.z,tx,tz)<40*40) A.i=(A.i+1)%A.wps.length; }
+  const want=Math.atan2(tx-a.x,tz-a.z), dh=wrapA(want-a.h), dist=Math.hypot(tx-a.x,tz-a.z);
+  inp.turn=clamp(-dh*1.5,-1,1); inp.thr=Math.abs(dh)<0.6?clamp(dist/80,0.2,1):0.1;
+  const gy=a.y-airGround(a.x,a.z); if (gy<alt-5) inp.up=true; else if (gy>alt+5) inp.down=true;
+  return inp;
+}
+function flightStep(a,dt,inp){
+  const g=airGround(a.x,a.z), onG=a.y<=g+0.05, fx=Math.sin(a.h), fz=Math.cos(a.h);
+  if (a.kind==='plane'){
+    a.rpm=lerp(a.rpm,a.pilot||a.ai?0.35+a.thr*0.65:0,dt*2);
+    a.thr=clamp(a.thr+inp.thr*0.45*dt,0,1);
+    const Vs=27, thrust=6.5*a.thr, drag=0.0048*a.v*a.v+(onG?(inp.thr<0&&a.thr<0.05?7:0.5):0);
+    a.v=Math.max(0,a.v+(thrust-drag-(onG?0:9.8*Math.sin(a.pitch)*0.6))*dt);
+    if (onG){ a.roll=lerp(a.roll,0,dt*4); a.h-=inp.turn*Math.min(1,a.v/8)*0.7*dt;
+      a.pitch=lerp(a.pitch,inp.up&&a.v>Vs?0.14:0,dt*2); a.vy=a.v>Vs&&inp.up?a.v*Math.sin(a.pitch):0; }
+    else {
+      const pt=inp.up?0.32:inp.down?-0.3:0.03; a.pitch+=(pt-a.pitch)*dt*1.4; if (a.v<Vs){ a.pitch-=(Vs-a.v)*0.02*dt*10; }   // pérdida: el morro cae
+      a.pitch=clamp(a.pitch,-0.8,0.6); a.roll+=(inp.turn*0.75-a.roll)*dt*2.2;
+      a.h-=a.roll*(0.45+12/Math.max(a.v,15))*0.55*dt;
+      a.vy=a.v*Math.sin(a.pitch)-(a.v<Vs?(Vs-a.v)*0.6:0);
+    }
+    const cp=Math.cos(a.pitch); a.x+=fx*cp*a.v*dt; a.z+=fz*cp*a.v*dt; a.y+=a.vy*dt;
+  } else {
+    const on=!!(a.pilot||a.ai); a.rpm=clamp(a.rpm+(on?0.35:-0.25)*dt,0,1); const lift=a.rpm>0.85;
+    const gyh=a.y-g; let vyT=lift?(inp.up?7:0)-(inp.down?6:0):-4; if (vyT<0 && gyh<5) vyT=Math.max(vyT,-1.2-gyh*0.5);   // cerca del suelo frena el descenso: se posa suave
+    a.vy+=(vyT-a.vy)*dt*2.2;
+    const air=a.y>g+0.3; a.v+=((air&&lift?inp.thr*38:0)-a.v)*dt*(air?0.7:3); a.side+=((air&&lift?inp.strafe*12:0)-a.side)*dt*1.5;
+    if (a.rpm>0.5) a.h-=inp.turn*1.25*dt;
+    a.pitch=-a.v/38*0.28; a.roll=a.side/12*0.22+(air?inp.turn*0.08:0);
+    const rx=-fz, rz=fx; a.x+=(fx*a.v+rx*a.side)*dt; a.z+=(fz*a.v+rz*a.side)*dt; a.y+=a.vy*dt;
+  }
+  // choque con edificios (morro y puntas) y contacto con el suelo
+  const fwd=a.kind==='plane'?4:2.2, span=a.kind==='plane'?5.2:1.4, rxv=-Math.cos(a.h), rzv=Math.sin(a.h);
+  const speed=Math.hypot(a.v,a.vy,a.side);
+  for (const [px,pz] of [[a.x+fx*fwd,a.z+fz*fwd],[a.x+rxv*span,a.z+rzv*span],[a.x-rxv*span,a.z-rzv*span],[a.x-fx*(a.kind==='plane'?5:6),a.z-fz*(a.kind==='plane'?5:6)]]){
+    const gh=airGround(px,pz); if (gh>a.y+0.6){ if (speed>9) return aircraftCrash(a,'¡Te has estrellado contra un edificio!'); a.x-=fx*a.v*dt*1.2; a.z-=fz*a.v*dt*1.2; a.v=0; a.side=0; break; } }
+  const g2=airGround(a.x,a.z);
+  if (a.y<g2){ const hard=a.vy<(a.kind==='plane'?-7:-7.5) || (a.kind==='plane' && (Math.abs(a.roll)>0.55 || a.pitch<-0.3));
+    if (hard) return aircraftCrash(a,'¡Aterrizaje forzoso!'); if (a.vy<-3.5){ a.health-=(-a.vy-3.5)*8; shake(0.5); } a.y=g2; a.vy=0; if (a.kind==='plane'){ a.pitch=Math.max(0,a.pitch); } }
+  if (Math.abs(a.x)>3450 || Math.abs(a.z)>1500 || a.x<-1600){ a.h=wrapA(Math.atan2(55-a.x,-55-a.z)); if (a.pilot) toast('Fuera de la zona: el piloto automático te devuelve a Elche',2); }   // límites del mundo
+  a.y=Math.min(a.y,700); if (a.health<=0) return aircraftCrash(a,'La aeronave se ha destrozado');
+  a.sync();
+}
+function aircraftCrash(a,msg){
+  if (a.dead) return; a.dead=true; a.v=a.vy=a.side=0; a.rpm=0; a.y=Math.max(airGround(a.x,a.z),0); a.sync();
+  a.mesh.traverse(o=>{ if (o.isMesh && o.material && o.material!==glassMat) o.material=charMat; });
+  explode(a.x,a.z,1.4,false);
+  if (a.pilot===player){ player.inAir=null; a.pilot=null; player.mesh.visible=true; player.x=a.x+2; player.z=a.z+2; player.y=0; toast(msg,2.5); hurt(999); }
+}
+function boardAircraft(a){
+  if (player.inCar||player.inAir||a.dead||a.pilot) return;
+  player.inAir=a; a.pilot=player; player.mesh.visible=false; setCrouch(false); a.thr=0;
+  toast(a.kind==='plane'?'✈ Avioneta: <em>W/S</em> potencia · <em>A/D</em> girar · <em>Espacio/X</em> morro arriba/abajo · <em>E</em> bajar (parado en el suelo). Despega por la pista':'🚁 Helicóptero: <em>Espacio/X</em> subir/bajar · <em>W/S</em> avanzar · <em>A/D</em> girar · <em>Z/C</em> lateral · <em>E</em> bajar (posado)',6);
+}
+function exitAircraft(){
+  const a=player.inAir; if (!a) return;
+  const gy=a.y-airGround(a.x,a.z), sp=Math.hypot(a.v,a.side,a.vy);
+  if (gy>1.2){ toast('¡Estás en el aire! Aterriza antes de bajar',1.8); return; }
+  if (sp>3){ toast('Vas demasiado rápido para bajar',1.6); return; }
+  const rx=-Math.cos(a.h), rz=Math.sin(a.h), off=a.kind==='plane'?1.8:2.2;
+  player.inAir=null; a.pilot=null; a.thr=0; player.x=a.x+rx*off; player.z=a.z+rz*off; player.y=airGround(player.x,player.z); player.vy=0; player.mesh.visible=true; player.h=a.h;
+}
+function updateAircraft(dt){
+  for (const a of AIRCRAFT){ if (a.dead) continue;
+    if (a.pilot===player){ flightStep(a,dt,playerFlightInput()); if (a.dead) continue; player.x=a.x; player.z=a.z; player.y=a.y; player.h=a.h;
+      const gy=a.y-airGround(a.x,a.z); showHint(`${a.kind==='plane'?'✈':'🚁'} ${Math.round(Math.hypot(a.v,a.side)*3.6)} km/h · ${Math.max(0,Math.round(gy))} m${a.kind==='plane'?' · motor '+Math.round(a.thr*100)+'%'+(a.v<27&&gy>2?' · ¡PÉRDIDA!':''):a.rpm<0.85?' · arrancando rotor…':''}${gy<1.2&&Math.hypot(a.v,a.side)<3?' · E: bajar':''}`); }
+    else if (a.ai){ if (a.ai.police) a.ai.mode=player.stars>=3?'follow':'patrol'; flightStep(a,dt,aircraftAIInput(a));
+      if (a.ai.police && a.ai.mode==='follow' && player.stars>=4 && d2(a.x,a.z,player.x,player.z)<90*90) markSeen(); }   // con 4+ estrellas el helicóptero te localiza
+    else if (a.rpm>0 || a.y>airGround(a.x,a.z)+0.05) flightStep(a,dt,{thr:0,turn:0,up:false,down:false,strafe:0});
+    else a.sync(); }
+}
+// flota: avioneta junto al hangar, helicóptero en el helipuerto del aeropuerto, helicóptero sanitario en el Hospital General y el de la policía patrullando
+{ const pad=(x,z,col)=>{ const cv=document.createElement('canvas'); cv.width=cv.height=128; const c=cv.getContext('2d'); c.fillStyle='#3b3f44'; c.beginPath(); c.arc(64,64,62,0,7); c.fill(); c.strokeStyle=col; c.lineWidth=6; c.beginPath(); c.arc(64,64,52,0,7); c.stroke(); c.fillStyle='#f4f4f0'; c.font='bold 72px Arial'; c.textAlign='center'; c.textBaseline='middle'; c.fillText('H',64,68);
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(14,14),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(cv),transparent:true,polygonOffset:true,polygonOffsetFactor:-1})); m.rotation.x=-Math.PI/2; m.position.set(x,airGround(x,z)+0.06,z); scene.add(m); };
+  const HOSP=SPECIAL.find(s=>s.name==='Hospital General');
+  new Aircraft('plane','Avioneta del aeroclub',2525,516,Math.PI,{color:'#1f4fa3'});
+  pad(2560,600,'#ffd23f'); new Aircraft('heli','Helicóptero del aeropuerto',2560,600,Math.PI/2,{color:'#f4f4f0',stripe:'#1f4fa3'});
+  if (HOSP){ const hx=(HOSP.x0+HOSP.x1)/2, hz=(HOSP.z0+HOSP.z1)/2; pad(hx,hz,'#e0342c'); new Aircraft('heli','Helicóptero sanitario',hx,hz,0,{color:'#f6f6f2',stripe:'#e0342c'}); }
+  const pol=new Aircraft('heli','Helicóptero de la Policía',-40,-120,0,{color:'#1f3a8a',stripe:'#f4f4f0',ai:{mode:'patrol',police:true,alt:95,i:0,wps:[[-300,-400],[300,-450],[600,0],[400,500],[-100,600],[-600,300],[-650,-300]]}});
+  pol.y=95; pol.rpm=1; pol.sync();
+  INTERACT_SOURCES.push(out=>{ if (player.inCar||player.inAir) return; for (const a of AIRCRAFT) if (!a.dead && !a.pilot && !a.ai && d2(a.x,a.z,player.x,player.z)<9*9 && a.y-airGround(a.x,a.z)<1) out.push({verb:'Pilotar',name:a.kind==='plane'?'Avioneta':'Helicóptero',x:a.x,z:a.z,r:a.kind==='plane'?7:6.5,act:()=>boardAircraft(a)}); });
+}
 // Tienda de bicicletas en La Glorieta
 {
   const sh=SHOPS.find(s=>s.id==='bicis'), [x,z]=sh.pos;
@@ -2007,6 +2135,7 @@ function persist(){ save.money=player.money; save.owned=player.owned; save.ammo=
 const SLOT_IDS=['auto','1','2','3'], slotKey=id=>'ilici-city-slot-'+id;
 function readSlot(id){ try{ return JSON.parse(localStorage.getItem(slotKey(id))||'null'); }catch(e){ return null; } }
 function canSave(){
+  if (player.inAir) return 'Aterriza y bájate para guardar';
   if (mission.cur) return 'No se puede guardar durante una misión o un trabajo';
   if (player.stars>0) return 'No se puede guardar con la policía detrás';
   if (taxiRide || jack || player.health<=0) return 'Ahora no se puede guardar';
@@ -2034,6 +2163,7 @@ function applyProfile(){
 function loadSlot(id){
   const S=readSlot(id); if (!S || !S.profile || !S.world){ toast('Ranura vacía',1.5); return false; }
   if (mission.cur) cancelMission(true);
+  if (player.inAir){ player.inAir.pilot=null; player.inAir=null; player.mesh.visible=true; }
   if (taxiRide){ const tc=taxiRide.car; taxiRide=null; exitCar(true,true); if (tc && tc.ai){ tc.driver='npc'; tc.ai.mode='cruise'; } } taxiCancel(); if (player.inCar) exitCar(true,true);
   save=Object.assign({money:150,done:[],dates:[]},S.profile); applyProfile();
   const W=S.world; player.w=clamp(W.w||0,0,player.owned.length-1); player.health=clamp(W.health||100,1,100); player.armor=W.armor||0;
@@ -2161,7 +2291,6 @@ function sellTo(c){   // venta a un cliente, con E
 }
 /* ---- interacción general con E: los círculos solo marcan, nada se activa solo ----
    Cada fuente aporta candidatos {verb,name,x,z,r,act}; gana el más cercano que esté delante del jugador. */
-const INTERACT_SOURCES=[];
 function interactCandidates(){
   const out=[], P=player.inCar||player, inCar=!!player.inCar, slow=!inCar || player.inCar.speed<2;
   if (state!=='play' || jack || player.downT>0 || taxiRide) return out;
@@ -2732,24 +2861,24 @@ addEventListener('keydown',e=>{
   if (e.code==='Escape' && performance.now()-unlockT<400) return;   // el Esc que suelta el ratón ya ha abierto la pausa
   if (state==='paused' && (e.code==='KeyP'||e.code==='Escape')) { resume(); return; }
   if (state==='shop' && (e.code==='Escape'||e.code==='KeyE')) { closeShop(); return; }
-  if (state==='phone'){ if (e.code==='Escape'||e.code==='Tab'||e.code==='ArrowUp'){ e.preventDefault(); closePhone(); } else if (e.code==='Backspace') phoneBack(); return; }
+  if (state==='phone'){ if (e.code==='Escape'||e.code==='Tab'){ e.preventDefault(); closePhone(); } else if (e.code==='Backspace') phoneBack(); return; }
   if (state==='help' && (e.code==='Escape'||e.code==='KeyI')) { closeHelp(); return; }
   if (state!=='play') return;
   if (e.code==='KeyE') enterExit(false); else if (e.code==='Enter') enterExit(true);   // en coche: E usa lo que haya al lado, Intro siempre baja
   if (e.code==='Space' && !player.inCar) jump();
   if (e.code==='Space' && taxiRide) taxiSkip();
-  if (e.code==='KeyZ' && !player.inCar) setCrouch(!player.crouch);
+  if (e.code==='KeyZ' && !player.inCar && !player.inAir) setCrouch(!player.crouch);
   if (e.code==='KeyF') fireEdge=true;
   if (e.code==='KeyQ') selectWeapon(player.w+1);
   if (e.code==='KeyI') toggleKeys();
   if (/^Digit[1-7]$/.test(e.code)){ const id=WEAPONS[+e.code.slice(5)-1].id, i=player.owned.indexOf(id); if (i>=0) selectWeapon(i); else toast(`No tienes ${W_BY[id].name.toLowerCase()}`,1.2); }
   if (e.code==='KeyH'){ horn(); hornDown(); }
   if (e.code==='KeyT') hailTaxi();
-  if (e.code==='KeyC' && !fp) camMode=(camMode+1)%2;
+  if (e.code==='KeyC' && !fp && !player.inAir) camMode=(camMode+1)%2;
   if (e.code==='KeyV') setFP(!fp);
   if (e.code==='KeyM') openMap();
   if (e.code==='Backspace') askCancelMission();
-  if (e.code==='Tab'||e.code==='ArrowUp'){ e.preventDefault(); openPhone(); }
+  if (e.code==='Tab'){ e.preventDefault(); openPhone(); }
   if (e.code==='KeyP'||e.code==='Escape') pause();
 });
 addEventListener('keyup',e=>{ keys.delete(e.code); if (e.code==='KeyH') hornUp(); });
@@ -2770,6 +2899,7 @@ let wheelT=0; renderer.domElement.addEventListener('wheel',e=>{ if (state!=='pla
   tap('bEnter',()=>enterExit(false)); tap('bTaxi',hailTaxi); tap('bSkip',()=>taxiSkip()); tap('bHorn',()=>{ horn(); if (player.inCar) hornAt(player.inCar,0.45); else whistle(); }); tap('bMap',openMap); tap('bPhone',()=>state==='phone'?closePhone():openPhone()); tap('bCam',()=>camMode=(camMode+1)%2); tap('bPause',pause); tap('bWpn',()=>selectWeapon(player.w+1)); tap('bJump',jump); tap('bCrouch',()=>{ if (!player.inCar) setCrouch(!player.crouch); }); tap('bHelp',openHelp);
   const bf=$('bFire'); bf.addEventListener('touchstart',e=>{ e.preventDefault(); fireEdge=true; fireHeld=true; bf.classList.add('on'); },{passive:false});
   const fend=()=>{ fireHeld=false; bf.classList.remove('on'); }; bf.addEventListener('touchend',fend); bf.addEventListener('touchcancel',fend);
+  for (const [id,set] of [['bJump',v=>flyUp=v],['bCrouch',v=>flyDown=v]]){ const b=$(id); b.addEventListener('touchstart',()=>{ if (player.inAir) set(true); },{passive:true}); b.addEventListener('touchend',()=>set(false)); b.addEventListener('touchcancel',()=>set(false)); }
   const ba=$('bAct');
   ba.addEventListener('touchstart',e=>{ e.preventDefault(); ba.classList.add('on'); if (player.inCar) actHeld=true; else { fireEdge=true; fireHeld=true; } },{passive:false});
   const aend=()=>{ actHeld=false; fireHeld=false; ba.classList.remove('on'); };
@@ -2788,7 +2918,7 @@ function axis(){
 const handbrake = () => keys.has('Space') || actHeld;
 const running = () => !player.crouch && (keys.has('ShiftLeft')||keys.has('ShiftRight')||(joy.active&&Math.hypot(joy.x,joy.y)>0.9));
 function jump(){
-  if (player.inCar || state!=='play' || player.health<=0) return;
+  if (player.inCar || player.inAir || state!=='play' || player.health<=0) return;
   if (player.crouch){ setCrouch(false); return; }
   if (player.y>(player.gy||0)+0.02) return;
   player.vy=7.6; player.y+=0.01; noise(0.08,0.06,600);
@@ -2944,6 +3074,7 @@ function nearestCar(r){
 }
 function enterExit(exitOnly=true){
   if (player.health<=0) return;
+  if (player.inAir){ exitAircraft(); return; }
   if (taxiRide){ if (taxiRide.car.ai.mode!=='arrive'){ taxiRide.car.ai.mode='arrive'; taxiRide.early=true; toast('El taxista para en cuanto puede',1.5); } return; }
   if (player.inCar){ if (!exitOnly && player.inCar.speed<2 && interact()) return; exitCar(false); return; }   // parado junto a una actividad: E la usa; si no, bajarse
   if (jack || player.downT>0) return;
@@ -3205,7 +3336,7 @@ function shoulderAim(ox,oz,oy){   // punto al que apunta la cruceta (centro de l
   return { yaw:Math.atan2(px-ox,pz-oz), pitch:Math.atan2(py-oy,d) };
 }
 function tryFire(){
-  if (state!=='play'||player.health<=0||fireCd>0||jack||player.downT>0||taxiRide) return;
+  if (state!=='play'||player.health<=0||fireCd>0||jack||player.downT>0||taxiRide||player.inAir) return;
   const W=curW();
   if (player.inCar && (W.melee||W.throw)) return;
   if (W.melee) return; // los golpes se cargan y se sueltan en updateMelee()
@@ -3713,7 +3844,7 @@ function playerAimsAt(p){   // en primera persona siempre llevas la mira; en ter
 }
 function perceiveWeapons(dt){
   perceiveT-=dt; if (perceiveT>0) return; perceiveT=0.2;
-  if (player.inCar || jack || state!=='play' || player.health<=0) return;
+  if (player.inCar || player.inAir || jack || state!=='play' || player.health<=0) return;
   const W=curW(), T=THREAT[W.id]; if (!T || (W.throw && !(player.ammo.grenade>0))) return;
   const night=gameMin<7*60||gameMin>21*60;
   for (const p of peds){
@@ -4110,7 +4241,7 @@ function respawn(p){
 }
 function wasted(){
   if (state!=='play') return;
-  state='dead'; if (mission.cur) failMission('Has muerto');
+  state='dead'; if (mission.cur) failMission('Has muerto'); if (player.inAir){ player.inAir.pilot=null; player.inAir=null; player.mesh.visible=true; }
   const fee=Math.min(player.money,100); player.money-=fee;
   banner('HAS MUERTO',`Hospital General: -${fee} €`,'var(--red)',3.5); sfxFail();
   setTimeout(()=>{ respawn(HOSPITAL_SPAWN); persist(); },3200);
@@ -4132,7 +4263,7 @@ function update(dt){
   const ax=axis();
   if (fireCd>0) fireCd-=dt; if (aimT>0) aimT-=dt;
   if (player.hitT>0){ player.hitT-=dt; if (player.hitT<=0) meleeHit(player.hitW); }
-  if (!player.inCar){   // suelo bajo los pies: escalones y bordillos se suben solos; bancos, muretes y techos de coche, saltando
+  if (!player.inCar && !player.inAir){   // suelo bajo los pies: escalones y bordillos se suben solos; bancos, muretes y techos de coche, saltando
     const g=supportAt(player.x,player.z,player.y); player.gy=g.h;
     if (g.car && player.y<=g.h+0.02){ player.x+=g.car.vx*dt; player.z+=g.car.vz*dt; }   // encima de un coche en marcha, se mueve con él
     if (player.y>g.h+0.001 || player.vy>0){ player.vy-=20*dt; player.y+=player.vy*dt; if (player.y<=g.h){ player.y=g.h; player.vy=0; } }
@@ -4141,7 +4272,9 @@ function update(dt){
   updateMelee(dt);
 
   // jugador
-  if (player.inCar){
+  updateAircraft(dt);
+  if (player.inAir){}
+  else if (player.inCar){
     const c=player.inCar;
     if (taxiRide) showHint(isTouch?'ENTRAR: bajarte · SALTAR: saltar trayecto':`🚕 Hacia ${taxiRide.dest.name} · E: bajarte · Espacio: saltar el trayecto`);   // de pasajero: conduce el taxista
     else c.drive(dt, c.dead?0:ax.y, ax.x, handbrake());
@@ -4189,7 +4322,7 @@ function update(dt){
     interactHint();
   }
   if (player.punchT>0) player.punchT-=dt;
-  if (state==='play') bumpPeds(dt);
+  if (state==='play' && !player.inAir) bumpPeds(dt);
 
   // coches
   for (const c of cars){
@@ -4250,7 +4383,7 @@ function update(dt){
         if (c.T.bike && I.sev>=4.5 && Math.random()<0.25+I.sev*0.06) bikeFall(c.vx,c.vz,I.sev*0.6); }
       if (I.sev>=3.5) for (const q of peds) if (q!==p && d2(q.x,q.z,p.x,p.z)<400) q.scare(c.x,c.z,6);
     }
-    if (!player.inCar && state==='play' && d2(player.x,player.z,c.x,c.z)<16 && player.y<c.T.h-0.3){   // encima del coche (o saltándolo) no hay choque
+    if (!player.inCar && !player.inAir && state==='play' && d2(player.x,player.z,c.x,c.z)<16 && player.y<c.T.h-0.3){   // encima del coche (o saltándolo) no hay choque
       const h=test(player.x,player.z);
       if (h){ const I=impact(c,player.x,player.z);
         if (I.sev>=2.5 && now-player.lastHurt>0.8){ hurt(I.sev<5?I.sev*2:I.sev*5); player.x+=c.vx*0.2; player.z+=c.vz*0.2; shake(0.6); if (I.sev>=4.5) knockDown(1.2+I.sev*0.05); }
@@ -4268,10 +4401,10 @@ function update(dt){
     for (const c of cars) if (c.driver==='police' && c.ai && c.ai.mode==='chase' && d2(c.x,c.z,P.x,P.z)<(player.inCar?49:64) && c.speed<5) close=true;
     for (const p of peds) if (p.state==='cop' && d2(p.x,p.z,P.x,P.z)<(player.inCar?16:9)) close=true;
     const slow = player.inCar ? player.inCar.speed<2 : Math.hypot(player.vx,player.vz)<3;
-    if (close && slow){ bustT+=dt; showHint('¡La policía te está deteniendo!'); if (bustT>(player.inCar?2.2:1.4)) busted(); } else bustT=Math.max(0,bustT-dt*2);
+    if (close && slow && !player.inAir){ bustT+=dt; showHint('¡La policía te está deteniendo!'); if (bustT>(player.inCar?2.2:1.4)) busted(); } else bustT=Math.max(0,bustT-dt*2);
   }
   // la policía dispara desde el coche con 2+ estrellas
-  if (state==='play' && player.stars>=2){ const P=player.inCar||player;
+  if (state==='play' && player.stars>=2 && !player.inAir){ const P=player.inCar||player;
     for (const c of cars){ if (c.driver!=='police'||!c.ai||c.ai.mode!=='chase') continue; c.shootT=(c.shootT??mrand(1,2))-dt;
       if (c.shootT<=0){ c.shootT=mrand(0.9,1.6); const d=Math.hypot(c.x-P.x,c.z-P.z); if (d<32 && !losBlocked(c.x,c.z,P.x,P.z,1.3)) copShot(c.x,c.z,P,d); } } }
   // salud
@@ -4313,6 +4446,15 @@ function camSegBlocked(px,py,pz,q){
   return false;
 }
 function updateCamera(dt){
+  if (player.inAir){   // cámara de persecución de la aeronave, sin meterse en el suelo ni en los edificios
+    const a=player.inAir, fx=Math.sin(a.h), fz=Math.cos(a.h), D=a.kind==='plane'?17:14, H=a.kind==='plane'?5:6;
+    let tx=a.x-fx*D, tz=a.z-fz*D, ty=a.y+H+(a.kind==='plane'?-Math.sin(a.pitch)*D*0.5:0);
+    for (let k=0;k<8 && (camSolid(tx,tz,ty)||ty<airGround(tx,tz)+1.5);k++){ tx=lerp(tx,a.x,0.25); tz=lerp(tz,a.z,0.25); ty=Math.max(ty,airGround(tx,tz)+2); }
+    const kk=1-Math.exp(-dt*4); camPos.x+=(tx-camPos.x)*kk; camPos.y+=(ty-camPos.y)*kk; camPos.z+=(tz-camPos.z)*kk;
+    camera.position.copy(camPos); camera.up.set(0,1,0); camLook.set(a.x+fx*8,a.y+1.5,a.z+fz*8); camera.lookAt(camLook);
+    if (shakeA>0){ camera.rotation.x+=mrand(-1,1)*shakeA*0.02; shakeA=Math.max(0,shakeA-dt*2.5); }
+    camYaw=a.h; const fovT=camera.aspect<1?82:74; if (Math.abs(camera.fov-fovT)>0.01){ camera.fov=fovT; camera.updateProjectionMatrix(); }
+    return; }
   if (fp){
     let yaw, x, y, z;
     if (player.inCar){ const c=player.inCar, fx=Math.sin(c.h), fz=Math.cos(c.h), rx=-fz, rz=fx; fpCarLook*=Math.exp(-dt*0.8);
@@ -4433,7 +4575,8 @@ function updateAudio(){
   if (!AC) return;
   updateListener();
   const t=AC.currentTime;
-  if (eng){ const c=player.inCar, on=soundOn&&c&&!c.dead&&!c.T.bike&&state==='play'; eng.g.gain.setTargetAtTime(on?0.05:0,t,0.1); if (c){ const f=38+c.speed*3.2+Math.abs(axis().y)*12; eng.o.frequency.setTargetAtTime(f,t,0.05); eng.f.frequency.setTargetAtTime(300+c.speed*25,t,0.1); } }
+  if (eng && player.inAir){ const a=player.inAir, on=soundOn&&state==='play'; eng.g.gain.setTargetAtTime(on?0.06:0,t,0.1); const f=a.kind==='plane'?45+a.rpm*70:22+a.rpm*18; eng.o.frequency.setTargetAtTime(f,t,0.08); eng.f.frequency.setTargetAtTime(a.kind==='plane'?500+a.rpm*900:260+a.rpm*200,t,0.1); }
+  else if (eng){ const c=player.inCar, on=soundOn&&c&&!c.dead&&!c.T.bike&&state==='play'; eng.g.gain.setTargetAtTime(on?0.05:0,t,0.1); if (c){ const f=38+c.speed*3.2+Math.abs(axis().y)*12; eng.o.frequency.setTargetAtTime(f,t,0.05); eng.f.frequency.setTargetAtTime(300+c.speed*25,t,0.1); } }
   updateSirens();
 }
 
