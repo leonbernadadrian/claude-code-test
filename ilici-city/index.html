@@ -1877,9 +1877,15 @@ function explode(x,z,big=1,byPlayer=false){
   for (let i=0;i<60*big;i++){ const a=Math.random()*6.28, s=mrand(3,14); emit(glowP,x,1.2,z,Math.cos(a)*s,mrand(2,12),Math.sin(a)*s,mrand(0.5,1.1),mrand(0.6,1.4),mpick(['#ffd35a','#ff8a2a','#ff4a1a','#fff1b0']),9); }
   for (let i=0;i<25;i++) emit(smokeP,x+mrand(-2,2),mrand(1,3),z+mrand(-2,2),mrand(-1,1),mrand(2,5),mrand(-1,1),mrand(2,3.5),mrand(1.5,3),'#2a2a2a',0,1.4);
   sfxBoom(1); shake(dist({x,z},player)<40?1.2:0.4);
-  for (const p of peds) if (d2(p.x,p.z,x,z)<64){ const a=Math.atan2(p.x-x,p.z-z), was=p.state!=='dead'; p.knock(Math.sin(a)*12,Math.cos(a)*12,true); if (byPlayer&&was) onPedKilled(p); }
-  for (const c of cars) if (!c.exploded && d2(c.x,c.z,x,z)<81 && (c.x!==x||c.z!==z)){ damageCar(c,55,0); const a=Math.atan2(c.x-x,c.z-z); c.vx+=Math.sin(a)*8; c.vz+=Math.cos(a)*8; }
-  if ((!player.inCar||player.inCar.T.bike) && d2(player.x,player.z,x,z)<81){ if (player.inCar) bikeFall(player.x-x,player.z-z,10); hurt(45); knockDown(1.4); }
+  // el daño cae con la distancia: letal junto al foco, heridas y derribos más lejos (radio R)
+  const R=10*big, fall=(px,pz)=>{ const d=Math.hypot(px-x,pz-z); return d<R ? 1-d/R : 0; };
+  for (const p of peds){ const k=fall(p.x,p.z); if (!k || p.state==='dead') continue; const a=Math.atan2(p.x-x,p.z-z), f=4+12*k, dmg=15+150*k*k;
+    p.hp-=dmg; if (p.hp<=0){ p.knock(Math.sin(a)*f,Math.cos(a)*f,true); p.t=Math.max(p.t,60); if (byPlayer) onPedKilled(p); }
+    else if (k>0.35){ p.limp=true; p.knock(Math.sin(a)*f*0.7,Math.cos(a)*f*0.7,false); p.panicT=now; } else p.scare(x,z,9); }
+  for (const c of cars){ const k=fall(c.x,c.z); if (!k || c.exploded || (c.x===x&&c.z===z)) continue; damageCar(c,10+90*k,0); const a=Math.atan2(c.x-x,c.z-z); c.vx+=Math.sin(a)*9*k; c.vz+=Math.cos(a)*9*k; if (byPlayer) c.hitByPlayer=now; }
+  const kp=fall(player.x,player.z);
+  if (kp){ if (!player.inCar||player.inCar.T.bike){ if (player.inCar) bikeFall(player.x-x,player.z-z,10); hurt(Math.round(8+85*kp*kp)); if (kp>0.3) knockDown(0.8+kp); }
+    else if (kp>0.5) hurt(Math.round(20*(kp-0.5)/0.5)); }
 }
 function fireworks(x,z,n){
   let k=0; const fire=()=>{
@@ -2678,10 +2684,31 @@ function damageCar(c,n,imp){
   if (c.T.bike){ if (c===player.inCar && imp){ sfxCrash(imp*0.5); if (imp>6.5) bikeFall(-c.vx||1,-c.vz,imp); else if (imp>4) hurt(imp*0.8); } return; }
   c.health-=n;
   if (c===player.inCar){ if (imp) sfxCrash(imp); shake(Math.min(1,n/40)); }
-  if (c.health<=0 && !c.dead){ c.dead=true; c.burn=4.5; if (c===player.inCar) toast('¡El coche está ardiendo! <em>Sal ya</em>',2.5); }
+  if (c.health<=0 && !c.dead){ c.dead=true; c.burn=c.health<-45 ? mrand(0.3,0.9) : mrand(3,6);   // destrozado de golpe: apenas hay tiempo
+    if (c===player.inCar) toast('¡El coche está ardiendo! <em>Sal ya</em>',2.5);
+    carAbandon(c); }
+}
+// ocupantes de un coche que arde: reaccionan, abren la puerta y huyen (si explota antes, no salen con vida)
+function carAbandon(c){
+  if (c===player.inCar || c.occ) return; const d=c.driver;
+  if (d!=='npc' && d!=='police' && d!=='taxi'){ c.occ=[]; return; }
+  c.occ=[{cop:d==='police',t:now+mrand(0.6,2.2)}]; for (let k=0;k<(c.pass||0);k++) c.occ.push({cop:d==='police',t:now+mrand(1,3)});
+  c.byPlayer=now-(c.hitByPlayer??-99)<10; resvDropAll(c); c.driver=null; c.ai=null; if (taxiCall&&taxiCall.car===c) taxiCall=null;
+}
+function occupantOut(c,o,alive){
+  const fx=Math.sin(c.h), fz=Math.cos(c.h), rx=-fz, rz=fx; let side=Math.random()<0.5?1:-1, x=0, z=0;
+  for (let t=0;t<2;t++,side=-side){ x=c.x+rx*side*(c.T.w/2+0.7)+fx*mrand(-0.6,0.6); z=c.z+rz*side*(c.T.w/2+0.7)+fz*mrand(-0.6,0.6); if (!circleBlocked(x,z,0.4)) break; }
+  const p=new Ped(x,z,o.cop); p.h=Math.atan2(rx*side,rz*side); p.home();
+  if (!alive){ const a=Math.atan2(x-c.x,z-c.z); p.knock(Math.sin(a)*7,Math.cos(a)*7,true); p.t=70; if (c.byPlayer) onPedKilled(p); return p; }
+  if (o.cop){ p.state='cop'; return p; }
+  p.scare(c.x,c.z,mrand(8,12)); p.panicT=now; if (Math.random()<0.25) p.limp=true;
+  say(p,mpick(['¡Fuego! ¡Fuego!','¡Que explota!','¡Socorro!','¡Mi coche!','¡Corred!']),1.8);
+  if (c.byPlayer && !p.report && state==='play') p.report={t:now+mrand(4,7),id:true,stars:1,x:c.x,z:c.z,car:player.inCar||null,type:'cararson',cid:++crimeSeq};   // lo ha visto todo: llamará a la policía
+  return p;
 }
 function carExplode(c){
-  c.exploded=true; c.dead=true;
+  c.exploded=true; c.dead=true; c.wreckT=now;
+  if (!c.occ) carAbandon(c); if (c.occ){ for (const o of c.occ) occupantOut(c,o,false); c.occ=[]; }
   for (const m of c.painted) m.material=charMat;
   if (c.lights) c.lights.forEach(l=>l.visible=false);
   if (c===player.inCar){ exitCar(true); }
@@ -3322,7 +3349,7 @@ function spawnCarNear(mode){
     const k = mode==='police' ? 'police' : parked ? mpick(['compact','sedan','sedan','van','pickup','sports']) : e.real&&e.w<8 ? mpick(['compact','compact','sedan','taxi','sports']) : mpick(['compact','compact','sedan','sedan','sedan','van','taxi','sports','bus','boxvan','boxvan','truck','pickup','pickup']);
     const c=new Car(k); c.x=x; c.z=z; c.h=Math.atan2(ux,uz);
     if (parked){ c.driver=null; }
-    else { c.driver = mode==='police'?'police':'npc'; c.ai={mode:mode==='police'?'chase':'cruise',a:a.id,b:b.id,stuck:0,rev:0,repath:0,path:null,pi:0,wait:0}; const v=mode==='police'?14:9; c.vx=ux*v; c.vz=uz*v; }
+    else { c.driver = mode==='police'?'police':'npc'; c.ai={mode:mode==='police'?'chase':'cruise',a:a.id,b:b.id,stuck:0,rev:0,repath:0,path:null,pi:0,wait:0}; c.pass=k==='bus'?Math.floor(mrand(1,6)):k==='police'?(Math.random()<0.5?1:0):Math.random()<0.25?1:0; const v=mode==='police'?14:9; c.vx=ux*v; c.vz=uz*v; }
     c.sync(); return c;
   }
   return null;
@@ -3364,7 +3391,7 @@ const CAMS=[];
 const intel={x:0,z:0,t:-99,vx:0,vz:0,car:null,seenT:-99,inv:null};   // última información de la policía
 const reports=[];                                                     // grabaciones de cámaras pendientes
 let copSeeT=0, copSeeing=false, crimeSeq=0; const reportedCrimes=new Set();
-const CRIME_TXT={shots:'unos disparos',explosion:'una explosión',murder:'un cadáver',assault:'una pelea',carjack:'un robo de coche',runover:'un atropello',drugs:'un trapicheo',robbery:'un atraco',armed:'una persona armada',threat:'una amenaza con un arma'};
+const CRIME_TXT={cararson:'un coche en llamas',shots:'unos disparos',explosion:'una explosión',murder:'un cadáver',assault:'una pelea',carjack:'un robo de coche',runover:'un atropello',drugs:'un trapicheo',robbery:'un atraco',armed:'una persona armada',threat:'una amenaza con un arma'};
 function copCanSee(x,z,r){
   for (const c of cars) if (c.driver==='police' && d2(c.x,c.z,x,z)<r*r && !losBlocked(c.x,c.z,x,z,1.3)) return true;
   const rf=r*0.75; for (const p of peds) if (p.cop && p.state!=='dead' && p.state!=='hit' && p.state!=='dragged' && d2(p.x,p.z,x,z)<rf*rf && !losBlocked(p.x,p.z,x,z,1.3)) return true;
@@ -3589,7 +3616,9 @@ function manage(dt){
   spawnT-=dt;
   if (spawnT<=0){
     spawnT=0.4;
-    for (const c of cars.slice()){ if (c===player.inCar||c.mission) continue; if (d2(c.x,c.z,player.x,player.z)>270*270) c.remove(); }
+    for (const c of cars.slice()){ if (c===player.inCar||c.mission) continue; if (d2(c.x,c.z,player.x,player.z)>270*270) c.remove();
+      else if (c.exploded && c.wreckT!==undefined){ const age=now-c.wreckT, d=Math.hypot(c.x-player.x,c.z-player.z), P=player.inCar||player, ahead=(c.x-P.x)*Math.sin(camYaw)+(c.z-P.z)*Math.cos(camYaw);
+        if (age>240 || (age>75 && (d>60 || (d>25 && ahead<0)))) c.remove(); } }   // los restos se retiran con el tiempo, cuando no se ven; el tráfico vuelve a salir
     for (const p of peds.slice()){ if (d2(p.x,p.z,player.x,player.z)>210*210 || (p.state==='dead'&&p.t<=0)) p.remove(); }
     const civ=cars.filter(c=>c.driver!=='police').length;
     if (civ<MAX_CARS) spawnCarNear('cruise');
@@ -3931,6 +3960,8 @@ function update(dt){
     const r=c.T.w*0.56; let hitN=null;
     for (const [cx,cz] of carCircles(c)){ const p={x:cx,z:cz}; const n=pushCircle(p,r); if (n){ c.x+=p.x-cx; c.z+=p.z-cz; hitN=n; } }
     if (hitN){ const vn=c.vx*hitN.nx+c.vz*hitN.nz; if (vn<0){ c.vx-=hitN.nx*vn*1.3; c.vz-=hitN.nz*vn*1.3; c.vx*=0.92; c.vz*=0.92; if (-vn>5) damageCar(c,(-vn-5)*2.3,-vn); } }
+    if (c.occ && c.occ.length && !c.exploded) for (const o of c.occ.slice()) if (now>=o.t){ occupantOut(c,o,true); c.occ.splice(c.occ.indexOf(o),1); }
+    if (c.dead && !c.exploded && (c.scareT=(c.scareT||0)-dt)<=0){ c.scareT=1; for (const p of peds) if (d2(p.x,p.z,c.x,c.z)<14*14 && p.state==='walk'){ p.scare(c.x,c.z,7); if (Math.random()<0.3) say(p,mpick(['¡Que explota!','¡Apartaos!','¡Fuego!']),1.4); } }   // la gente se aparta del coche en llamas
     if (c.dead && !c.exploded){ c.burn-=dt; c.smokeT-=dt; if (c.smokeT<=0){ c.smokeT=0.05; emit(glowP,c.x+mrand(-.6,.6),1.4,c.z+mrand(-.6,.6),mrand(-.5,.5),mrand(2,4),mrand(-.5,.5),0.6,0.7,mpick(['#ff9a2a','#ffcf4a','#ff5a1a']),0,-0.6); } if (c.burn<=0) carExplode(c); }
     else if (c.health<35 && !c.exploded){ c.smokeT-=dt; if (c.smokeT<=0){ c.smokeT=0.12; emit(smokeP,c.x+fx*c.T.len*0.4,1.2,c.z+fz*c.T.len*0.4,mrand(-.4,.4),mrand(1.5,3),mrand(-.4,.4),1.6,0.6,'#5a5a5a',0,1); } }
     if (c.exploded && c.smokeT<=0){ c.smokeT=0.25; emit(smokeP,c.x,1,c.z,mrand(-.3,.3),mrand(1.5,2.5),mrand(-.3,.3),2.5,1,'#262626',0,1); } else if (c.exploded) c.smokeT-=dt;
