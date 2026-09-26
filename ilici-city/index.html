@@ -27,10 +27,16 @@
   #money{font-size:30px;color:var(--palm);font-variant-numeric:tabular-nums;line-height:1.05}
   #stars{font-size:26px;letter-spacing:2px;line-height:1}
   #wit{font-size:14px;font-weight:700;color:#ffd27a;max-width:240px;text-align:right}
-  #stars span{color:rgba(255,255,255,.18);-webkit-text-stroke:1px #000}
+  #stars span{display:inline-block;color:rgba(255,255,255,.18);-webkit-text-stroke:1px #000}
   #stars span.on{color:var(--paper)}
   #stars.flash span.on{animation:blink .5s steps(2) infinite}
   @keyframes blink{50%{color:var(--blue)}}
+  /* la estrella que se va a perder parpadea (más rápido al final) y se apaga con un pequeño golpe */
+  #stars span.on.fade,#stars.flash span.on.fade{animation:starFade .7s ease-in-out infinite}
+  #stars span.on.fade2,#stars.flash span.on.fade2{animation:starFade .24s linear infinite}
+  #stars span.lost{animation:starLost .7s ease-out}
+  @keyframes starFade{0%,100%{color:var(--paper)}50%{color:rgba(255,255,255,.1)}}
+  @keyframes starLost{0%{color:var(--paper);transform:scale(1.45)}100%{color:rgba(255,255,255,.18);transform:scale(1)}}
   #hp{width:150px;height:10px;background:#000;border:2px solid #000;margin-top:4px}
   #hp i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#c43d3f,#ef6a4c);transition:width .2s}
   #armor{width:150px;height:6px;background:#000;border:2px solid #000;border-top:0}
@@ -137,7 +143,7 @@
     #feed{max-width:min(230px,56vw)}
     #money{font-size:24px} #stars{font-size:21px} #hp{width:110px}
   }
-  @media (prefers-reduced-motion:reduce){#stars.flash span.on{animation:none}}
+  @media (prefers-reduced-motion:reduce){#stars.flash span.on,#stars span.lost{animation:none} #stars span.on.fade,#stars span.on.fade2{animation:none;color:rgba(255,255,255,.45)}}
 </style>
 
 <div id="game">
@@ -2239,6 +2245,9 @@ function updateViewmodel(dt){
 let now=0, gameMin=17*60+30, camMode=0, camYaw=Math.PI, shakeA=0, state='title';
 const policeNear = r => cars.some(c=>c.driver==='police' && d2(c.x,c.z,player.x,player.z)<r*r);
 let starCool=0, lastPoliceHit=0, bustT=0, spawnT=0, policeSpawnT=0, regenT=0;
+const STAR_FADE=4;   // segundos que parpadea una estrella antes de perderse
+const starDecay=()=>10+player.stars*5;   // tiempo sin que te vean para perder la estrella de arriba
+let starLost={i:-1,t:-9};
 function addStars(n,why,noMark){
   const before=player.stars; player.stars=clamp(player.stars+n,0,5); starCool=0; if (n>0){ intel.inv=null; if (!noMark) markSeen(); }
   if (player.stars>before){ hud.stars.classList.add('flash'); setTimeout(()=>hud.stars.classList.remove('flash'),2500); if (why) toast(why,2.5); }
@@ -3010,7 +3019,8 @@ function manage(dt){
   const P=player.inCar||player;
   if (player.stars>0){
     if (copSeeing) starCool=0; else starCool+=dt;
-    if (starCool>10+player.stars*5){ player.stars--; starCool=0; if (player.stars===0){ toast('Has despistado a la policía',2); resetIntel(); } }
+    if (starCool>starDecay()){ player.stars--; starCool=0; starLost={i:player.stars,t:now}; tone(520,0.12,'triangle',0.035); tone(390,0.16,'triangle',0.03,0.1);   // se pierde una sola estrella cada vez
+      if (player.stars===0){ toast('Has despistado a la policía',2); resetIntel(); } }
   }
 }
 
@@ -3513,7 +3523,10 @@ function updateLighting(){
 function updateHUD(dt){
   shownMoney+=(player.money-shownMoney)*Math.min(1,dt*6); if (Math.abs(player.money-shownMoney)<1) shownMoney=player.money;
   hud.money.textContent='€'+String(Math.round(shownMoney)).padStart(8,'0');
-  [...hud.stars.children].forEach((s,i)=>s.classList.toggle('on',i<player.stars));
+  { const T=starDecay(), fading=player.stars>0 && state==='play' && starCool>T-STAR_FADE;
+    [...hud.stars.children].forEach((s,i)=>{ const top=fading && i===player.stars-1;
+      s.classList.toggle('on',i<player.stars); s.classList.toggle('fade',top && starCool<T-1.2); s.classList.toggle('fade2',top && starCool>=T-1.2);
+      s.classList.toggle('lost',i===starLost.i && now-starLost.t<0.7); }); }
   hud.hp.style.width=player.health+'%';
   const h=Math.floor(gameMin/60), m=Math.floor(gameMin%60); hud.clock.textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
   if (player.inCar){ hud.speed.hidden=false; hud.speed.textContent=Math.round(player.inCar.speed*3.6)+' km/h'; } else hud.speed.hidden=true;
