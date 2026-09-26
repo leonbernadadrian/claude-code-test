@@ -744,6 +744,10 @@ const asphaltTex=canvasTex(512,(c,n)=>{   // asfalto: árido fino, variación su
   c.globalAlpha=0.1; for (let i=0;i<5;i++){ c.save(); c.translate(Math.random()*n,Math.random()*n); c.rotate(Math.random()*6.28); c.scale(1,0.25); c.fillStyle='#000'; c.beginPath(); c.arc(0,0,10+Math.random()*16,0,7); c.fill(); c.restore(); }
   c.globalAlpha=0.3; c.strokeStyle='#4a4a4a'; c.lineWidth=1; for (let i=0;i<8;i++){ c.beginPath(); let x=Math.random()*n,y=Math.random()*n; c.moveTo(x,y); for (let k=0;k<8;k++){ x+=(Math.random()-0.5)*26; y+=(Math.random()-0.5)*26; c.lineTo(x,y); } c.stroke(); }
   c.globalAlpha=1; });
+const grassTex=canvasTex(256,(c,n)=>{   // césped: variación de tono y briznas
+  noiseFill(c,n,'#d4d4d4',22); c.globalAlpha=0.08; for (let i=0;i<30;i++){ c.fillStyle=Math.random()<0.5?'#6a6a2a':'#ffffff'; c.beginPath(); c.arc(Math.random()*n,Math.random()*n,8+Math.random()*26,0,7); c.fill(); }
+  c.globalAlpha=0.28; for (let i=0;i<2200;i++){ const x=Math.random()*n, y=Math.random()*n; c.strokeStyle=Math.random()<0.5?'#8a8a8a':'#f2f2f2'; c.beginPath(); c.moveTo(x,y); c.lineTo(x+(Math.random()-0.5)*2,y-2-Math.random()*3); c.stroke(); }
+  c.globalAlpha=1; });
 const tileTex=canvasTex(256,(c,n)=>{ noiseFill(c,n,'#ececec',18); c.fillStyle='rgba(0,0,0,0.22)'; for (let k=0;k<=4;k++){ c.fillRect(k*64-1,0,2,n); c.fillRect(0,k*64-1,n,2); } });
 const softTex=canvasTex(256,(c,n)=>{ noiseFill(c,n,'#e2e2e2',30); c.globalAlpha=0.1; for (let i=0;i<60;i++){ c.fillStyle=Math.random()<0.5?'#000':'#fff'; c.beginPath(); c.arc(Math.random()*n,Math.random()*n,Math.random()*14+3,0,7); c.fill(); } c.globalAlpha=1; });
 function worldTexMat(tex,scale,opts={}){
@@ -904,7 +908,8 @@ for (const sp of SPECIAL){
   slabs.push({x:(sp.x0+sp.x1)/2, y:0.135, z:(sp.z0+sp.z1)/2, sx:sp.x1-sp.x0, sy:0.27, sz:sp.z1-sp.z0, c});
 }
 instanced(boxGeo, worldTexMat(tileTex,1/3.2), slabs.filter(s=>s.c===COL.walk), false);
-instanced(boxGeo, worldTexMat(softTex,1/5), slabs.filter(s=>s.c!==COL.walk), false);
+instanced(boxGeo, worldTexMat(grassTex,1/4), slabs.filter(s=>s.c!==COL.walk && s.c!==COL.earth), false);
+instanced(boxGeo, worldTexMat(softTex,1/5), slabs.filter(s=>s.c===COL.earth), false);
 
 /* calzadas diagonales, marcas viales, pasos de cebra */
 {
@@ -1224,7 +1229,7 @@ const inCorridor=(x,z,m=0)=>Math.abs(x-riverX(z))<RHz(z)+m;
   const bg=[W,E].map(sh=>{ const g=new THREE.ShapeGeometry(sh); g.rotateX(-Math.PI/2); g.translate(0,0.02,0); return g; });
   add(mergeGeos(bg),worldTexMat(tileTex,1/3.2,{color:'#c9bfae'}));
   // parques, plazas y agua (sin tapar el cauce)
-  const areaMat={park:worldTexMat(softTex,1/5,{color:COL.grass}),plaza:worldTexMat(tileTex,1/2.4,{color:'#d8ccb4'}),pitch:worldTexMat(softTex,1/5,{color:'#4f9a52'}),water:new THREE.MeshPhongMaterial({color:'#3f8398',shininess:120,specular:0x99bbcc})};
+  const areaMat={park:worldTexMat(grassTex,1/4,{color:COL.grass}),plaza:worldTexMat(tileTex,1/2.4,{color:'#d8ccb4'}),pitch:worldTexMat(softTex,1/5,{color:'#4f9a52'}),water:new THREE.MeshPhongMaterial({color:'#3f8398',shininess:120,specular:0x99bbcc})};
   const byT={}; RZ_AREAS.forEach(a=>{ let cx=0,cz=0; for (const q of a.pts){ cx+=q[0]; cz+=q[1]; } cx/=a.pts.length; cz/=a.pts.length; if (inCorridor(cx,cz,-4)) return;
     const g=new THREE.ShapeGeometry(new THREE.Shape(a.pts.map(q=>new THREE.Vector2(q[0],-q[1])))); g.rotateX(-Math.PI/2); g.translate(0,{park:0.07,plaza:0.055,pitch:0.075,water:0.08}[a.t],0); (byT[a.t]=byT[a.t]||[]).push(g); });
   for (const t in byT) add(mergeGeos(byT[t]),areaMat[t]);
@@ -1293,6 +1298,13 @@ instanced(boxGeo, lambert('#c29c65'), merlons);
 
 /* ---- palmeras ---- */
 const palms=[];
+let palmLOD=null;
+function updatePalmLOD(dt){   // copa detallada a menos de 100 m de la cámara, sencilla más lejos
+  const L=palmLOD; if (!L) return; L.t-=dt; if (L.t>0) return; L.t=0.4; const cx=camera.position.x, cz=camera.position.z; let a=0,b=0;
+  for (let k=0;k<L.mats.length;k++){ const e=L.mats[k].elements, d=(e[12]-cx)**2+(e[14]-cz)**2;
+    if (d<100*100){ L.near.setMatrixAt(a,L.mats[k]); L.near.setColorAt(a++,L.cols[k]); } else { L.far.setMatrixAt(b,L.mats[k]); L.far.setColorAt(b++,L.cols[k]); } }
+  L.near.count=a; L.far.count=b; for (const m of [L.near,L.far]){ m.instanceMatrix.needsUpdate=true; if (m.instanceColor) m.instanceColor.needsUpdate=true; }
+}
 function addPalm(x,z,h,y=0.27,col=true){
   palms.push({x,z,y,h:h??R(7,13),lx:R(-0.12,0.12),lz:R(-0.12,0.12),ry:R(0,6.28)});
   if (col) addCollider(x-0.45,z-0.45,x+0.45,z+0.45,8);
@@ -1320,23 +1332,45 @@ function fillPalms(x0,z0,x1,z1,step,skip){
   const S2=SPECIAL.find(s=>s.name==='Estadio Martínez Valero');
   for (let x=S2.x0+6;x<S2.x1;x+=18){ addPalm(x,S2.z0+4); addPalm(x,S2.z1-4); }
 }
+// Palmeras datileras: tronco con anillos y ensanchamiento bajo la copa; copa de hojas arqueadas con sección en V (foliolos),
+// degradado de la base a la punta y faldón de hojas secas. LOD: copa detallada cerca, copa sencilla lejos (se reasigna cada 0,4 s).
+function frondGeo(len,rise,droop,width,seg,base,tip){   // hoja pinnada arqueada; eje en +z
+  const pos=[], col=[], cb=new THREE.Color(base), ct=new THREE.Color(tip), c=new THREE.Color();
+  const pt=t=>{ const z=len*t, y=rise*t - droop*t*t; return [z,y]; };
+  for (let i=0;i<seg;i++){ const t0=i/seg, t1=(i+1)/seg, [z0,y0]=pt(t0), [z1,y1]=pt(t1), w0=width*Math.sin(Math.PI*Math.min(1,t0*1.25+0.08)), w1=width*Math.sin(Math.PI*Math.min(1,t1*1.25+0.08)), v0=w0*0.35, v1=w1*0.35;
+    for (const sg of [-1,1]){   // dos mitades inclinadas (sección en V)
+      const A=[0,y0,z0], B=[0,y1,z1], C=[sg*w1,y1+v1,z1], D=[sg*w0,y0+v0,z0];
+      for (const q of [A,B,C,A,C,D]){ pos.push(...q); } c.copy(cb).lerp(ct,t0); for (let k=0;k<6;k++) col.push(c.r,c.g,c.b); } }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setAttribute('color',new THREE.Float32BufferAttribute(col,3)); g.computeVertexNormals(); return g;
+}
+function palmCrownGeo(detail){
+  const fr=[], n=detail?14:8, seg=detail?5:3;
+  for (let k=0;k<n;k++){ const up=k%2===0, g=frondGeo(up?4.6:4.9,up?2.6:1.6,up?3.2:4.4,up?0.62:0.7,seg,'#52772f','#a3bb5a');
+    g.rotateY(k/n*Math.PI*2+(up?0:Math.PI/n)); fr.push(g); }
+  if (detail) for (let k=0;k<5;k++){ const g=frondGeo(2.6,-0.6,1.4,0.35,3,'#6e5a36','#a08858'); g.rotateY(k/5*Math.PI*2+0.3); g.translate(0,-0.5,0); fr.push(g); }   // hojas secas colgando
+  return mergeColored(fr);
+}
 {
-  const trunk=new THREE.CylinderGeometry(0.24,0.4,1,7,1); trunk.translate(0,0.5,0);
-  const fr=[];
-  for (let k=0;k<11;k++){ const g=new THREE.BoxGeometry(0.75,0.06,4.4); g.translate(0,0,2.2); g.rotateX(k<9?(0.35+(k%2)*0.35):-0.5); g.rotateY(k*2*Math.PI/9 + (k>=9?1:0)); fr.push(g); }
-  const crown=mergeGeos(fr);
-  const tMesh=new THREE.InstancedMesh(trunk, lambert('#8a6a45'), palms.length);
-  const cMesh=new THREE.InstancedMesh(crown, new THREE.MeshLambertMaterial({color:0xffffff,side:THREE.DoubleSide}), palms.length);
-  const up=new THREE.Vector3();
+  const tp=[]; for (const [r,y] of [[0.42,0],[0.36,0.08],[0.31,0.45],[0.3,0.82],[0.36,0.94],[0.3,1]]) tp.push(new THREE.Vector2(r,y));
+  const trunk=new THREE.LatheGeometry(tp,8);
+  const tMat=lambert('#8a6a45'); tMat.onBeforeCompile=sh=>{   // anillos de las bases de las hojas
+    sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying float vTY;').replace('#include <begin_vertex>','#include <begin_vertex>\nvTY=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).y;');
+    sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying float vTY;').replace('#include <color_fragment>','#include <color_fragment>\nfloat rg=fract(vTY*2.4); diffuseColor.rgb*=0.78+0.3*smoothstep(0.0,0.35,rg)*(1.0-smoothstep(0.65,1.0,rg));');
+  }; tMat.customProgramCacheKey=()=>'palmTrunk';
+  const tMesh=new THREE.InstancedMesh(trunk, tMat, palms.length);
+  const cMat=new THREE.MeshLambertMaterial({color:0xffffff,vertexColors:true,side:THREE.DoubleSide,emissive:'#1c2a10'});   // algo de luz que atraviesa la hoja
+  const near=new THREE.InstancedMesh(palmCrownGeo(true), cMat, palms.length), far=new THREE.InstancedMesh(palmCrownGeo(false), cMat, palms.length);
+  const up=new THREE.Vector3(), mats=[], cols=[];
   palms.forEach((p,k)=>{
     _e.set(p.lx,0,p.lz); _q.setFromEuler(_e);
     _m.compose(_v.set(p.x,p.y,p.z),_q,_s.set(1,p.h,1)); tMesh.setMatrixAt(k,_m);
     up.set(0,1,0).applyMatrix4(_m);
     _e.set(p.lx,p.ry,p.lz); _q.setFromEuler(_e); const sc=R(0.85,1.15);
-    _m.compose(up,_q,_s.set(sc,sc,sc)); cMesh.setMatrixAt(k,_m);
-    cMesh.setColorAt(k,_c.set(pick(['#5c7f36','#4f7430','#6a8a3c','#57793a'])));
+    mats.push(new THREE.Matrix4().compose(up.clone(),_q.clone(),new THREE.Vector3(sc,sc,sc)));
+    cols.push(new THREE.Color(pick(['#ffffff','#e8f0d8','#f4ecd0','#dfe8cc'])));
   });
-  tMesh.castShadow=cMesh.castShadow=true; scene.add(tMesh); scene.add(cMesh);
+  tMesh.castShadow=near.castShadow=far.castShadow=true; scene.add(tMesh); scene.add(near); scene.add(far);
+  palmLOD={near,far,mats,cols,t:0};
 }
 // Palmera Imperial (7 brazos) en el Huerto del Cura
 {
@@ -1409,8 +1443,9 @@ const busStopMap=new Map();
   instanced(boxGeo,new THREE.MeshLambertMaterial({color:0xffffff}),backs,false);
   instanced(new THREE.CylinderGeometry(0.5,0.44,1,12),new THREE.MeshLambertMaterial({color:0xffffff}),bins,false);   // papeleras cilíndricas
   instanced(boxGeo,lambert('#2a2d31'),seats.flatMap(q=>[-0.8,0.8].map(o=>({x:q.x+Math.cos(q.ry)*o,y:0.36,z:q.z-Math.sin(q.ry)*o,sx:0.08,sy:0.72,sz:0.55,ry:q.ry}))),false);   // patas de los bancos
-  instanced(boxGeo,lambert('#6e5236'),trunks);
-  instanced(new THREE.IcosahedronGeometry(1,1),new THREE.MeshLambertMaterial({color:0xffffff}),crowns);
+  instanced(new THREE.CylinderGeometry(0.35,0.5,1,7),lambert('#6e5236'),trunks);
+  const treeCrown=(()=>{ const P=[], ico=new THREE.IcosahedronGeometry(1,1); for (const [x,y,z,r,c] of [[0,0,0,0.78,'#dfe6cf'],[0.42,-0.12,0.18,0.55,'#c9d4b8'],[-0.38,-0.08,-0.2,0.58,'#d2dcc0'],[0.05,0.32,-0.3,0.5,'#f2f6e6'],[-0.15,-0.25,0.42,0.5,'#bcc8aa']]) P.push(tintGeo(ico,c,x,y,z,r,r*0.9,r,0,0.35)); return mergeColored(P); })();   // copa en racimo con luz arriba
+  instanced(treeCrown,new THREE.MeshLambertMaterial({color:0xffffff,vertexColors:true}),crowns);
   // quioscos de prensa y cupones
   for (const a of RZ_AREAS){ if (a.t!=='park' && a.t!=='plaza') continue; let cx=0,cz=0; a.pts.forEach(q=>{cx+=q[0];cz+=q[1];}); cx/=a.pts.length; cz/=a.pts.length; if (inCorridor(cx,cz,-2)) continue;
     let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; a.pts.forEach(([x,z])=>{x0=Math.min(x0,x);x1=Math.max(x1,x);z0=Math.min(z0,z);z1=Math.max(z1,z);});
@@ -4706,6 +4741,7 @@ function updateLighting(){
   const P=player.inCar||player, sx=el>-0.05?Math.cos(ang)*0.8:-0.4, sy=el>-0.05?Math.max(0.25,el):0.7;
   sun.position.set(P.x+sx*160,sy*200,P.z+60); sun.target.position.set(P.x,0,P.z);
   const night=clamp(1-day*1.4,0,1); winU.uNight.value=night; skyU.night.value=night; refreshEnv(day);
+  if (palmLOD) palmLOD.near.material.emissiveIntensity=0.1+0.9*day;   // la translucidez de las hojas solo con sol
   termGlass.emissive.setRGB(night*0.55,night*0.45,night*0.28);
   if (lampGlow){ lampGlow.visible=lampPools.visible=night>0.05; lampGlow.material.opacity=night*0.9; lampPools.material.opacity=night*0.55; } headGlowMat.opacity=night*0.85;
   lampBulbMat.color.set(night>0.3?'#ffd88a':'#6b6555');
@@ -5109,7 +5145,7 @@ function frame(t){
     for (const p of peds) p.update(dt);
     for (const c of cars){ if (c.driver==='npc'&&c.ai) cruise(c,dt); else c.drive(dt,0,0,true); pushCircle(c,1.2); c.sync(); }
   } else if (state==='paused'||state==='map'||state==='shop'||state==='help'||state==='phone'){ if (AC&&eng){ eng.g.gain.value=0; } stopSirens(); if (state==='map') updateMapView(dt); }
-  updateLighting(); updateTrafficLights();
+  updateLighting(); updateTrafficLights(); updatePalmLOD(dt);
   renderer.clear(); renderer.render(scene,camera);
   if (vmRoot.visible && (state==='play'||state==='dead')){ renderer.clearDepth(); renderer.render(vmScene,vmCam); }
 }
