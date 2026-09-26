@@ -417,12 +417,12 @@ const SPECIAL=[
   {name:'Mercado Central',type:'plaza',...blk(8,9,6,7)},
   {name:'Estación Elx-Parc',type:'plaza',...blk(7,8,5,6)},
   {name:'Comisaría',type:'plaza',...blk(7,8,9,10)},
-  {name:'Hospital General',type:'plaza',...blk(4,5,3,4)},
+  {name:'Hospital General',type:'plaza',...blk(12,13,13,14)},   // La Portalada, al sureste (como el real)
   {name:'Taller de Carrús',type:'plaza',...blk(2,3,3,4)},
   {name:'Torre de la Calahorra',type:'landmark',x0:18,x1:52,z0:18,z1:52},
   {name:'Huerto del Cura',type:'huerto',noRoad:true,...blk(11,13,6,8)},
-  {name:'Estadio Martínez Valero',type:'stadium',noRoad:true,...blk(12,14,12,14)},
-  {name:'Campus UMH',type:'campus',noRoad:true,...blk(13,15,7,9)},
+  {name:'Estadio Martínez Valero',type:'stadium',noRoad:true,...blk(14,16,3,5)},   // al este, junto a la Ciudad Deportiva
+  {name:'Campus UMH',type:'campus',noRoad:true,...blk(11,13,0,2)},   // al norte, en Candalix
   {name:'Palmeral',type:'palmeral',...blk(9,12,10,12)},
   {name:'Palmeral',type:'palmeral',...blk(12,14,9,11)},
   {name:'Palmeral',type:'palmeral',...blk(3,5,6,8)},
@@ -432,28 +432,34 @@ for (let k=SPECIAL.length-1;k>=0;k--){ const sp=SPECIAL[k]; if (sp.type!=='palme
 const NOROAD = SPECIAL.filter(s=>s.noRoad);
 const specialAt = (x,z) => SPECIAL.find(s => inRect(s,x,z));
 
+/* ---- capa de barrios ----
+   Generada con geocodificación inversa de OpenStreetMap (Nominatim): cada manzana de la cuadrícula y cada celda de 55 m del centro real
+   tiene el barrio real de ese punto de Elche. El centro está a escala 1:1; fuera de él la ciudad está comprimida manteniendo la dirección
+   (oeste ×0,27, este ×0,38, norte ×0,6, sur ×0,85 desde el borde del centro real). Cada barrio tiene nombre y distrito (el que rotula el mapa). */
+const ZN={names:[["San Crispín", "El Toscar"], ["El Toscar", "El Toscar"], ["Sagrada Familia", "El Toscar"], ["Carrús Oeste", "Carrús"], ["El Cementerio", "El Pla"], ["El Pla", "El Pla"], ["L'Asil", "L'Asil"], ["Hospital del Vinalopó", "Sector V"], ["Carrús Este", "Carrús"], ["Casablanca", "Carrús"], ["Pont Nou", "Carrús"], ["Sector V", "Sector V"], ["Camí dels Magros", "Carrús"], ["Pisos Azules", "Pisos Azules"], ["El Canal", "L'Asil"], ["La Rata", "La Rata"], ["Raval de Santa Teresa", "Centro"], ["Les Cases de Ferrandes", "Candalix"], ["La Tripa", "El Raval"], ["Centro Histórico", "Centro"], ["El Raval", "El Raval"], ["Portes Encarnades", "El Raval"], ["Candalix", "Candalix"], ["La Portalada", "La Portalada"], ["Hort de Ripoll", "Centro"], ["La Barrera", "Centro"], ["Porta de la Morera", "El Raval"], ["Altabix", "Altabix"], ["Torreta-Verdi", "Altabix"], ["Los Palmerales", "Los Palmerales"], ["Ciudad Deportiva", "Altabix"], ["Ciudad Jardín", "Altabix"], ["Hort de Montenegro", "Altabix"], ["San Antón", "San Antón"], ["Trabalón", "Los Palmerales"], ["El Salvador", "Centro"], ["Pataes", "Centro"]],
+  outer:'08999hhhhhhmrruu19c8ffffhhmmrruu28ccffffmmmmmrru228fffffmmmmsrru33aaffjjjjppssvw3aa........ppsvw35a........pssvw455........pqsvx455........pqstx455........qqstx5bd........qqttx4bddggkkkooqqttx6bd666kkikoqqttt7b6666iiinqqntty7be66iiiinnnnnty7be6eillnllnnnnn',
+  rz:'aaaaajjjjjjjjjjjAaaaagjjjjjjjjjpppaaaggggjjjjjjAAApaagagggjjjjjjjAAAaaggggzjjjjjjAppp55gggggzzzzzzAAAp5dgggggzzzzzzppppddgggggzzzzzzooqqddgggggzzzzzzooooddgggggzzzzzoooooddggggggzkzzooooodddggggkkkkkooooo'};
+const ZCH='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+function barrioAt(x,z){
+  if (inRZ(x,z)) return ZN.names[ZCH.indexOf(ZN.rz[clamp(Math.round((z+285)/55),0,11)*17+clamp(Math.round((x+571)/55),0,16)])];
+  const c=ZN.outer[clamp(Math.floor((z+880)/110),0,15)*16+clamp(Math.floor((x+880)/110),0,15)];
+  return c==='.' ? barrioAt(clamp(x,RZ.x0+1,RZ.x1-1),clamp(z,RZ.z0+1,RZ.z1-1)) : ZN.names[ZCH.indexOf(c)];
+}
+const districtAt=(x,z)=>barrioAt(x,z)[1];
+const DISTRICTS={'El Toscar':[-803,-627],'Carrús':[-590,-420],'La Rata':[-253,-600],'Candalix':[176,-682],'Altabix':[560,-300],'El Pla':[-697,68],'Pisos Azules':[-545,250],
+  'Centro':[-40,-150],'Sector V':[-752,605],"L'Asil":[-479,644],'El Raval':[114,458],'La Portalada':[436,749],'Los Palmerales':[707,448],'San Antón':[825,165]};
 function zoneName(x,z){
   if (Math.abs(x)>LIM+4 || Math.abs(z)>LIM+4){ if (inRect(AP,x,z)) return AP.name; return nearHwy(x,z,25)?'Carretera del Aeropuerto':'Campo d\'Elx'; }
   if (inRZ(x,z)){ const rb=realBridgeAt(x,z); if (rb && rb.n) return rb.n; for (const a of RZ_AREAS) if (a.n && pointInPoly(x,z,a.pts)) return a.n; }
   const s = !inRZ(x,z) && specialAt(x,z); if (s) return s.name;
   if (Math.abs(x-riverX(z)) < RHz(z)) { for (const j of BRIDGE_J_ACT) if (Math.abs(z-X(j))<9) return BRIDGE_NAME[j]; return 'Río Vinalopó'; }
-  const east = x > riverX(z);
-  if (inRZ(x,z)) return east ? 'Centro Histórico' : 'El Raval de Santa Teresa';
-  if (!east) { if (x<-560 && z>330) return 'Polígono Industrial'; return z<110 ? 'Carrús' : 'El Toscar'; }
-  if (z < -330) return 'El Pla';
-  if (x < 110 && z < 220) return 'Centro Histórico';
-  if (x < 440 && z < 220) return 'El Raval';
-  if (x < 440) return 'Los Palmerales';
-  return 'Altabix';
+  return barrioAt(x,z)[0];
 }
+const DSTYLE={'Carrús':'carrus','La Rata':'carrus','El Toscar':'toscar','Pisos Azules':'toscar','El Pla':'pla','Sector V':'altabix','Candalix':'altabix','Altabix':'altabix',
+  "L'Asil":'raval','El Raval':'raval','La Portalada':'raval','Centro':'centro','Los Palmerales':'palmerales','San Antón':'palmerales'};
 function styleKey(x,z){
-  const east = x > riverX(z);
-  if (!east) { if (x<-560 && z>330) return 'industrial'; return z<110 ? 'carrus' : 'toscar'; }
-  if (z < -330) return 'pla';
-  if (x < 110 && z < 220) return 'centro';
-  if (x < 440 && z < 220) return 'raval';
-  if (x < 440) return 'palmerales';
-  return 'altabix';
+  if (x<-660 && z>550) return 'industrial';   // naves al suroeste de Sector V, junto al Hospital del Vinalopó
+  return DSTYLE[districtAt(x,z)]||'raval';
 }
 const STYLE={
   centro:{n:3,gap:0.4,h:[2,5],cols:['#efe6d6','#e8d3a9','#d9b98a','#f2efe9','#cfa77a','#e6c9b5','#dcc7a1']},
@@ -511,10 +517,10 @@ const SHOPS=[
   {id:'bicis',name:'Bicis Elx',title:'Tienda de bicicletas',pos:[70,-84],color:'#34a364'},
   // actividades para ganar dinero (azul) y comercios que se pueden atracar (naranja)
   {id:'reparto',name:'Reparto Exprés',title:'Reparto Exprés Elx',pos:[339.2,-449.2],color:'#35c6e8',job:true,shirt:'#d9262c'},
-  {id:'poligono',name:'Logística Vinalopó',title:'Logística Vinalopó · Polígono Industrial',pos:[-650.8,540.8],color:'#35c6e8',job:true,shirt:'#f2a900'},
+  {id:'poligono',name:'Logística Vinalopó',title:'Logística Vinalopó · naves de Sector V',pos:[-760.8,650.8],color:'#35c6e8',job:true,shirt:'#f2a900'},
   {id:'taxi',name:'Parada de taxis',title:'Parada de taxis de la Estación',pos:[-27.1,-321.2],color:'#35c6e8',job:true,shirt:'#f4f4f0'},
-  {id:'taller',name:'Taller de Carrús',title:'Taller y compraventa de Carrús',pos:[-540.8,-449.2],color:'#35c6e8',job:true,shirt:'#2d4a8a'},
-  {id:'carreras',name:'Carreras del Pla',title:'Carreras clandestinas del Pla',pos:[339.2,-669.2],color:'#35c6e8',job:true,shirt:'#111111'},
+  {id:'taller',name:'Taller de Carrús',title:'Taller y compraventa de Carrús',pos:[-650.8,-449.2],color:'#35c6e8',job:true,shirt:'#2d4a8a'},
+  {id:'carreras',name:'Carreras de Candalix',title:'Carreras clandestinas de Candalix',pos:[339.2,-669.2],color:'#35c6e8',job:true,shirt:'#111111'},
   {id:'inmo',name:'Inmobiliaria Glorieta',title:'Inmobiliaria Glorieta · Negocios',pos:[22.1,-97.2],color:'#35c6e8',job:true,shirt:'#5a5f6a'},
   {id:'rob_estanco',name:'Estanco de Altabix',title:'Estanco de Altabix',pos:[559.2,-119.2],color:'#ff8a3d',rob:true,loot:[300,650],shirt:'#8a6a3a'},
   {id:'rob_gasolinera',name:'Gasolinera del Raval',title:'Gasolinera del Raval',pos:[-390.7,197.9],color:'#ff8a3d',rob:true,loot:[400,900],shirt:'#1f7a3a'},
@@ -987,11 +993,13 @@ addBox(50,9,40,'#7d8790',-605,4.77,-512,{col:true}); addBox(16,6.5,0.4,'#2b2f33'
   seg(H.x0,H.z0,H.x0+0.8,-122); seg(H.x0,-98,H.x0+0.8,H.z1);
   addCyl(8,8,0.3,'#4a95ad',475,0.3,-160,24);
 }
-// Estadio Martínez Valero
+// Estadio Martínez Valero (dibujado alrededor de (550,550) y desplazado a su manzana)
+const _addBoxS=addBox;
 {
-  const cx=550, cz=550;
-  addBox(105,0.06,68,'#3f9a4a',cx,0.31,cz,{shadow:false});
-  for (const [w,d,x,z] of [[105,0.3,cx,cz-34],[105,0.3,cx,cz+34],[0.3,68,cx-52.5,cz],[0.3,68,cx+52.5,cz],[0.3,68,cx,cz]]) addBox(w,0.05,d,'#f4f4f0',x,0.36,z,{shadow:false});
+  const SDX=220, SDZ=-990, addBox=(w,h,d,c,x,y,z,o)=>_addBoxS(w,h,d,c,x+SDX,y,z+SDZ,o);
+  const cx=550+SDX, cz=550+SDZ;
+  addBox(105,0.06,68,'#3f9a4a',550,0.31,550,{shadow:false});
+  for (const [w,d,x,z] of [[105,0.3,550,516],[105,0.3,550,584],[0.3,68,497.5,550],[0.3,68,602.5,550],[0.3,68,550,550]]) addBox(w,0.05,d,'#f4f4f0',x,0.36,z,{shadow:false});
   { const ring=new THREE.Mesh(new THREE.RingGeometry(8.8,9.2,40),basic('#f4f4f0')); ring.rotation.x=-Math.PI/2; ring.position.set(cx,0.37,cz); scene.add(ring); }
   const tier=(x0,z0,x1,z1,h,c)=>addBox(x1-x0,h,z1-z0,c,(x0+x1)/2,h/2+0.27,(z0+z1)/2,{col:true});
   for (let k=0;k<3;k++){
@@ -1076,7 +1084,7 @@ function buildAirport(){
 }
 }
 // Campus UMH
-for (const [x,z,w,d,h] of [[600,-60,30,24,14],[700,-62,40,20,18],[608,52,26,36,12],[712,42,34,30,22],[660,0,18,18,30]]) addBuilding(x-w/2,z-d/2,x+w/2,z+d/2,h,pick(STYLE.altabix.cols));
+for (const [x0,z0,w,d,h] of [[600,-60,30,24,14],[700,-62,40,20,18],[608,52,26,36,12],[712,42,34,30,22],[660,0,18,18,30]]){ const x=x0-220, z=z0-770; addBuilding(x-w/2,z-d/2,x+w/2,z+d/2,h,pick(STYLE.altabix.cols)); }   // edificios del campus, desplazados a su manzana de Candalix
 
 const bldMesh=instanced(boxGeo, bldMat, buildings);
 /* ---- centro real: suelo, calles, plazas, parques, edificios y puentes ---- */
@@ -1855,7 +1863,7 @@ buildAirport();
 }
 
 /* ================= jugador ================= */
-const SPAWN={x:GLORIETA.x-14,z:GLORIETA.z-6}, HOSPITAL_SPAWN={x:-385,z:-462};
+const SPAWN={x:GLORIETA.x-14,z:GLORIETA.z-6}, HOSPITAL_SPAWN={x:495,z:545};
 const POLICE_SPAWN=(()=>{ const q=snapStreet(-60,110,true); return {x:q[0],z:q[1]}; })();
 const player={x:SPAWN.x,z:SPAWN.z,y:0,vy:0,crouch:false,h:Math.PI,inCar:null,health:100,money:150,stars:0,phase:0,punchT:0,lastHurt:0,vx:0,vz:0};
 player.mesh=makePedMesh('#1f8a4c','#26313d','#e0ac85','#2b1d14','elche'); scene.add(player.mesh);
@@ -1916,13 +1924,13 @@ const MISSIONS=[
     steps:[{type:'goto',p:[324,-110],r:6,text:'Recoge las cajas en la puerta del <em>Huerto del Cura</em>'},{type:'goto',p:[55,-131],r:6,text:'Lleva los dátiles al <em>Mercado Central</em>'}]},
   {id:'taxi',name:'Taxi al Martínez Valero',start:[-55,-245],time:170,reward:450,car:true,
     intro:'Hay partido del Elche CF. Un aficionado te espera en el Hospital General y no quiere perderse el saque inicial.',
-    steps:[{type:'goto',p:[-385,-462],r:8,stop:true,car:true,text:'Recoge al aficionado en el <em>Hospital General</em> (frena encima)'},{type:'goto',p:[436,500],r:9,stop:true,car:true,text:'Llévalo al <em>Estadio Martínez Valero</em>'}]},
+    steps:[{type:'goto',p:[495,550],r:8,stop:true,car:true,text:'Recoge al aficionado en el <em>Hospital General</em> (frena encima)'},{type:'goto',p:[660,-440],r:9,stop:true,car:true,text:'Llévalo al <em>Estadio Martínez Valero</em>'}]},
   {id:'carrera',name:'Carrera del Palmeral',start:[165,220],time:120,reward:600,car:true,
     intro:'Carrera ilegal entre los palmerales. Pasa por los 7 puntos de control antes de que acabe el tiempo.',
     steps:[[440,220],[440,440],[330,330],[220,440],[110,440],[110,220],[165,220]].map((p,i)=>({type:'goto',p,r:11,car:true,text:`Punto de control <em>${i+1}/7</em>`}))},
   {id:'deportivo',name:'El deportivo del míster',start:[436,560],reward:1000,
     intro:'El entrenador ha dejado su deportivo verde y blanco aparcado en pleno césped del Martínez Valero. Róbalo y llévalo al Taller de Carrús sin policía detrás.',
-    steps:[{type:'steal',text:'Roba el <em>deportivo verde</em> del césped del estadio'},{type:'goto',p:[-605,-470],r:9,car:'mission',noStars:true,text:'Llévalo al <em>Taller de Carrús</em> (sin estrellas)'}]},
+    steps:[{type:'steal',text:'Roba el <em>deportivo verde</em> del césped del estadio'},{type:'goto',p:[-655,-440],r:9,car:'mission',noStars:true,text:'Llévalo al <em>Taller de Carrús</em> (sin estrellas)'}]},
   {id:'alba',name:"La Nit de l'Albà",start:[-55,-15],time:240,reward:1500,
     intro:"Esta noche es la Nit de l'Albà y los cohetes se han repartido por media ciudad. Recoge las 5 cajas de pólvora y vuelve a la Basílica.",
     steps:[{type:'collect',pts:[[-440,110],[220,-550],[660,330],[-110,550],[550,-220]],r:6,text:'Recoge las cajas de pólvora'},{type:'goto',p:[-55,-15],r:7,text:'Vuelve a la <em>Basílica de Santa María</em>'}]},
@@ -2315,7 +2323,7 @@ function drawMapView(){
       const key=r.n+Math.round(mx/(220*d))+','+Math.round(my/(220*d)); if (seen.has(key)) continue; seen.add(key);
       let ang=Math.atan2(B[1]-A[1],B[0]-A[0]); if (ang>Math.PI/2) ang-=Math.PI; if (ang<-Math.PI/2) ang+=Math.PI; c.save(); c.translate(mx,my); c.rotate(ang); c.fillStyle='#161a1f'; c.fillText(r.n,0,0); c.restore(); }
   }
-  if (MV.z<2.4) for (const [n,x,y] of [['CARRÚS',-560,-420],['EL TOSCAR',-540,300],['EL PLA',300,-640],['EL RAVAL',280,120],['ALTABIX',700,-300],['LOS PALMERALES',260,600],['POLÍGONO',-720,640],['CENTRO',-40,-150],['EL ALTET',2800,760]]){ const X=Ux(x),Y=Uz(y); if (inV(X,Y)) txt(n,X,Y,MV.z<0.5?20:26,'#e9e1cf','400','"Bowlby One",Impact,sans-serif'); }
+  if (MV.z<2.4) for (const [n,x,y] of [...Object.entries(DISTRICTS).map(([n,[x,z]])=>[n.toUpperCase(),x,z]),['EL ALTET',2800,760]]){ const X=Ux(x),Y=Uz(y); if (inV(X,Y)) txt(n,X,Y,MV.z<0.5?20:26,'#e9e1cf','400','"Bowlby One",Impact,sans-serif'); }
   if (MV.z>=0.45) for (const sp of SPECIAL){ if (sp.type==='palmeral') continue; const X=Ux((sp.x0+sp.x1)/2), Y=Uz((sp.z0+sp.z1)/2); if (inV(X,Y)) txt(sp.name,X,Y+14*d,16,'#f5efe2'); }
   if (MV.z>=1.4) for (const b of RZ_BLD) if (b.n){ const X=Ux(b.cx), Y=Uz(b.cz); if (inV(X,Y)) txt(b.n,X,Y+13*d,14,'#ffd9a0'); }
   { const X=Ux(-300),Y=Uz(-760); if (inV(X,Y)){ c.save(); c.translate(X,Y); c.rotate(-Math.PI/2); txt('Río Vinalopó',0,0,20,'#8fd0e6','italic 600'); c.restore(); } }
@@ -3758,7 +3766,7 @@ function manage(dt){
 function startMission(ms){
   mission.cur=ms; mission.step=0; mission.timer=ms.time||0; mission.got=[]; mission.stopT=0;
   toast(`<em>${ms.name}</em><br>${ms.intro}`,6); tone(660,0.15,'square',0.06); tone(990,0.2,'square',0.06,0.12);
-  if (ms.id==='deportivo'){ const c=new Car('sports','#1f8a4c'); c.x=550; c.z=550; c.h=Math.PI/2; c.mission=true; c.sync(); mission.car=c; }
+  if (ms.id==='deportivo'){ const c=new Car('sports','#1f8a4c'); c.x=770; c.z=-440; c.h=Math.PI/2; c.mission=true; c.sync(); mission.car=c; }
   else mission.car=ms.vehicle||null;
   mission.wt=0; ms.steps[0].onStart?.();
   if (ms.car && !player.inCar) setTimeout(()=>{ if (mission.cur===ms && !player.inCar) toast('Consigue un coche: acércate a uno y pulsa <em>E</em>',3); },6200);
@@ -3806,7 +3814,7 @@ function failMission(why){ if (!mission.cur) return; const ms=mission.cur; banne
    se repiten, la paga se calcula al terminar y no cuentan para las 5 misiones de la historia. */
 const VALUE={compact:1500,sedan:2600,taxi:2400,van:3200,pickup:4200,sports:9500,boxvan:3800,truck:6000,bus:5000,bike:10};
 const BIZ=[{id:'kiosco',name:'Kiosco de prensa en La Glorieta',price:4000,inc:500},{id:'bar',name:'Bar de tapas en El Raval',price:12000,inc:1500},
-  {id:'lavado',name:'Autolavado en Carrús',price:25000,inc:3200},{id:'disco',name:'Discoteca en el Polígono',price:60000,inc:8000}];   // inc: € por día de juego
+  {id:'lavado',name:'Autolavado en Carrús',price:25000,inc:3200},{id:'disco',name:'Discoteca en Sector V',price:60000,inc:8000}];   // inc: € por día de juego
 save.biz=save.biz||[]; save.bizAcc=save.bizAcc||0;
 const robT={};
 const placeOf=id=>SHOPS.find(s=>s.id===id);
@@ -3819,7 +3827,7 @@ function jobCar(k,sh){   // vehículo de trabajo en la calle más cercana al pun
 }
 function freeCar(c){ if (c) c.mission=false; }
 const job=o=>Object.assign({job:true,start:[player.x,player.z],reward:0},o);
-const CARGO=[{n:'Mercado Central',p:[55,-131]},{n:'Huerto del Cura',p:[324,-110]},{n:'Estadio Martínez Valero',p:[436,500]},{n:'Hospital General',p:[-385,-462]},{n:'Terminal de carga del aeropuerto',p:[2640,665]}];
+const CARGO=[{n:'Mercado Central',p:[55,-131]},{n:'Huerto del Cura',p:[324,-110]},{n:'Estadio Martínez Valero',p:[660,-440]},{n:'Hospital General',p:[495,550]},{n:'Terminal de carga del aeropuerto',p:[2640,665]}];
 function genReparto(sh){
   const pts=[]; let x=sh.mx, z=sh.mz, tot=0; for (let i=0;i<3;i++){ const p=spotAround(x,z,120,420,false); tot+=Math.hypot(p[0]-x,p[1]-z); pts.push(p); x=p[0]; z=p[1]; }
   const time=Math.round(45+tot/8);
@@ -3904,7 +3912,7 @@ function placeMenu(sh,items){
     for (const k of ['compact','sedan','van','pickup','sports']) items.push({label:`Comprar ${({compact:'utilitario',sedan:'sedán',van:'furgoneta',pickup:'pick-up',sports:'deportivo'})[k]}`,sub:'A tu nombre: no es delito conducirlo y lo puedes revender',price:VALUE[k],
       buy:()=>{ closeShop(); if (player.inCar) exitCar(true,true); const c=jobCar(k,sh); c.mission=false; player.x=c.x+1.2; player.z=c.z; enterExitCar(c); toast('¡Coche nuevo!',2); }}); }
   else if (sh.id==='carreras'){ const night=gameMin>=21*60||gameMin<6*60;
-    who=night?'«El Nano» organiza carreras en el polígono del Pla. Apuesta y bate su tiempo con tu coche.':'Las carreras son de noche (de 21:00 a 6:00). Vuelve más tarde.';
+    who=night?'«El Nano» organiza carreras en los descampados de Candalix. Apuesta y bate su tiempo con tu coche.':'Las carreras son de noche (de 21:00 a 6:00). Vuelve más tarde.';
     for (const bet of [100,500,2000]) items.push({label:`Carrera con apuesta de ${bet} €`,sub:!night?'Solo de noche':busy?busyTxt:!P?'Necesitas un coche':`Si ganas cobras ${bet*2.5} €`,price:bet,btn:`${bet} €`,dis:!night||busy||!P,buy:()=>takeJob(genCarrera(sh,bet))}); }
   else if (sh.id==='inmo'){ const acc=Math.floor(save.bizAcc); who=save.biz.length?`Tus negocios facturan ${BIZ.filter(b=>save.biz.includes(b.id)).reduce((a,b)=>a+b.inc,0)} € al día. La caja se cobra aquí.`:'Compra negocios: cada día de juego generan dinero en su caja.';
     items.push({label:'Cobrar la caja de tus negocios',sub:save.biz.length?`Hay ${acc} € acumulados`:'Todavía no tienes negocios',price:0,btn:`+${acc} €`,dis:acc<1,buy:()=>{ player.money+=acc; save.bizAcc-=acc; shownMoney=player.money; toast(`Cobras ${acc} €`,2); persist(); }});
