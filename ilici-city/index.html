@@ -2014,6 +2014,7 @@ addEventListener('keydown',e=>{
   if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
   if (state==='title' && (e.code==='Enter')) startGame();
   if (state==='map' && (e.code==='KeyM'||e.code==='Escape')) { closeMap(); return; }
+  if (e.code==='Escape' && performance.now()-unlockT<400) return;   // el Esc que suelta el ratón ya ha abierto la pausa
   if (state==='paused' && (e.code==='KeyP'||e.code==='Escape')) { resume(); return; }
   if (state==='shop' && (e.code==='Escape'||e.code==='KeyE')) { closeShop(); return; }
   if (state==='help' && (e.code==='Escape'||e.code==='KeyI')) { closeHelp(); return; }
@@ -2033,8 +2034,10 @@ addEventListener('keydown',e=>{
 });
 addEventListener('keyup',e=>keys.delete(e.code));
 addEventListener('blur',()=>{ keys.clear(); aiming=false; mouseHeld=false; });
-renderer.domElement.addEventListener('mousedown',e=>{ if (state!=='play') return; if (e.button===0){ fireEdge=true; mouseHeld=true; } else if (e.button===2){ aiming=true; if (!aimK){ aimPitch=0; camYaw=player.h+wrapA(camYaw-player.h)*0.3; } } });
-addEventListener('mouseup',e=>{ if (e.button===2) aiming=false; else mouseHeld=false; });
+renderer.domElement.addEventListener('mousedown',e=>{ if (state!=='play') return;
+  if (needLock()){ e.preventDefault(); lockSwallow=true; requestLock(); return; }   // el clic que captura el ratón no dispara ni golpea
+  if (e.button===0){ fireEdge=true; mouseHeld=true; } else if (e.button===2){ aiming=true; if (!aimK){ aimPitch=0; camYaw=player.h+wrapA(camYaw-player.h)*0.3; } } });
+addEventListener('mouseup',e=>{ if (lockSwallow){ lockSwallow=false; mouseHeld=false; return; } if (e.button===2) aiming=false; else mouseHeld=false; });
 let wheelT=0; renderer.domElement.addEventListener('wheel',e=>{ if (state!=='play'||performance.now()-wheelT<180) return; wheelT=performance.now(); selectWeapon(player.w+(e.deltaY>0?1:-1)); },{passive:true});
 {
   const jz=$('joy'), knob=$('knob');
@@ -2105,16 +2108,26 @@ function setFP(v,quiet){
 }
 function lookDelta(dx,dy,k){ if (player.inCar) fpCarLook=clamp(fpCarLook-dx*k,-2.2,2.2); else player.h-=dx*k; fpPitch=clamp(fpPitch-dy*k,-1.25,1.25); }
 const lockEl=renderer.domElement;
-lockEl.addEventListener('click',()=>{ if (fp && state==='play' && !isTouch && document.pointerLockElement!==lockEl){ try{ const r=lockEl.requestPointerLock(); if (r&&r.catch) r.catch(()=>{}); }catch(e){} } });
+// Captura del ratón en primera persona: el primer clic solo captura (no dispara); Esc la suelta y abre la pausa.
+// Si el navegador no deja capturar (p. ej. un iframe sin permiso), se mira arrastrando con el botón derecho y el clic dispara.
+let lockFails=0, lockFailT=0, unlockT=-1e9, lockSwallow=false;
+const lockOK=()=>!!lockEl.requestPointerLock && lockFails<2;
+function needLock(){ return fp && !isTouch && lockOK() && document.pointerLockElement!==lockEl; }
+function lockFailed(){ const t=performance.now(); if (t-lockFailT<150 || t-unlockT<2000) return; lockFailT=t;   // justo después de soltarlo el navegador puede negarlo: no cuenta
+  if (++lockFails>=2) toast('Este navegador no deja capturar el ratón: mira arrastrando con el botón derecho y dispara con el izquierdo',4); }
+function requestLock(){ try{ const r=lockEl.requestPointerLock(); if (r&&r.catch) r.catch(lockFailed); }catch(err){ lockFailed(); } }
+document.addEventListener('pointerlockerror',lockFailed);
 lockEl.addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('mousemove',e=>{ if (state!=='play') return; if (!fp){ if (tpAim() && (e.buttons&2)){ camYaw-=(e.movementX||0)*0.0032; aimPitch=clamp(aimPitch-(e.movementY||0)*0.0026,-0.55,0.75); } return; } if (document.pointerLockElement!==lockEl && !(e.buttons&2)) return; lookDelta(e.movementX||0,e.movementY||0,0.0024); });
-document.addEventListener('pointerlockchange',()=>{ if (!document.pointerLockElement && fp && state==='play') pause(); });
+document.addEventListener('pointerlockchange',()=>{ if (document.pointerLockElement===lockEl){ lockFails=0; return; }
+  unlockT=performance.now(); mouseHeld=false; if (fp && state==='play') pause(); });
 { let lt=null;
   lockEl.addEventListener('touchstart',e=>{ if (!fp||lt) return; const t=e.changedTouches[0]; lt={id:t.identifier,x:t.clientX,y:t.clientY}; },{passive:true});
   lockEl.addEventListener('touchmove',e=>{ if (!lt) return; for (const t of e.changedTouches) if (t.identifier===lt.id){ lookDelta(t.clientX-lt.x,t.clientY-lt.y,0.0065); lt.x=t.clientX; lt.y=t.clientY; } },{passive:true});
   const te=e=>{ if (lt) for (const t of e.changedTouches) if (t.identifier===lt.id) lt=null; };
   lockEl.addEventListener('touchend',te); lockEl.addEventListener('touchcancel',te); }
 function updateViewmodel(dt){
+  if (!hintMsg && state==='play' && needLock()) showHint('Haz clic para controlar la cámara con el ratón · Esc para soltarlo');
   const show=fp && !player.inCar && (state==='play'||state==='dead') && player.health>0;
   vmRoot.visible=show; if (!show) vmLeft.visible=false; $('cross').hidden=!((fp || (tpAim() && aimK>0.6)) && (state==='play') && player.health>0);
   if (hitFlash>0){ hitFlash-=dt; $('cross').classList.toggle('hit',hitFlash>0); }
