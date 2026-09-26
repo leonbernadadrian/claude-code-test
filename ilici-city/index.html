@@ -243,12 +243,23 @@
       <div id="pdates" class="fine"></div>
       <div class="prow">
         <button class="btn" id="bResume" type="button">Seguir</button>
+        <button class="btn sec" id="bSave" type="button">Guardar partida</button>
+        <button class="btn sec" id="bLoad" type="button">Cargar partida</button>
         <button class="btn sec" id="bCtl" type="button">Controles</button>
         <button class="btn sec" id="bSound" type="button">Sonido: sí</button>
         <button class="btn sec" id="bQual" type="button">Gráficos: alta</button>
         <button class="btn sec" id="bView" type="button">Vista: tercera persona</button>
         <button class="btn sec" id="bReset" type="button">Borrar progreso</button>
       </div>
+    </div>
+  </div>
+
+  <div class="ov" id="slots" hidden>
+    <div class="pcard">
+      <h2 id="slotsT">Guardar partida</h2>
+      <ul class="mlist shopl" id="slotList"></ul>
+      <div class="fine" id="slotsNote"></div>
+      <div class="prow"><button class="btn sec" id="bSlotsClose" type="button">Volver</button></div>
     </div>
   </div>
 
@@ -308,6 +319,7 @@
       <div class="tlogo disp"><b>ILICI</b><span>CITY</span></div>
       <div class="tsub">Roba coches, esquiva a la policía y haz encargos por Elche, entre el Vinalopó y <em>200.000 palmeras</em>.</div>
       <button class="btn" id="bPlay" type="button">Jugar</button>
+      <button class="btn sec" id="bLoadT" type="button" hidden>Cargar partida</button>
       <div class="ctr only-desk">
         <kbd>W A S D</kbd><span>Andar / conducir</span>
         <kbd>E</kbd><span>Entrar o robar un coche, salir</span>
@@ -1469,7 +1481,7 @@ function buildCarMesh(k,color){
 const cars=[];
 class Car{
   constructor(k,color){
-    this.k=k; this.T=TYPES[k]; const b=buildCarMesh(k,color||mpick(TYPES[k].cols));
+    this.k=k; this.T=TYPES[k]; this.color=color||mpick(TYPES[k].cols); const b=buildCarMesh(k,this.color);
     this.mesh=b.g; this.wheels=b.wheels; this.painted=b.painted; this.lights=b.lights; scene.add(this.mesh);
     this.x=0; this.z=0; this.h=0; this.vx=0; this.vz=0; this.steerV=0; this.spin=0;
     this.health=100; this.driver=null; this.ai=null; this.dead=false; this.burn=0; this.exploded=false;
@@ -1925,6 +1937,67 @@ for (let i=0;i<DATES.length;i++) DATES[i]=snapIfReal(DATES[i],false);
 let save={money:150,done:[],dates:[]};
 try{ const s=JSON.parse(localStorage.getItem('ilici-city-v1')||'null'); if (s) save=Object.assign(save,s); }catch(e){}
 function persist(){ save.money=player.money; save.owned=player.owned; save.ammo=player.ammo; save.armor=Math.round(player.armor||0); save.drugs=player.drugs||0; try{ localStorage.setItem('ilici-city-v1',JSON.stringify(save)); }catch(e){} }
+
+/* ---- partidas guardadas: ranura automática + 3 manuales (amplía el guardado de siempre, 'ilici-city-v1', que sigue siendo el perfil vivo) ---- */
+const SLOT_IDS=['auto','1','2','3'], slotKey=id=>'ilici-city-slot-'+id;
+function readSlot(id){ try{ return JSON.parse(localStorage.getItem(slotKey(id))||'null'); }catch(e){ return null; } }
+function canSave(){
+  if (mission.cur) return 'No se puede guardar durante una misión o un trabajo';
+  if (player.stars>0) return 'No se puede guardar con la policía detrás';
+  if (taxiRide || jack || player.health<=0) return 'Ahora no se puede guardar';
+  if (player.inCar && player.inCar.speed>1) return 'Para el vehículo para guardar';
+  return null;
+}
+function snapshot(){
+  persist(); const c=player.inCar, P=c||player;
+  return {v:2,t:Date.now(),zone:zoneName(P.x,P.z),gameMin,profile:JSON.parse(JSON.stringify(save)),
+    world:{x:P.x,z:P.z,h:c?c.h:player.h,health:player.health,armor:player.armor||0,w:player.w,
+      car:c&&!c.dead?{k:c.k,color:c.color,owned:!!c.owned,health:c.health}:null}};
+}
+function saveSlot(id,quiet){
+  const why=canSave(); if (why){ if (!quiet) toast(why,2); return false; }
+  try{ localStorage.setItem(slotKey(id),JSON.stringify(snapshot())); }catch(e){ if (!quiet) toast('No se ha podido guardar (almacenamiento lleno o bloqueado)',2.5); return false; }
+  if (!quiet) toast(id==='auto'?'Partida guardada automáticamente':`Partida guardada en la ranura ${id}`,1.8); return true;
+}
+function applyProfile(){
+  player.money=save.money; shownMoney=player.money;
+  player.owned=(save.owned||['fist']).filter(id=>W_BY[id]); if (!player.owned.includes('fist')) player.owned.unshift('fist');
+  player.ammo=Object.assign({},save.ammo||{}); player.armor=save.armor||0; player.drugs=save.drugs||0;
+  save.biz=save.biz||[]; save.bizAcc=save.bizAcc||0;
+  dateMeshes.forEach((m,i)=>m.visible=!save.dates.includes(i));
+}
+function loadSlot(id){
+  const S=readSlot(id); if (!S || !S.profile || !S.world){ toast('Ranura vacía',1.5); return false; }
+  if (mission.cur) cancelMission(true);
+  if (taxiRide){ const tc=taxiRide.car; taxiRide=null; exitCar(true,true); if (tc && tc.ai){ tc.driver='npc'; tc.ai.mode='cruise'; } } taxiCancel(); if (player.inCar) exitCar(true,true);
+  save=Object.assign({money:150,done:[],dates:[]},S.profile); applyProfile();
+  const W=S.world; player.w=clamp(W.w||0,0,player.owned.length-1); player.health=clamp(W.health||100,1,100); player.armor=W.armor||0;
+  player.stars=0; intel.inv=null; reports.length=0; gameMin=S.gameMin??gameMin;
+  for (const c of cars.slice()) c.remove(); for (const p of peds.slice()) p.remove();
+  player.x=W.x; player.z=W.z; player.h=W.h||0; player.y=0; player.vx=player.vz=0; player.downT=0;
+  if (W.car){ const c=new Car(W.car.k,W.car.color); c.x=W.x; c.z=W.z; c.h=W.h||0; c.owned=W.car.owned; c.health=W.car.health??100; c.sync(); enterExitCar(c); }
+  camYaw=player.h; camPos.set(player.x-Math.sin(camYaw)*6,3,player.z-Math.cos(camYaw)*6);
+  persist(); autoT=0; toast(`Partida cargada · ${S.zone||''}`,2); return true;
+}
+let slotsMode='save', slotsBack=null, autoT=0;
+function openSlots(mode,back){
+  slotsMode=mode; slotsBack=back||null; $('slotsT').textContent=mode==='save'?'Guardar partida':'Cargar partida';
+  const why=mode==='save'?canSave():null; $('slotsNote').textContent=why||(mode==='save'?'La partida se guarda también sola cada pocos minutos y al terminar misiones.':'Cargar sustituye la partida actual.');
+  const ul=$('slotList'); ul.innerHTML='';
+  for (const id of SLOT_IDS){ if (mode==='save' && id==='auto') continue; const S=readSlot(id), li=document.createElement('li');
+    const h=S?Math.floor((S.gameMin||0)/60)%24:0, m=S?Math.floor((S.gameMin||0)%60):0;
+    const info=S?`${S.zone||'Elche'} · ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')} · ${S.profile.money} € · ${(S.profile.done||[]).length}/5 misiones · ${new Date(S.t).toLocaleString('es-ES',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}`:'Vacía';
+    li.innerHTML=`<span><b>${id==='auto'?'Automática':'Ranura '+id}</b><br><small>${info}</small></span>`;
+    const b=document.createElement('button'); b.className='btn'; b.type='button'; b.textContent=mode==='save'?(S?'Sobrescribir':'Guardar'):'Cargar';
+    b.disabled=mode==='save'?!!why:!S;
+    b.addEventListener('click',()=>{ if (mode==='save'){ if (saveSlot(id)) openSlots('save',slotsBack); } else { const fromTitle=state==='title'; if (fromTitle) startGame(); if (loadSlot(id)){ closeSlots(true); } } });
+    li.appendChild(b); ul.appendChild(li); }
+  $('slots').hidden=false;
+}
+function closeSlots(toGame){ $('slots').hidden=true; if (toGame){ $('pause').hidden=true; if (state==='paused'||state==='phone') resume?.(); return; } if (slotsBack) slotsBack(); }
+function autoSave(dt){   // cada 3 minutos de juego real, si se puede
+  autoT+=dt; if (autoT<180) return; if (canSave()) return; autoT=0; saveSlot('auto',true);
+}
 player.money=save.money;
 
 const markerMat=new THREE.MeshBasicMaterial({color:'#ffd23f',transparent:true,opacity:0.45,depthWrite:false,side:THREE.DoubleSide});
@@ -3720,7 +3793,11 @@ function completeMission(){
   banner('¡MISIÓN SUPERADA!',`+${ms.reward} €`,'var(--gold)',4); sfxWin();
   if (ms.id==='alba'){ fireworks(-55,-55,40); toast("¡Bona Nit de l'Albà! Mira al cielo.",4); }
   if (ms.id==='deportivo' && mission.car){ const c=mission.car; if (player.inCar===c) exitCar(true,true); c.remove(); }
-  endMission(); persist();
+  endMission(); persist(); setTimeout(()=>saveSlot('auto',true),4500);
+}
+function cancelMission(silent){   // el jugador la abandona: se quitan objetivo, ruta y marcadores; no cuenta como fallo de historia
+  if (!mission.cur) return; const ms=mission.cur; endMission(); mission.leaveReq=ms; ms.onFail?.();
+  if (!silent){ banner(ms.job?'TRABAJO CANCELADO':'MISIÓN CANCELADA','Puedes retomarla cuando quieras','var(--muted, #b9b2a3)',2.5); tone(330,0.15,'square',0.05); }
 }
 function failMission(why){ if (!mission.cur) return; const ms=mission.cur; banner(ms.job?'TRABAJO FALLIDO':'MISIÓN FALLIDA',why,'var(--red)',3.5); sfxFail(); endMission(); ms.onFail?.(); }
 /* ================= actividades para ganar dinero =================
@@ -4070,7 +4147,7 @@ function update(dt){
     g.position.set(x,y,470); takeoff.inner.rotation.x=pitch; g.visible=t<66; }
   manage(dt);
   updateGrenades(dt); updatePickups(dt); updateClients(dt);
-  if (state==='play'){ updateMissions(dt); updateShops(dt); updateActivities(dt); perceiveWeapons(dt); }
+  if (state==='play'){ autoSave(dt); updateMissions(dt); updateShops(dt); updateActivities(dt); perceiveWeapons(dt); }
   updatePool(glowP,dt); updatePool(smokeP,dt);
 }
 
@@ -4240,6 +4317,11 @@ function pause(){
 function resume(){ $('pause').hidden=true; state='play'; }
 $('bPlay').addEventListener('click',startGame);
 $('bResume').addEventListener('click',resume);
+$('bSave').addEventListener('click',()=>{ $('pause').hidden=true; openSlots('save',()=>{ $('pause').hidden=false; }); });
+$('bLoad').addEventListener('click',()=>{ $('pause').hidden=true; openSlots('load',()=>{ $('pause').hidden=false; }); });
+$('bLoadT').addEventListener('click',()=>{ $('title').hidden=true; openSlots('load',()=>{ $('title').hidden=false; }); });
+$('bSlotsClose').addEventListener('click',()=>closeSlots(false));
+if (SLOT_IDS.some(id=>readSlot(id))) $('bLoadT').hidden=false;
 $('bSound').addEventListener('click',()=>{ soundOn=!soundOn; $('bSound').textContent='Sonido: '+(soundOn?'sí':'no'); });
 $('bReset').addEventListener('click',e=>{
   const b=e.currentTarget; if (!b.dataset.arm){ b.dataset.arm='1'; b.textContent='¿Seguro? Pulsa otra vez'; return; }
