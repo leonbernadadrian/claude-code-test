@@ -656,6 +656,7 @@ function pushCircle(o, r, minY=0){
   if (!hit) return null;
   const L=Math.hypot(nx,nz)||1; return {nx:nx/L, nz:nz/L};
 }
+const circleBlocked=(x,z,r)=>!!pushCircle({x,z},r);
 function pointBlocked(x,z){ for (const c of query(x,z,0.5)) if (x>c.x0&&x<c.x1&&z>c.z0&&z<c.z1 && (!c.poly || pointInPoly(x,z,c.poly))) return c; return null; }
 
 /* ---- suelo, río y aceras ---- */
@@ -1105,7 +1106,7 @@ const lampBulbMat=new THREE.MeshBasicMaterial({color:'#6b6555'}); let lampGlow=n
   for (const e of edges){ if (e.diag || e.real) continue;
     const A=nodes[e.a], B=nodes[e.b], ux=(B.x-A.x)/e.len, uz=(B.z-A.z)/e.len; let side=1;
     for (let t=16; t<e.len-12; t+=34){
-      const x=A.x+ux*t+(-uz)*8.4*side, z=A.z+uz*t+ux*8.4*side; side=-side;
+      const x=A.x+ux*t+(-uz)*7.5*side, z=A.z+uz*t+ux*7.5*side; side=-side;
       if (Math.abs(x-riverX(z))<RHz(z)+2 || inRZ(x,z)) continue;
       if (NOROAD.some(r=>inRect(r,x,z)) || pointBlocked(x,z)) continue;
       poles.push({x,y:3.3,z,sx:0.22,sy:6.6,sz:0.22}); bulbs.push({x,y:6.7,z,sx:0.7,sy:0.35,sz:0.7});
@@ -1114,7 +1115,7 @@ const lampBulbMat=new THREE.MeshBasicMaterial({color:'#6b6555'}); let lampGlow=n
   }
   for (const r of RZ_ROADS){ if (r.b) continue; let side=1, acc=12; const P=r.pts;
     for (let k=0;k<P.length-1;k++){ const [ax,az]=P[k],[bx,bz]=P[k+1], L=Math.hypot(bx-ax,bz-az); if (L<0.1) continue; const ux=(bx-ax)/L, uz=(bz-az)/L;
-      for (let t=acc; t<L; t+=26){ const off=r.w/2+0.9, x=ax+ux*t-uz*off*side, z=az+uz*t+ux*off*side; side=-side;
+      for (let t=acc; t<L; t+=26){ const off=r.w/2+0.35, x=ax+ux*t-uz*off*side, z=az+uz*t+ux*off*side; side=-side;
         if (inCorridor(x,z,1) || pointBlocked(x,z) || !inRZ(x,z)) continue; poles.push({x,y:3.3,z,sx:0.22,sy:6.6,sz:0.22}); bulbs.push({x,y:6.7,z,sx:0.7,sy:0.35,sz:0.7}); addCollider(x-0.2,z-0.2,x+0.2,z+0.2,6); }
       acc=Math.max(0,(acc-L)%26); } }
   instanced(boxGeo, lambert('#2c3137'), poles, false);
@@ -1538,7 +1539,8 @@ class Ped{
       else {
         const P=player.inCar||player, dx=P.x-this.x, dz=P.z-this.z, d=Math.hypot(dx,dz)||1; let sp=0;
         this.h=Math.atan2(dx,dz);
-        if (d>8){ sp=4.8; this.x+=dx/d*sp*dt; this.z+=dz/d*sp*dt; pushCircle(this,0.4); if (riverBlocked(this.x,this.z)){ this.x-=dx/d*sp*dt; this.z-=dz/d*sp*dt; } this.phase+=dt*sp*4.2; }
+        if (d>8){ sp=4.8; let a=Math.atan2(dx,dz); const pr=b=>circleBlocked(this.x+Math.sin(b)*1.1,this.z+Math.cos(b)*1.1,0.42); if (pr(a)) for (const da of [0.6,-0.6,1.2,-1.2,1.8,-1.8]) if (!pr(a+da)){ a+=da; break; }
+          this.x+=Math.sin(a)*sp*dt; this.z+=Math.cos(a)*sp*dt; pushCircle(this,0.4); if (riverBlocked(this.x,this.z)){ this.x-=Math.sin(a)*sp*dt; this.z-=Math.cos(a)*sp*dt; } this.phase+=dt*sp*4.2; }
         this.shootT-=dt;
         const cw=COP_GUN[this.weapon]; if (d<cw.range && this.shootT<=0 && player.stars>=2 && state==='play'){ this.shootT=mrand(cw.rate[0],cw.rate[1]); if (!losBlocked(this.x,this.z,P.x,P.z,1.3)) copShot(this.x,this.z,P,d,cw.dmg,cw.range); }
         animPed(m,this.phase,sp>0?0.9:0); if (d<28) m.userData.arms[1].rotation.x=-1.5;
@@ -1563,16 +1565,31 @@ class Ped{
       }
     }
     if (spd>0){
-      const want=Math.atan2(tx-this.x,tz-this.z);
-      this.h += wrapA(want-this.h)*Math.min(1,dt*8);
+      const want=Math.atan2(tx-this.x,tz-this.z), look=Math.min(1.1,0.5+spd*0.25);
+      const probe=a=>{ const px=this.x+Math.sin(a)*look, pz=this.z+Math.cos(a)*look; return circleBlocked(px,pz,0.42) || riverBlocked(px,pz) || !!carAt(px,pz,0.3); };
+      let head=want;
+      if (probe(want)){ head=null; for (const da of [0.55,-0.55,1.1,-1.1,1.7,-1.7]) if (!probe(want+da)){ head=want+da; break; }
+        if (head===null){ const car=carAt(this.x+Math.sin(want)*look,this.z+Math.cos(want)*look,0.3); if (car && car.speed>0.5 && this.state==='walk'){ spd=0; head=this.h; } else { head=this.h; this.stuckT=(this.stuckT||0)+dt*2; } } }
+      this.h += wrapA(head-this.h)*Math.min(1,dt*9);
+      const ox=this.x, oz=this.z;
       this.x+=Math.sin(this.h)*spd*dt; this.z+=Math.cos(this.h)*spd*dt;
-      if (this.state==='flee' || this.wgA!=null) pushCircle(this,0.4);
+      pushCircle(this,0.4);
+      const moved=Math.hypot(this.x-ox,this.z-oz);
+      if (spd>0 && moved<spd*dt*0.35) this.stuckT=(this.stuckT||0)+dt; else this.stuckT=Math.max(0,(this.stuckT||0)-dt*0.5);
+      if (this.stuckT>1.2){ this.stuckT=0; this.unstick(); }
       if (riverBlocked(this.x,this.z)){ this.x-=Math.sin(this.h)*spd*dt*1.5; this.z-=Math.cos(this.h)*spd*dt*1.5; this.fx=this.x+Math.sin(this.h)*5; this.fz=this.z+Math.cos(this.h)*5; }
       this.x=clamp(this.x,-LIM,LIM); this.z=clamp(this.z,-LIM,LIM);
       this.phase+=dt*spd*4.2;
     }
     animPed(m,this.phase,spd>0?Math.min(0.9,spd*0.3):0);
     m.position.set(this.x,this.y+(this.wgA!=null?0.06:this.block&&!this.cross?0.25:0.02),this.z); m.rotation.y=this.h;
+  }
+  unstick(){
+    // atascado contra algo: cambiar de trayectoria en lugar de seguir empujando
+    if (this.state==='flee'){ const a=Math.atan2(this.x-this.fx,this.z-this.fz)+(Math.random()<0.5?1.6:-1.6); this.fx=this.x-Math.sin(a)*10; this.fz=this.z-Math.cos(a)*10; return; }
+    if (this.wgA!=null){ const a=this.wgA; this.wgA=this.wgB; this.wgB=a; if (Math.random()<0.5 || !WG.adj[this.wgB]) this.home(); else [this.tx,this.tz]=wgTarget(this); return; }
+    if (this.block){ this.dir=-this.dir; this.cross=false; this.k=(this.k+this.dir+4)%4; [this.tx,this.tz]=this.block.corners[this.k]; return; }
+    this.home();
   }
   tryCross(){
     const b=this.block, k=this.k, horiz=Math.random()<0.5; let nb=null, nk=k;
@@ -2416,18 +2433,33 @@ const WG={nodes:[],adj:[],edges:[]};
 { const idOf=new Map(), key=(x,z)=>Math.round(x)+','+Math.round(z);
   const nid=(x,z)=>{ const k=key(x,z); let id=idOf.get(k); if (id===undefined){ id=WG.nodes.length; WG.nodes.push([x,z]); WG.adj.push([]); idOf.set(k,id); } return id; };
   const addList=(list,offF)=>{ for (const r of list){ if (r.b) continue; for (let k=0;k<r.pts.length-1;k++){ const [ax,az]=r.pts[k],[bx,bz]=r.pts[k+1]; if (Math.hypot(bx-ax,bz-az)<1 || inCorridor((ax+bx)/2,(az+bz)/2,-1)) continue; const a=nid(ax,az), b=nid(bx,bz); if (a===b) continue; const e=WG.edges.length; WG.edges.push({a,b,off:offF(r)}); WG.adj[a].push(e); WG.adj[b].push(e); } } };
-  addList(RZ_WALKS,r=>0); addList(RZ_ROADS,r=>r.w/2+1.3); }
+  addList(RZ_WALKS,r=>0); addList(RZ_ROADS,r=>r.w/2+1.3);
+  // Cada tramo guarda un desplazamiento válido por lado (o null si esa acera no existe)
+  for (const e of WG.edges){ const A=WG.nodes[e.a], B=WG.nodes[e.b], dx=B[0]-A[0], dz=B[1]-A[1], L=Math.hypot(dx,dz)||1, nx=-dz/L, nz=dx/L;
+    const free=(off,side)=>[0.15,0.5,0.85].every(t=>!circleBlocked(A[0]+dx*t+nx*off*side,A[1]+dz*t+nz*off*side,0.5));
+    if (!e.off){ e.offs=free(0,0)?[0,0]:null; continue; }
+    const base=e.off-1.3, cands=[base+1.3,base+1.8,base+1.05,base+2.4,base+3.0];
+    e.offs=[-1,1].map(sd=>{ for (const o of cands) if (free(o,sd)) return o; return null; });
+    if (e.offs[0]===null && e.offs[1]===null) e.offs=null; }
+  for (let i=0;i<WG.adj.length;i++) WG.adj[i]=WG.adj[i].filter(k=>WG.edges[k].offs); }
 function wgNearest(x,z){ let best=-1,bd=1e12; WG.nodes.forEach((n,i)=>{ const d=(n[0]-x)**2+(n[1]-z)**2; if (d<bd && WG.adj[i].length){ bd=d; best=i; } }); return best; }
-function wgStep(p){ const edgesAt=WG.adj[p.wgB]; let opts=edgesAt.filter(e=>{ const E=WG.edges[e]; return (E.a===p.wgA?E.b:E.a)!==p.wgA || edgesAt.length===1; });
-  if (!opts.length) opts=edgesAt; const e=WG.edges[mpick(opts)]; const nb=e.a===p.wgB?e.b:e.a; p.wgA=p.wgB; p.wgB=nb; p.wgOff=e.off; if (!e.off) p.wgSide=0; else if (!p.wgSide) p.wgSide=Math.random()<0.5?1:-1; }
+function carAt(x,z,pad){ for (const c of cars){ const dx=x-c.x, dz=z-c.z; if (dx*dx+dz*dz>64) continue; const fx=Math.sin(c.h), fz=Math.cos(c.h), lon=dx*fx+dz*fz, lat=-dx*fz+dz*fx; if (Math.abs(lon)<c.T.len/2+pad && Math.abs(lat)<c.T.w/2+pad) return c; } return null; }
+function wgStep(p){ const edgesAt=WG.adj[p.wgB]; if (!edgesAt || !edgesAt.length){ p.wgA=null; return; }
+  let opts=edgesAt.filter(e=>{ const E=WG.edges[e]; return (E.a===p.wgB?E.b:E.a)!==p.wgA; }); if (!opts.length) opts=edgesAt;
+  const e=WG.edges[mpick(opts)], nb=e.a===p.wgB?e.b:e.a, fwd=e.a===p.wgB; p.wgA=p.wgB; p.wgB=nb;
+  if (!e.off){ p.wgOff=0; p.wgSide=0; return; }
+  // el lado se expresa respecto al sentido de la marcha; e.offs está en el sentido a→b
+  const sides=[-1,1].filter(sd=>e.offs[(fwd?sd:-sd)>0?1:0]!==null);
+  if (!sides.includes(p.wgSide)) p.wgSide=mpick(sides);
+  p.wgOff=e.offs[(fwd?p.wgSide:-p.wgSide)>0?1:0]; }
 function wgTarget(p){ const A=WG.nodes[p.wgA], B=WG.nodes[p.wgB], dx=B[0]-A[0], dz=B[1]-A[1], L=Math.hypot(dx,dz)||1; return [B[0]-dz/L*p.wgOff*p.wgSide, B[1]+dx/L*p.wgOff*p.wgSide]; }
 function spawnPedNear(){
   if (inRZ(player.x,player.z,120) && Math.random()<0.85){
-    for (let tries=0;tries<25;tries++){ const E=WG.edges[Math.floor(Math.random()*WG.edges.length)], A=WG.nodes[E.a], B=WG.nodes[E.b], t=Math.random();
-      const side=E.off?(Math.random()<0.5?1:-1):0, dx=B[0]-A[0], dz=B[1]-A[1], L=Math.hypot(dx,dz)||1;
-      const x=lerp(A[0],B[0],t)-dz/L*E.off*side, z=lerp(A[1],B[1],t)+dx/L*E.off*side, dd=Math.hypot(x-player.x,z-player.z);
-      if (dd<40||dd>160||pointBlocked(x,z)) continue;
-      const p=new Ped(x,z); p.wgA=E.a; p.wgB=E.b; p.wgOff=E.off; p.wgSide=side; [p.tx,p.tz]=wgTarget(p); return p; }
+    for (let tries=0;tries<25;tries++){ const E=WG.edges[Math.floor(Math.random()*WG.edges.length)]; if (!E.offs) continue; const A=WG.nodes[E.a], B=WG.nodes[E.b], t=Math.random();
+      const side=E.off?mpick([-1,1].filter(sd=>E.offs[sd>0?1:0]!==null)):0, off=E.off?E.offs[side>0?1:0]:0, dx=B[0]-A[0], dz=B[1]-A[1], L=Math.hypot(dx,dz)||1;
+      const x=lerp(A[0],B[0],t)-dz/L*off*side, z=lerp(A[1],B[1],t)+dx/L*off*side, dd=Math.hypot(x-player.x,z-player.z);
+      if (dd<40||dd>160||circleBlocked(x,z,0.45)) continue;
+      const p=new Ped(x,z); p.wgA=E.a; p.wgB=E.b; p.wgOff=off; p.wgSide=side; [p.tx,p.tz]=wgTarget(p); return p; }
   }
   for (let tries=0;tries<20;tries++){
     const b=walkBlocks[Math.floor(Math.random()*walkBlocks.length)];
