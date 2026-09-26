@@ -148,11 +148,18 @@
   #maphelp{position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);left:0;right:0;text-align:center;margin:0;font-size:15px;color:var(--mute);pointer-events:none}
   #nav{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 58px);font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px;white-space:nowrap;background:rgba(15,21,28,.55);padding:3px 12px;border-radius:14px}
   #nav b{display:inline-block;color:#ff5ec4;font-size:20px;line-height:1}
+  #nav.mis b{color:#ff4d4d}
+  #bCancel{position:absolute;left:calc(env(safe-area-inset-left,0px) + 16px);top:calc(env(safe-area-inset-top,0px) + 184px);pointer-events:auto;font:700 15px 'Barlow Condensed',sans-serif;letter-spacing:.04em;background:rgba(160,30,30,.85);color:#fff;border:2px solid #fff3;border-radius:8px;padding:6px 12px;cursor:pointer}
+  body.touch #bCancel{top:calc(env(safe-area-inset-top,0px) + 230px)}
+  #bCancel.arm{background:#e0342c;border-color:#fff}
+  #bCancel small{display:block;font-weight:400;opacity:.8;font-size:12px}
   #fade{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .35s}
   #fade.on{opacity:1}
   @media (max-width:560px){ #maplegend{display:none} #mapinfo{max-width:calc(100% - 100px);font-size:16px} #nav{font-size:15px} }
   @media (max-width:560px){
     #mini{width:118px;height:118px}
+    #bCancel{top:calc(env(safe-area-inset-top,0px) + 140px)}
+    body.touch #bCancel{top:calc(env(safe-area-inset-top,0px) + 188px)}
     .topb{top:calc(env(safe-area-inset-top,0px) + 144px)}
     body.touch #zone{top:calc(env(safe-area-inset-top,0px) + 190px)}
     #feed{max-width:min(230px,56vw)}
@@ -186,6 +193,7 @@
     <div id="charge" hidden><i></i></div>
     <div id="hint" hidden></div>
     <div id="nav" class="outline" hidden><b id="navArrow">▲</b><span id="navTxt"></span></div>
+    <button id="bCancel" type="button" hidden>✕ CANCELAR MISIÓN<small class="only-desk">Retroceso</small></button>
     <div id="fade"></div>
     <div id="obj" class="outline"></div>
     <div id="keys"><div class="ctr">
@@ -243,6 +251,7 @@
       <div id="pdates" class="fine"></div>
       <div class="prow">
         <button class="btn" id="bResume" type="button">Seguir</button>
+        <button class="btn sec" id="bPCancel" type="button" hidden>Cancelar misión</button>
         <button class="btn sec" id="bSave" type="button">Guardar partida</button>
         <button class="btn sec" id="bLoad" type="button">Cargar partida</button>
         <button class="btn sec" id="bCtl" type="button">Controles</button>
@@ -2219,17 +2228,22 @@ function drawMini(yaw,spd){
   mctx.restore();
   mctx.save(); mctx.beginPath(); mctx.arc(cx,cx,cx,0,7); mctx.clip(); mctx.translate(cx,cx);
   const lim=cx-12, blip=(x,z,col,r,shape,edge)=>{ let [u,v]=toMini(x,z,e.x,e.z,rot,scale); const L=Math.hypot(u,v); if (L>lim){ if(!edge) return; u*=lim/L; v*=lim/L; } drawBlip(mctx,u,v,col,r,shape); };
-  if (dest && dest.route){ mctx.strokeStyle='#ff5ec4'; mctx.lineWidth=6; mctx.lineCap='round'; mctx.lineJoin='round'; mctx.beginPath();
+  const MT=mission.cur?missionTargets():null;
+  if (MT && mnav.route){ mctx.strokeStyle='#ffcf3f'; mctx.lineWidth=6; mctx.lineCap='round'; mctx.lineJoin='round'; mctx.beginPath();
+    mnav.route.forEach(([x,z],i)=>{ const [u,v]=toMini(x,z,e.x,e.z,rot,scale); i?mctx.lineTo(u,v):mctx.moveTo(u,v); }); mctx.stroke(); }
+  if (!MT && dest && dest.route){ mctx.strokeStyle='#ff5ec4'; mctx.lineWidth=6; mctx.lineCap='round'; mctx.lineJoin='round'; mctx.beginPath();
     dest.route.forEach(([x,z],i)=>{ const [u,v]=toMini(x,z,e.x,e.z,rot,scale); i?mctx.lineTo(u,v):mctx.moveTo(u,v); }); mctx.stroke(); }
-  if (dest) blip(dest.x,dest.z,'#ff5ec4',8,'c',true);
+  if (dest && !MT) blip(dest.x,dest.z,'#ff5ec4',8,'c',true);
   for (const c of cars) if (c.driver==='police') blip(c.x,c.z,Math.floor(now*4)%2?'#ff3b3b':'#3b6bff',6,'sq');
-  if (!mission.cur) MISSIONS.forEach(ms=>blip(ms.start[0],ms.start[1],save.done.includes(ms.id)?'#b99a4a':'#ffd23f',9,'sq',true));
-  for (const sh of SHOPS) blip(sh.mx,sh.mz,sh.color,8,'sq',true);
-  for (const c of clients) blip(c.x,c.z,'#c99bff',7,'c',true);
+  if (!MT){   // sin misión: todos los puntos de interés; con misión, solo lo que importa para ella
+    MISSIONS.forEach(ms=>blip(ms.start[0],ms.start[1],save.done.includes(ms.id)?'#b99a4a':'#ffd23f',9,'sq',true));
+    for (const sh of SHOPS) blip(sh.mx,sh.mz,sh.color,8,'sq',true);
+    for (const c of clients) blip(c.x,c.z,'#c99bff',7,'c',true);
+  } else { if (MT.fin) blip(MT.fin[0],MT.fin[1],'#ffd23f',7,'sq',true); if (MT.next) blip(MT.next[0],MT.next[1],'#ff9a5a',6,'c',false); }
   for (const p of peds) if (p.state==='call') blip(p.x,p.z,Math.floor(now*4)%2?'#ff4d4d':'#ffffff',6,'c',true);   // testigos llamando
   for (const p of peds) if (p.state==='cop') blip(p.x,p.z,'#6aa8ff',4,'c');
   for (const p of objectivePoints()) blip(p[0],p[1],'#ff4d4d',9,'c',true);
-  DATES.forEach((p,i)=>{ if (!save.dates.includes(i)) blip(p[0],p[1],'#e8a93a',4,'c',false); });
+  if (!MT) DATES.forEach((p,i)=>{ if (!save.dates.includes(i)) blip(p[0],p[1],'#e8a93a',4,'c',false); });
   mctx.restore();
   mctx.save(); mctx.translate(cx,cx); mctx.rotate(rot - e.h + Math.PI);
   mctx.fillStyle='#fff'; mctx.strokeStyle='#000'; mctx.lineWidth=2; mctx.beginPath(); mctx.moveTo(0,-11); mctx.lineTo(8,9); mctx.lineTo(0,4); mctx.lineTo(-8,9); mctx.closePath(); mctx.fill(); mctx.stroke();
@@ -2248,6 +2262,8 @@ function mapPOIs(){
   const L=[], add=(x,z,name,type,col)=>L.push({x,z,name,type,col});
   if (!mission.cur) MISSIONS.forEach(ms=>add(ms.start[0],ms.start[1],'Misión: '+ms.name,'mision',save.done.includes(ms.id)?'#b99a4a':null));
   for (const p of objectivePoints()) add(p[0],p[1],'Objetivo de la misión','objetivo');
+  if (mission.cur){ const T=missionTargets(); if (T.next) add(T.next[0],T.next[1],'Siguiente objetivo','objetivo','#ff9a5a'); if (T.fin) add(T.fin[0],T.fin[1],'Destino final','mision');
+    for (const sp of SPECIAL) if (sp.type!=='palmeral') add((sp.x0+sp.x1)/2,(sp.z0+sp.z1)/2,sp.name,'poi'); return L; }   // con misión: solo sus objetivos y los lugares principales
   for (const sh of SHOPS) add(sh.mx,sh.mz,sh.title,sh.id==='rob_gasolinera'?'gasolinera':sh.rob?'atraco':sh.errand?'actividad':sh.id==='inmo'?'negocio':sh.job?'trabajo':'tienda',sh.color);
   for (const sp of SPECIAL) if (sp.type!=='palmeral') add((sp.x0+sp.x1)/2,(sp.z0+sp.z1)/2,sp.name,'poi');
   for (const b of RZ_BLD) if (b.n) add(b.cx,b.cz,b.n,'poi');
@@ -2454,8 +2470,36 @@ function routeNow(){
   if (taxiRide && taxiRide.car.ai.route){ const c=taxiRide.car, r=c.ai.route, i=Math.max(0,r.indexOf(c.ai.b)); dest.route=[[c.x,c.z],...r.slice(i).map(n=>[nodes[n].x,nodes[n].z]),[dest.x,dest.z]]; return; }
   dest.route=navRoute(P.x,P.z,dest.x,dest.z);
 }
+// GPS de la misión: una sola misión manda sobre el objetivo activo; su ruta y su flecha tienen prioridad sobre el destino marcado a mano
+const mnav={route:null,t:0,key:''};
+function missionTargets(){   // [actual, siguiente, final] (cualquiera puede faltar)
+  const ms=mission.cur; if (!ms) return {cur:[],next:null,fin:null};
+  const cur=objectivePoints(), P=player.inCar||player, pt=st=>!st?null:(st.type==='goto'||st.type==='wait')?st.p:st.type==='collect'?st.pts[0]:null;
+  const next=pt(ms.steps[mission.step+1]), last=ms.steps.length-1, fin=last>mission.step+1?pt(ms.steps[last]):null;
+  cur.sort((a,b)=>d2(a[0],a[1],P.x,P.z)-d2(b[0],b[1],P.x,P.z));
+  return {cur,next,fin};
+}
+function updateMissionNav(dt,el){
+  const T=missionTargets(), P=player.inCar||player, tgt=T.cur[0];
+  if (!tgt){ mnav.route=null; return false; }
+  const key=tgt[0]+','+tgt[1]; mnav.t-=dt; if (mnav.t<=0 || mnav.key!==key){ mnav.t=1.5; mnav.key=key; mnav.route=navRoute(P.x,P.z,tgt[0],tgt[1]); }
+  const rel=wrapA(Math.atan2(tgt[0]-P.x,tgt[1]-P.z)-camYaw); el.hidden=false; el.classList.add('mis');
+  $('navArrow').style.transform=`rotate(${(-rel).toFixed(3)}rad)`;
+  const t=`Objetivo · ${fmtDist(Math.hypot(tgt[0]-P.x,tgt[1]-P.z))}`; if ($('navTxt').textContent!==t) $('navTxt').textContent=t;
+  return true;
+}
+let cancelArmT=0;
+function askCancelMission(){   // dos pulsaciones para no cancelar sin querer
+  if (!mission.cur) return;
+  if (now<cancelArmT){ cancelArmT=0; $('bCancel').classList.remove('arm'); cancelMission(); return; }
+  cancelArmT=now+3; $('bCancel').classList.add('arm'); $('bCancel').firstChild.textContent='¿SEGURO? PULSA OTRA VEZ'; toast('Pulsa otra vez para cancelar la misión',1.6);
+}
 function updateNav(dt){
-  const el=$('nav');
+  const el=$('nav'), cb=$('bCancel');
+  if (cb.hidden===!!mission.cur) cb.hidden=!mission.cur;
+  if (cancelArmT && now>cancelArmT){ cancelArmT=0; cb.classList.remove('arm'); cb.firstChild.textContent='✕ CANCELAR MISIÓN'; }
+  if (mission.cur && updateMissionNav(dt,el)) return;
+  el.classList.remove('mis'); mnav.route=null;
   if (!dest){ if (!el.hidden) el.hidden=true; return; }
   const P=player.inCar||player, dd=Math.hypot(dest.x-P.x,dest.z-P.z);
   if (dd<(player.inCar?16:9) && !taxiRide){ const n=dest.name; clearDest(); toast(`Has llegado: <em>${n}</em>`,2.2); sfxPick(); return; }
@@ -2655,6 +2699,7 @@ addEventListener('keydown',e=>{
   if (e.code==='KeyC' && !fp) camMode=(camMode+1)%2;
   if (e.code==='KeyV') setFP(!fp);
   if (e.code==='KeyM') openMap();
+  if (e.code==='Backspace') askCancelMission();
   if (e.code==='KeyP'||e.code==='Escape') pause();
 });
 addEventListener('keyup',e=>{ keys.delete(e.code); if (e.code==='KeyH') hornUp(); });
@@ -3804,7 +3849,7 @@ function completeMission(){
   endMission(); persist(); setTimeout(()=>saveSlot('auto',true),4500);
 }
 function cancelMission(silent){   // el jugador la abandona: se quitan objetivo, ruta y marcadores; no cuenta como fallo de historia
-  if (!mission.cur) return; const ms=mission.cur; endMission(); mission.leaveReq=ms; ms.onFail?.();
+  if (!mission.cur) return; const ms=mission.cur; endMission(); mission.leaveReq=ms; ms.onFail?.(); mnav.route=null; MV.dirty=true; cancelArmT=0; $('bCancel').hidden=true; $('bCancel').classList.remove('arm'); $('bCancel').firstChild.textContent='✕ CANCELAR MISIÓN';
   if (!silent){ banner(ms.job?'TRABAJO CANCELADO':'MISIÓN CANCELADA','Puedes retomarla cuando quieras','var(--muted, #b9b2a3)',2.5); tone(330,0.15,'square',0.05); }
 }
 function failMission(why){ if (!mission.cur) return; const ms=mission.cur; banner(ms.job?'TRABAJO FALLIDO':'MISIÓN FALLIDA',why,'var(--red)',3.5); sfxFail(); endMission(); ms.onFail?.(); }
@@ -4317,7 +4362,7 @@ function startGame(){
   try{ navigator.wakeLock?.request('screen').catch(()=>{}); }catch(e){}
 }
 function pause(){
-  state='paused'; $('pause').hidden=false;
+  state='paused'; $('pause').hidden=false; $('bPCancel').hidden=!mission.cur;
   $('plist').innerHTML=MISSIONS.map(ms=>`<li><span>${ms.name}</span>${save.done.includes(ms.id)?'<b>Superada</b>':`<i>${ms.reward} €</i>`}</li>`).join('');
   $('pdates').textContent=`Dátiles de oro: ${save.dates.length}/12 · Dinero: ${player.money} €`;
   $('bSound').textContent='Sonido: '+(soundOn?'sí':'no'); $('bQual').textContent='Gráficos: '+QUALITY[quality].label.toLowerCase(); $('bReset').textContent='Borrar progreso'; $('bReset').dataset.arm='';
@@ -4325,6 +4370,9 @@ function pause(){
 function resume(){ $('pause').hidden=true; state='play'; }
 $('bPlay').addEventListener('click',startGame);
 $('bResume').addEventListener('click',resume);
+$('bPCancel').addEventListener('click',()=>{ cancelMission(); resume(); });
+$('bCancel').addEventListener('click',e=>{ e.stopPropagation(); askCancelMission(); });
+$('bCancel').addEventListener('pointerdown',e=>e.stopPropagation());
 $('bSave').addEventListener('click',()=>{ $('pause').hidden=true; openSlots('save',()=>{ $('pause').hidden=false; }); });
 $('bLoad').addEventListener('click',()=>{ $('pause').hidden=true; openSlots('load',()=>{ $('pause').hidden=false; }); });
 $('bLoadT').addEventListener('click',()=>{ $('title').hidden=true; openSlots('load',()=>{ $('title').hidden=false; }); });
