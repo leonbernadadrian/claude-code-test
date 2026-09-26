@@ -43,7 +43,7 @@ El orden propuesto se mantiene, con un cambio justificado por el código: las **
 4. Calles y mobiliario urbano ✅
 5. Palmeras y vegetación ✅
 6. Iluminación y atmósfera ✅
-7. Materiales y detalles: parcial. Pintura, cristal, metal y personas ya usan material físico con reflejo del cielo; quedan agua, plazas y monumentos
+7. Materiales y detalles ✅ (segunda pasada): agua con movimiento, fuente de la Glorieta, Basílica detallada, sombras de contacto y comercios con nombre
 
 ## Resultado de esta primera pasada
 
@@ -59,12 +59,20 @@ El orden propuesto se mantiene, con un cambio justificado por el código: las **
   - moiré de lejos: el detalle fino se funde según la distancia.
 - **Semáforos**: ahora muestran el estado real que respeta el tráfico. Antes eran colores fijos.
 
+## Segunda pasada
+
+- **Sombras de contacto**: una mancha suave bajo cada peatón (y el jugador) y bajo cada coche cercano. Son dos mallas instanciadas, así que cuestan dos llamadas. En móvil, sin sombras en tiempo real, es lo que "posa" a la gente en el suelo.
+- **Agua**: material propio con reflejo del cielo y oleaje animado en el shader (sin texturas). Se usa en el Vinalopó, en las láminas de agua del centro real y en la fuente de la Glorieta.
+- **Fuente de la Glorieta**: taza superior con agua y surtidor.
+- **Basílica de Santa María**: tambor con ventanas, cúpula de teja vidriada azul con nervios, linterna y cruz; campanario con impostas, arcos del cuerpo de campanas, balaustrada y remate con cupulín azul. Colisiones iguales que antes.
+- **Comercios con nombre**: unos 1.700 rótulos, todos en una sola llamada de dibujo (atlas de 64 rótulos y malla instanciada).
+  - En el centro real se calculan con las mismas cuentas que el shader de fachada, así que cada rótulo cae justo sobre la banda de un escaparate. Solo van en fachadas que dan a una calle con nombre.
+  - De noche se iluminan.
+  - Los nombres son inventados (sin marcas reales). Usan un generador aleatorio aparte, de modo que no cambia ni un edificio de sitio.
+
 ## Siguientes pasos propuestos
 
-- Comercios con interior intuido y rótulos con nombre en las calles del centro.
-- Agua del Vinalopó y fuentes con material de agua.
-- Monumentos (Basílica, Calahorra, Altamira) con más geometría propia.
-- Sombras de contacto baratas para peatones en móvil (allí no hay sombras en tiempo real).
+- Calahorra y Altamira con más geometría propia.
 - Peatones y vehículos a distancia con modelos simplificados (LOD).
 
 ## Modelos externos: decisión
