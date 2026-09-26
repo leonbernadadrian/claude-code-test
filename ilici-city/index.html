@@ -1015,8 +1015,35 @@ function makePedMesh(shirt,pants,skin,hair,extra){
   }
   if (extra==='elche'){ part(g,lambert('#f4f4f0'),0.53,0.14,0.31,0,1.28,0,false); part(g,lambert('#f4f4f0'),0.53,0.14,0.31,0,1.06,0,false); }
   if (extra==='cop'){ part(g,lambert('#1f3a8a'),0.34,0.1,0.34,0,1.92,0,false); }
-  const gun=part(arms[1],lambert('#1b1b1b'),0.1,0.45,0.14,0,-0.78,0.04,false); gun.visible=extra==='cop';
-  g.userData={legs,arms,gun}; return g;
+  g.userData={legs,arms,wm:makeWeaponModels(arms[1])}; if (extra==='cop') setWeaponModel(g,'pistol'); return g;
+}
+// Modelos de arma en la mano derecha (el brazo cuelga en -y; con el brazo levantado, -y apunta al frente y -z hacia el suelo)
+const WPN_MAT={dark:lambert('#1d1f22'),metal:lambert('#4a4f55'),wood:lambert('#8a5a32'),bat:lambert('#caa36a'),grip:lambert('#2b2b2b'),gren:lambert('#3d4a2a')};
+const batGeo=new THREE.CylinderGeometry(0.035,0.085,1.0,10), grenHandGeo=new THREE.SphereGeometry(0.12,10,8);
+function makeWeaponModels(arm){
+  const wm={}, grp=()=>{ const g=new THREE.Group(); g.visible=false; arm.add(g); return g; };
+  wm.pistol=grp(); part(wm.pistol,WPN_MAT.dark,0.08,0.3,0.12,0,-0.82,0.03,false); part(wm.pistol,WPN_MAT.grip,0.07,0.09,0.2,0,-0.7,-0.07,false);
+  wm.smg=grp(); part(wm.smg,WPN_MAT.dark,0.09,0.5,0.13,0,-0.88,0.03,false); part(wm.smg,WPN_MAT.metal,0.06,0.09,0.26,0,-0.83,-0.15,false); part(wm.smg,WPN_MAT.grip,0.06,0.14,0.08,0,-0.62,-0.02,false);
+  wm.shotgun=grp(); part(wm.shotgun,WPN_MAT.metal,0.07,0.9,0.08,0,-1.05,0.04,false); part(wm.shotgun,WPN_MAT.wood,0.09,0.38,0.15,0,-0.56,-0.02,false); part(wm.shotgun,WPN_MAT.wood,0.08,0.22,0.1,0,-0.9,-0.04,false);
+  wm.bat=grp(); { const b=new THREE.Mesh(batGeo,WPN_MAT.bat); b.position.set(0,-1.14,0.02); b.castShadow=true; wm.bat.add(b); part(wm.bat,WPN_MAT.grip,0.07,0.16,0.07,0,-0.66,0.02,false); }
+  wm.grenade=grp(); { const b=new THREE.Mesh(grenHandGeo,WPN_MAT.gren); b.position.set(0,-0.74,0.02); wm.grenade.add(b); }
+  return wm;
+}
+function setWeaponModel(mesh,id){ const wm=mesh.userData.wm; for (const k in wm) wm[k].visible = k===id; }
+function weaponPose(){
+  const m=player.mesh, W=curW(), A=m.userData.arms;
+  setWeaponModel(m, W.throw ? (player.ammo.grenade>0?'grenade':null) : W.id);
+  A[0].rotation.z=0; A[1].rotation.z=0;
+  const two=W.id==='smg'||W.id==='shotgun';
+  if (player.punchT>0 && player.punchDur){
+    const f=1-player.punchT/player.punchDur, e=1-Math.pow(1-f,3);
+    if (W.id==='bat'){ A[1].rotation.x=lerp(-3.0,-0.4,e); A[0].rotation.x=lerp(-2.7,-0.5,e); A[1].rotation.z=lerp(0.25,-0.15,e); A[0].rotation.z=lerp(-0.35,0.2,e); }
+    else if (W.throw){ A[1].rotation.x=f<0.35?lerp(-0.4,-3.1,f/0.35):lerp(-3.1,-0.9,(f-0.35)/0.65); }
+    else { const k=f<0.35?f/0.35:1-(f-0.35)/0.65; A[1].rotation.x=-0.25-1.35*k; A[0].rotation.x=-0.6; }
+  } else if (aimT>0 && !W.melee && !W.throw){
+    A[1].rotation.x=-1.5; if (two){ A[0].rotation.x=-1.35; A[0].rotation.z=-0.45; }
+  } else if (W.id==='bat'){ A[1].rotation.x=-0.45; A[1].rotation.z=0.15; }
+  else if (two){ A[1].rotation.x=-0.7; A[0].rotation.x=-0.75; A[0].rotation.z=-0.4; }
 }
 function animPed(mesh,phase,amp){ const {legs,arms}=mesh.userData; const s=Math.sin(phase)*amp; legs[0].rotation.x=s; legs[1].rotation.x=-s; arms[0].rotation.x=-s*0.8; arms[1].rotation.x=s*0.8; }
 
@@ -1520,17 +1547,23 @@ function exitCar(forced,silent){
 function punch(W){
   W=W||WEAPONS[0];
   if (player.inCar || player.punchT>0 || player.health<=0) return;
-  player.punchT=0.35; sfxPunch();
-  const fx=Math.sin(player.h), fz=Math.cos(player.h);
+  const bat=W.id==='bat';
+  player.punchT=player.punchDur=bat?0.5:0.3; player.hitT=bat?0.2:0.1; player.hitW=W;
+  noise(0.12,0.08,bat?700:1500);
+}
+function meleeHit(W){
+  if (player.inCar || player.health<=0) return;
+  const fx=Math.sin(player.h), fz=Math.cos(player.h); let hitAny=false;
   for (const p of peds){
     if (p.state==='dead') continue;
     const dx=p.x-player.x, dz=p.z-player.z, L=Math.hypot(dx,dz);
     if (L<W.range && (dx*fx+dz*fz)/Math.max(L,0.01)>0.4){
-      const killed=p.damage(W.dmg,fx,fz,true);
+      const killed=p.damage(W.dmg,fx,fz,true); hitAny=true;
       if (killed) onPedKilled(p); else if (p.cop) addStars(1,'¡Has agredido a un policía!'); else if (policeNear(50)) addStars(1,'La policía te ha visto');
       for (const q of peds) if (q!==p && d2(q.x,q.z,player.x,player.z)<400) q.scare(player.x,player.z,6);
     }
   }
+  if (hitAny){ sfxPunch(); if (W.id==='bat') { noise(0.18,0.4,500); shake(0.2); } }
 }
 function horn(){ sfxHorn(); const e=player.inCar||player; for (const p of peds) if (d2(p.x,p.z,e.x,e.z)<144 && Math.random()<0.5) p.scare(e.x,e.z,3); }
 
@@ -1618,7 +1651,7 @@ const grenades=[], grenGeo=new THREE.SphereGeometry(0.2,8,6);
 function throwGrenade(){
   const h=player.h, m=new THREE.Mesh(grenGeo,lambert('#3d4a2a')); scene.add(m);
   grenades.push({m,x:player.x+Math.sin(h)*0.6,y:1.6,z:player.z+Math.cos(h)*0.6,vx:Math.sin(h)*14+player.vx*0.5,vy:6.5,vz:Math.cos(h)*14+player.vz*0.5,t:2.1});
-  player.punchT=0.4; tone(300,0.08,'triangle',0.05);
+  player.punchT=player.punchDur=0.45; tone(300,0.08,'triangle',0.05);
 }
 function updateGrenades(dt){
   for (const g of grenades.slice()){
@@ -1886,6 +1919,7 @@ function update(dt){
   hintMsg=null;
   const ax=axis();
   if (fireCd>0) fireCd-=dt; if (aimT>0) aimT-=dt;
+  if (player.hitT>0){ player.hitT-=dt; if (player.hitT<=0) meleeHit(player.hitW); }
   if (fireEdge){ fireEdge=false; tryFire(); } else if ((fireHeld||mouseHeld||keys.has('KeyF')) && curW().auto) tryFire();
 
   // jugador
@@ -2127,8 +2161,7 @@ function frame(t){
   if (state==='play'||state==='dead'){
     now+=dt; update(dt);
     player.mesh.position.set(player.x,0.25,player.z); player.mesh.rotation.y=player.h;
-    if (!player.inCar){ const sp=Math.hypot(player.vx,player.vz); animPed(player.mesh,player.phase,sp>0.3?Math.min(0.9,sp*0.14):0); if (player.punchT>0||aimT>0) player.mesh.userData.arms[1].rotation.x=-1.5; }
-    { const W=curW(); player.mesh.userData.gun.visible=!W.melee&&!W.throw; }
+    if (!player.inCar){ const sp=Math.hypot(player.vx,player.vz); animPed(player.mesh,player.phase,sp>0.3?Math.min(0.9,sp*0.14):0); weaponPose(); }
     if (keysT>0){ keysT-=dt; if (keysT<=0) $('keys').classList.remove('show'); }
     updateCamera(dt); updateHUD(dt); updateMarkers(); updateAudio();
   } else if (state==='title'){
