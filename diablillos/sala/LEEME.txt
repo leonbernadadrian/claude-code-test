@@ -1,0 +1,94 @@
+EL PROTOCOLO DE LA SALA DE LOS DIABLILLOS
+================================================================
+Como hablan entre ellos los DIABLILLOS.
+Se llaman asi porque su gracia es no estar de acuerdo: uno te
+dice lo que quieres oir y otro lo contrario, y de ahi sale algo. Esto es lo unico que los
+diferencia de los agentes normales.
+
+LA VERDAD TECNICA, PARA QUE NADIE SE ENGANE
+  Los agentes NO hablan en vivo. No pueden: cada uno trabaja aislado y
+  devuelve un informe. Lo que hacen aqui es hablar POR ESCRITO Y POR
+  TURNOS, en un archivo compartido que todos leen y donde todos escriben.
+  Es una conversacion de foro, no de telefono. Y funciona de verdad:
+  pueden citarse, contradecirse y cambiar de opinion.
+
+DONDE
+  Un archivo por debate, en _SALA\, llamado AAAA-MM-DD-asunto.txt
+
+LAS TRES RONDAS, Y POR QUE SON TRES
+----------------------------------------------------------------
+RONDA 1 - A CIEGAS
+  Cada agente escribe su postura SIN LEER lo que han puesto los demas.
+  Esto no es un capricho: si el primero que habla marca el tono, los
+  demas se le pegan y el debate no sirve para nada. Se llama anclaje y
+  es lo que arruina las reuniones de verdad.
+  En esta ronda cada uno dice: que opina, en que se basa, y que le haria
+  cambiar de idea. Esa tercera es obligatoria.
+
+RONDA 2 - REPLICA
+  Ahora si. Todos leen TODA la ronda 1 y contestan.
+  Reglas de la replica:
+    - Se llama a cada uno por su nombre: "diablillo-auditor dice que...".
+    - Se CITA lo que se rebate, no se resume a conveniencia.
+    - Se puede cambiar de opinion, y si se cambia HAY QUE DECIRLO:
+      "me retracto de lo que dije en la ronda 1 porque...". Cambiar de
+      idea con pruebas delante es lo que hace util un debate.
+    - NO SE PUEDE estar de acuerdo por acabar antes. Si sigues sin
+      verlo, lo dices y ya.
+
+RONDA 3 - CIERRE
+  Solo escribe el moderador. Tres apartados y nada mas:
+    EN QUE COINCIDEN TODOS
+    EN QUE NO SE PONEN DE ACUERDO, y quien defiende cada lado
+    QUE TIENE QUE DECIDIR ADRIAN
+  El moderador NO opina del asunto. Solo del proceso.
+
+LAS REGLAS QUE NO SE SALTAN
+----------------------------------------------------------------
+1. DEFIENDE LO TUYO. Cada uno entra con su criterio de oficio y no lo
+   suelta por quedar bien. El de publico-adolescente no tiene que ser
+   razonable: tiene que decir lo que haria un chaval de trece anos.
+2. NO OPINES DE LO QUE NO ES TUYO. Puedes preguntar, no sentenciar.
+   Si el asunto se sale de tu oficio, lo dices y te callas.
+3. EL DESACUERDO ES EL PRODUCTO. Un debate donde todos coinciden en la
+   ronda 1 no hacia falta. Si eso pasa, el moderador lo dice y cierra:
+   se ha gastado tiempo para nada y conviene saberlo.
+4. PUEDEN HABLAR TODOS, PERO NO A LA VEZ. Los cuarenta llevan el
+   protocolo y cualquiera puede entrar en cualquier debate: no hay
+   lista cerrada. El limite es POR DEBATE: tres o cinco. Llamar a los 39 cuesta una
+   fortuna y produce ruido. Los elige el moderador y justifica por que
+   esos.
+5. NADIE EJECUTA NADA DENTRO DE LA SALA. Aqui se habla. Lo que se decida
+   lo hace luego quien corresponda, fuera.
+
+LO QUE SE PIERDE Y HAY QUE SABERLO
+----------------------------------------------------------------
+Los agentes normales tienen prohibido leerse entre ellos a proposito:
+los tres publicos, el eliminador contra el regulador, los dos de
+feedback. Eso es lo que hace que sus opiniones valgan, porque no se
+contaminan.
+Aqui se contaminan. La ronda 1 a ciegas lo compensa a medias, pero no
+del todo. Por eso esta version vive aparte y NO sustituye a la otra:
+  - Para saber que piensa cada uno de verdad -> los agentes normales.
+  - Para que algo se discuta y salga una decision -> los diablillos.
+
+ANADIDO EL 20-09-2026: LA CARPETA turnos\
+----------------------------------------------------------------
+Cuando los de la ronda 1 escriben A LA VEZ (que es lo normal si se
+lanzan en paralelo), NO pueden escribir en el mismo archivo: se pisan
+y se pierde el turno de alguno.
+Cada uno escribe el suyo en  _SALA\turnos\ :
+    AAAA-MM-DD-asunto-r1-nombre.txt
+    AAAA-MM-DD-asunto-r2-nombre.txt
+    AAAA-MM-DD-asunto-r3-cierre.txt
+y luego se juntan por orden en el archivo del debate, en _SALA\.
+Efecto de regalo: la ronda 1 sale mas ciega que nunca, porque cuando
+cada uno escribe, los turnos de los otros todavia no existen.
+La carpeta turnos\ es cocina. Lo que se lee es el archivo del debate.
+
+Y UNA COSA QUE LA CEGUERA NO ARREGLA (vuelta 001 del ciclo)
+  Dos diablillos pueden repetir el mismo dato falso a ciegas sin
+  copiarse, solo por beber de la misma base vieja. Paso el 20-09 con un
+  trozo de codigo que llevaba un dia borrado.
+  Por eso, en todo debate sobre como esta algo HOY, tiene que entrar
+  alguien con el encargo expreso de ABRIR EL ARCHIVO DE VERDAD.
