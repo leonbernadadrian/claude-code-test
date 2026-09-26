@@ -2317,15 +2317,13 @@ function updateNav(dt){
 }
 
 /* ================= audio ================= */
-let AC=null, master=null, eng=null, siren=null, soundOn=true;
+let AC=null, master=null, eng=null, soundOn=true;
 function initAudio(){
   if (AC) return;
   try{
     AC=new (window.AudioContext||window.webkitAudioContext)(); master=AC.createGain(); master.gain.value=0.55; master.connect(AC.destination);
     const o=AC.createOscillator(); o.type='sawtooth'; const f=AC.createBiquadFilter(); f.type='lowpass'; f.frequency.value=380; const g=AC.createGain(); g.gain.value=0;
     o.connect(f); f.connect(g); g.connect(master); o.start(); eng={o,g,f};
-    const so=AC.createOscillator(); so.type='square'; const sg=AC.createGain(); sg.gain.value=0; const sf=AC.createBiquadFilter(); sf.type='lowpass'; sf.frequency.value=1800;
-    so.connect(sf); sf.connect(sg); sg.connect(master); so.start(); siren={o:so,g:sg};
   }catch(e){ AC=null; }
 }
 function tone(freq,dur,type='square',vol=0.08,when=0,slide=0){
@@ -2365,8 +2363,92 @@ function screamSound(x,z){   // grito: voz aguda con vibrato, desde la posición
 }
 const sfxCrash = v => noise(0.35,Math.min(0.5,0.1+v*0.02),1400);
 const sfxPunch = () => noise(0.12,0.3,900);
-const sfxHorn = () => { tone(392,0.35,'square',0.06); tone(494,0.35,'square',0.05); };
-function hornAt(c,dur){ sfxHorn(); }
+/* ---- sonidos de vehículos: claxon y sirena de cada tipo, posicionales (salen del vehículo) ----
+   HORNS y SIRENS son presets sintetizados. VEHICLE_AUDIO dice qué usa cada tipo de vehículo. Para añadir un vehículo nuevo
+   (ambulancia, bomberos...) basta con una línea en VEHICLE_AUDIO; para usar una grabación real, pon url:'sonidos/xxx.mp3'
+   en el preset: se carga al primer uso y, hasta entonces (o si falla), suena la versión sintetizada. */
+const HORNS={
+  car:    {freqs:[415,523],type:'sawtooth',drive:2.6,filter:2600,gain:0.34,detune:8},      // claxon doble de turismo
+  compact:{freqs:[470,587],type:'sawtooth',drive:2.4,filter:2800,gain:0.3,detune:10},       // más agudo
+  sports: {freqs:[440,554],type:'sawtooth',drive:3.0,filter:3000,gain:0.34,detune:6},
+  van:    {freqs:[349,440],type:'sawtooth',drive:2.6,filter:2200,gain:0.36,detune:8},
+  bus:    {freqs:[233,294],type:'sawtooth',drive:2.8,filter:1700,gain:0.42,detune:5},       // grave
+  truck:  {freqs:[165,208,247],type:'sawtooth',drive:3.2,filter:1400,gain:0.46,detune:4,air:true},   // bocina de aire
+  police: {freqs:[392,494],type:'square',drive:2.2,filter:2400,gain:0.32,detune:6},
+  bell:   {bell:true,f:2350,gain:0.22},                                                        // timbre de bici
+};
+const SIRENS={
+  police:   {tones:[650,900],period:0.9,type:'square',filter:2000,gain:0.2},   // bitonal
+  ambulance:{tones:[720,960],period:1.3,type:'square',filter:2200,gain:0.2},
+  fire:     {wail:[480,1150],period:3.2,type:'sawtooth',filter:1800,gain:0.2},  // sube y baja
+};
+const VEHICLE_AUDIO={compact:{horn:'compact'},sedan:{horn:'car'},taxi:{horn:'car'},sports:{horn:'sports'},van:{horn:'van'},boxvan:{horn:'van'},pickup:{horn:'van'},
+  truck:{horn:'truck'},bus:{horn:'bus'},police:{horn:'police',siren:'police'},bike:{horn:'bell'},ambulance:{horn:'van',siren:'ambulance'},fire:{horn:'truck',siren:'fire'}};
+const vAudio=k=>VEHICLE_AUDIO[k]||VEHICLE_AUDIO.sedan;
+const sampleCache=new Map();
+function sampleFor(p){   // grabación opcional: null mientras no exista o no haya cargado
+  if (!p.url||!AC) return null; const c=sampleCache.get(p.url); if (c) return c==='loading'||c==='error'?null:c;
+  sampleCache.set(p.url,'loading'); fetch(p.url).then(r=>r.arrayBuffer()).then(b=>AC.decodeAudioData(b)).then(buf=>sampleCache.set(p.url,buf)).catch(()=>sampleCache.set(p.url,'error')); return null;
+}
+let shaperCurve=null;
+function hornShaper(drive){ const ws=AC.createWaveShaper(); if (!shaperCurve){ shaperCurve=new Float32Array(1024); for (let i=0;i<1024;i++){ const x=i/511.5-1; shaperCurve[i]=Math.tanh(x*2.2); } } ws.curve=shaperCurve; const pre=AC.createGain(); pre.gain.value=drive*0.3; pre.connect(ws); return {in:pre,out:ws}; }
+function hornVoice(out,H,t,dur){   // una pitada: osciladores + saturación + filtro, con ataque y caída cortos
+  const g=AC.createGain(), f=AC.createBiquadFilter(), sh=hornShaper(H.drive||2.5), oscs=[];
+  f.type='lowpass'; f.frequency.value=H.filter; f.Q.value=0.8;
+  for (const fr of H.freqs){ const o=AC.createOscillator(); o.type=H.type||'sawtooth'; o.frequency.value=fr; o.detune.value=mrand(-(H.detune||5),H.detune||5);
+    if (H.air){ o.frequency.setValueAtTime(fr*0.93,t); o.frequency.linearRampToValueAtTime(fr,t+0.12); }
+    o.connect(sh.in); o.start(t); oscs.push(o); }
+  sh.out.connect(f); f.connect(g); g.connect(out);
+  g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(H.gain,t+(H.air?0.06:0.012));
+  const stop=(at,rel=0.07)=>{ g.gain.cancelScheduledValues(at); g.gain.setValueAtTime(g.gain.value||H.gain,at); g.gain.exponentialRampToValueAtTime(0.0001,at+rel); for (const o of oscs) o.stop(at+rel+0.02); };
+  if (dur) stop(t+dur);
+  return {stop};
+}
+function bellVoice(out,H,t){   // ring-ring: parciales inarmónicos que se apagan
+  for (const [k,dt] of [[0,0],[1,0.16]]) for (const [m,a] of [[1,1],[2.76,0.5],[5.4,0.25]]){ const o=AC.createOscillator(), g=AC.createGain(); o.type='sine'; o.frequency.value=H.f*m;
+    g.gain.setValueAtTime(0.0001,t+dt); g.gain.exponentialRampToValueAtTime(H.gain*a,t+dt+0.005); g.gain.exponentialRampToValueAtTime(0.0001,t+dt+0.5); o.connect(g); g.connect(out); o.start(t+dt); o.stop(t+dt+0.55); }
+}
+function hornAt(src,dur=0.4,beeps=1){   // claxon de un vehículo (o del jugador) desde su posición
+  if (!AC||!soundOn||!src) return null;
+  const H=HORNS[vAudio(src.k||(src.T&&src.T.bike?'bike':'sedan')).horn]||HORNS.car, out=spatial(src.x,1.2,src.z,H.bell?3:7,240); if (!out) return null;
+  const t=AC.currentTime, buf=sampleFor(H);
+  if (buf){ const s=AC.createBufferSource(), g=AC.createGain(); s.buffer=buf; g.gain.value=H.gain*2; s.connect(g); g.connect(out); s.start(t); return null; }
+  if (H.bell){ bellVoice(out,H,t); return null; }
+  let v=null; for (let i=0;i<beeps;i++) v=hornVoice(out,H,t+i*(dur+0.12),dur); return v;
+}
+let playerHorn=null;
+function hornDown(){   // el jugador mantiene el claxon mientras pulsa H
+  const c=player.inCar; if (!c || taxiRide){ if (!c) whistle(); return; }
+  if (playerHorn) return; if (c.T.bike){ hornAt(c); return; }
+  playerHorn=hornAt(c,3,1); playerHorn&&(playerHorn.t0=AC.currentTime);
+}
+function hornUp(){ if (playerHorn && AC){ playerHorn.stop(Math.max(AC.currentTime,playerHorn.t0+0.15)); } playerHorn=null; }
+function whistle(){   // a pie: un silbido para llamar la atención
+  const out=spatial(player.x,1.6,player.z,4); if (!out) return; const t=AC.currentTime;
+  for (const [a,b,d] of [[1800,2600,0],[2600,2000,0.22]]){ const o=AC.createOscillator(), g=AC.createGain(); o.type='sine'; o.frequency.setValueAtTime(a,t+d); o.frequency.exponentialRampToValueAtTime(b,t+d+0.18);
+    g.gain.setValueAtTime(0.0001,t+d); g.gain.exponentialRampToValueAtTime(0.18,t+d+0.03); g.gain.exponentialRampToValueAtTime(0.0001,t+d+0.2); o.connect(g); g.connect(out); o.start(t+d); o.stop(t+d+0.22); }
+}
+// sirenas: una voz por vehículo de emergencia en servicio (las más cercanas), que se mueve con él
+const sirenVoices=new Map(); const MAX_SIRENS=4;
+function sirenVoice(S){
+  const o=AC.createOscillator(), f=AC.createBiquadFilter(), g=AC.createGain(), p=AC.createPanner(), lfo=AC.createOscillator(), lg=AC.createGain();
+  o.type=S.type; f.type='lowpass'; f.frequency.value=S.filter; g.gain.value=0; p.panningModel='equalpower'; p.distanceModel='inverse'; p.refDistance=8; p.maxDistance=300; p.rolloffFactor=1.1;
+  lfo.frequency.value=6; lg.gain.value=8; lfo.connect(lg); lg.connect(o.frequency);   // un poco de vibrato
+  o.connect(f); f.connect(g); g.connect(p); p.connect(master); o.start(); lfo.start(); return {o,g,p,lfo,S,ph:Math.random()};
+}
+function sirenOn(c){ return c.driver==='police' && c.ai && c.ai.mode==='chase' && player.stars>0; }
+function updateSirens(){
+  if (!AC) return; const t=AC.currentTime, want=[];
+  if (soundOn && state==='play') for (const c of cars){ const S=SIRENS[vAudio(c.k).siren]; if (S && sirenOn(c)){ const d=d2(c.x,c.z,camera.position.x,camera.position.z); if (d<300*300) want.push([d,c,S]); } }
+  want.sort((a,b)=>a[0]-b[0]); const keep=new Set(want.slice(0,MAX_SIRENS).map(w=>w[1]));
+  for (const [c,v] of sirenVoices) if (!keep.has(c)){ v.g.gain.setTargetAtTime(0,t,0.08); v.o.stop(t+0.4); v.lfo.stop(t+0.4); sirenVoices.delete(c); }
+  for (const c of keep){ let v=sirenVoices.get(c); const S=SIRENS[vAudio(c.k).siren]; if (!v){ v=sirenVoice(S); sirenVoices.set(c,v); }
+    if (v.p.positionX){ v.p.positionX.setTargetAtTime(c.x,t,0.03); v.p.positionY.value=1.6; v.p.positionZ.setTargetAtTime(c.z,t,0.03); } else v.p.setPosition(c.x,1.6,c.z);
+    const ph=((now/S.period)+v.ph)%1;
+    const fr=S.wail?S.wail[0]+(S.wail[1]-S.wail[0])*(0.5-0.5*Math.cos(ph*Math.PI*2)):(ph<0.5?S.tones[0]:S.tones[1]);
+    v.o.frequency.setTargetAtTime(fr,t,S.wail?0.05:0.012); v.g.gain.setTargetAtTime(S.gain,t,0.1); }
+}
+function stopSirens(){ if (!AC) return; const t=AC.currentTime; for (const [c,v] of sirenVoices){ v.g.gain.setTargetAtTime(0,t,0.05); v.o.stop(t+0.3); v.lfo.stop(t+0.3); } sirenVoices.clear(); }
 const sfxPick = () => { tone(880,0.1,'square',0.06); tone(1320,0.15,'square',0.06,0.08); };
 const sfxWin = () => { [523,659,784,1046].forEach((f,i)=>tone(f,0.25,'square',0.07,i*0.13)); };
 const sfxFail = () => { [392,330,262].forEach((f,i)=>tone(f,0.3,'sawtooth',0.07,i*0.18)); };
@@ -2400,14 +2482,14 @@ addEventListener('keydown',e=>{
   if (e.code==='KeyQ') selectWeapon(player.w+1);
   if (e.code==='KeyI') toggleKeys();
   if (/^Digit[1-7]$/.test(e.code)){ const id=WEAPONS[+e.code.slice(5)-1].id, i=player.owned.indexOf(id); if (i>=0) selectWeapon(i); else toast(`No tienes ${W_BY[id].name.toLowerCase()}`,1.2); }
-  if (e.code==='KeyH') horn();
+  if (e.code==='KeyH'){ horn(); hornDown(); }
   if (e.code==='KeyT') hailTaxi();
   if (e.code==='KeyC' && !fp) camMode=(camMode+1)%2;
   if (e.code==='KeyV') setFP(!fp);
   if (e.code==='KeyM') openMap();
   if (e.code==='KeyP'||e.code==='Escape') pause();
 });
-addEventListener('keyup',e=>keys.delete(e.code));
+addEventListener('keyup',e=>{ keys.delete(e.code); if (e.code==='KeyH') hornUp(); });
 addEventListener('blur',()=>{ keys.clear(); aiming=false; mouseHeld=false; });
 renderer.domElement.addEventListener('mousedown',e=>{ if (state!=='play') return;
   if (needLock()){ e.preventDefault(); lockSwallow=true; requestLock(); return; }   // el clic que captura el ratón no dispara ni golpea
@@ -2422,7 +2504,7 @@ let wheelT=0; renderer.domElement.addEventListener('wheel',e=>{ if (state!=='pla
   const end=e=>{ for (const t of e.changedTouches) if (t.identifier===joy.id){ joy.active=false; joy.x=joy.y=0; knob.style.transform=''; } };
   jz.addEventListener('touchend',end); jz.addEventListener('touchcancel',end);
   const tap=(id,fn)=>$(id).addEventListener('touchstart',e=>{ e.preventDefault(); initAudio(); if (state==='play') fn(); },{passive:false});
-  tap('bEnter',enterExit); tap('bTaxi',hailTaxi); tap('bSkip',()=>taxiSkip()); tap('bHorn',horn); tap('bMap',openMap); tap('bCam',()=>camMode=(camMode+1)%2); tap('bPause',pause); tap('bWpn',()=>selectWeapon(player.w+1)); tap('bJump',jump); tap('bCrouch',()=>{ if (!player.inCar) setCrouch(!player.crouch); }); tap('bHelp',openHelp);
+  tap('bEnter',enterExit); tap('bTaxi',hailTaxi); tap('bSkip',()=>taxiSkip()); tap('bHorn',()=>{ horn(); if (player.inCar) hornAt(player.inCar,0.45); else whistle(); }); tap('bMap',openMap); tap('bCam',()=>camMode=(camMode+1)%2); tap('bPause',pause); tap('bWpn',()=>selectWeapon(player.w+1)); tap('bJump',jump); tap('bCrouch',()=>{ if (!player.inCar) setCrouch(!player.crouch); }); tap('bHelp',openHelp);
   const bf=$('bFire'); bf.addEventListener('touchstart',e=>{ e.preventDefault(); fireEdge=true; fireHeld=true; bf.classList.add('on'); },{passive:false});
   const fend=()=>{ fireHeld=false; bf.classList.remove('on'); }; bf.addEventListener('touchend',fend); bf.addEventListener('touchcancel',fend);
   const ba=$('bAct');
@@ -2677,7 +2759,7 @@ function meleeHit(W){
   }
   if (hitAny){ sfxPunch(); if (W.id==='bat'||power>=1.8){ noise(0.18,0.25+power*0.1,500); shake(0.12*power); } }
 }
-function horn(){ sfxHorn(); const e=player.inCar||player; for (const p of peds) if (d2(p.x,p.z,e.x,e.z)<144 && Math.random()<0.5) p.scare(e.x,e.z,3); }
+function horn(){ const e=player.inCar||player; if (!player.inCar) return; for (const p of peds) if (d2(p.x,p.z,e.x,e.z)<144 && Math.random()<0.5) p.scare(e.x,e.z,3); }   // el sonido lo pone hornDown()
 
 /* ---- armas ---- */
 const WEAPONS=[
@@ -2975,7 +3057,7 @@ function cruise(c,dt){
   if (B.light && L-t>9 && L-t<26 && lightState(Math.abs(ux)>Math.abs(uz)?'H':'V')!=='green') desired=0;
   const blk=blockedAhead(c,11);
   if (blk){ ai.wait+=dt; desired=(ai.wait>6 && blk.ai && blk.ai.wait>3)?2.5:0;   // dos coches esperándose el uno al otro: este avanza despacio y se deshace el atasco
-    if (ai.wait>2.5 && c.hornT<=0){ c.hornT=4; if (d2(c.x,c.z,player.x,player.z)<900) hornAt(c); shooPeds(c); } } else ai.wait=0;
+    if (ai.wait>2.5 && c.hornT<=0){ c.hornT=4; if (d2(c.x,c.z,player.x,player.z)<900) hornAt(c,Math.random()<0.5?0.18:0.4,Math.random()<0.5?2:1); shooPeds(c); } } else ai.wait=0;
   aiControl(c,tx,tz,desired,dt);
 }
 function chase(c,dt){
@@ -3869,8 +3951,7 @@ function updateAudio(){
   updateListener();
   const t=AC.currentTime;
   if (eng){ const c=player.inCar, on=soundOn&&c&&!c.dead&&!c.T.bike&&state==='play'; eng.g.gain.setTargetAtTime(on?0.05:0,t,0.1); if (c){ const f=38+c.speed*3.2+Math.abs(axis().y)*12; eng.o.frequency.setTargetAtTime(f,t,0.05); eng.f.frequency.setTargetAtTime(300+c.speed*25,t,0.1); } }
-  if (siren){ let dmin=1e9; const P=player.inCar||player; for (const c of cars) if (c.driver==='police'&&c.ai&&c.ai.mode==='chase'){ const d=Math.hypot(c.x-P.x,c.z-P.z); if (d<dmin) dmin=d; }
-    const v=soundOn&&state==='play'&&dmin<160?0.035*(1-dmin/160):0; siren.g.gain.setTargetAtTime(v,t,0.15); siren.o.frequency.setTargetAtTime(Math.floor(now/0.45)%2?640:860,t,0.02); }
+  updateSirens();
 }
 
 /* ---- estados ---- */
@@ -3947,7 +4028,7 @@ function frame(t){
     camera.position.set(-55+Math.sin(titleA)*110,55,-55+Math.cos(titleA)*110); camera.up.set(0,1,0); camera.lookAt(-30,10,-60);
     for (const p of peds) p.update(dt);
     for (const c of cars){ if (c.driver==='npc'&&c.ai) cruise(c,dt); else c.drive(dt,0,0,true); pushCircle(c,1.2); c.sync(); }
-  } else if (state==='paused'||state==='map'||state==='shop'||state==='help'){ if (AC&&eng){ eng.g.gain.value=0; siren.g.gain.value=0; } if (state==='map') updateMapView(dt); }
+  } else if (state==='paused'||state==='map'||state==='shop'||state==='help'){ if (AC&&eng){ eng.g.gain.value=0; } stopSirens(); if (state==='map') updateMapView(dt); }
   updateLighting();
   renderer.clear(); renderer.render(scene,camera);
   if (vmRoot.visible && (state==='play'||state==='dead')){ renderer.clearDepth(); renderer.render(vmScene,vmCam); }
