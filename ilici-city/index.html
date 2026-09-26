@@ -1412,6 +1412,7 @@ const TYPES={
   police:{len:4.7,w:1.9,h:1.5,max:44,acc:18,grip:8,cols:['#f4f6f8']},
   pickup:{len:5.2,w:1.95,h:1.75,max:32,acc:12,grip:6.5,cols:['#5b6770','#1d1d20','#8a1f1f','#e8e3d8','#3d5a3a'],eye:1.6},
   boxvan:{len:6.2,w:2.2,h:2.8,max:24,acc:7,grip:5.5,cols:['#e8e6df','#f2c230','#b8c3cc','#d7d2c4'],ws:1.1,eye:2.0,mirrorY:1.9},
+  ambulance:{len:6.0,w:2.15,h:2.7,max:32,acc:9,grip:6,cols:['#f6f6f2'],ws:1.05,eye:1.95,mirrorY:1.9},
   truck:{len:8.2,w:2.45,h:3.4,max:22,acc:5.5,grip:5,cols:['#c0392b','#2d6cdf','#f0efe8','#2f7d4f'],ws:1.35,eye:2.35,mirrorY:2.2},
   bus:{len:11,w:2.5,h:3.1,max:18,acc:5,grip:5,cols:['#d7262e','#1f6fb2','#2f8a4c'],ws:1.35,eye:2.3,mirrorY:2.2},
   bike:{len:1.8,w:0.6,h:1.1,max:11,acc:5,grip:10,cols:['#e1261c','#2d6cdf','#1b1b1b','#f2c230','#2f8a4c','#f4f4f0'],eye:1.75,bike:true},
@@ -1438,7 +1439,7 @@ function carProfiles(k,T){
   if (k==='bus') return {
     body:[[-h2,0.48],[h2,0.48],[h2,H-0.3],[h2-0.25,H],[-h2+0.15,H],[-h2,H-0.2]],
     glass:[[h2+0.06,1.25],[h2+0.06,H-0.4],[-h2+0.35,H-0.4],[-h2+0.35,1.25]], gw:1.02, roof:null };
-  if (k==='boxvan') return {
+  if (k==='boxvan'||k==='ambulance') return {
     body:[[-h2,0.42],[h2,0.42],[h2,1.0],[h2-0.25,1.25],[h2-0.62,2.1],[h2-1.3,2.12],[h2-1.3,H],[-h2,H]],
     glass:[[h2-0.28,1.3],[h2-0.6,2.02],[h2-0.95,2.02],[h2-0.95,1.3]], gw:0.94, roof:null };
   if (k==='truck') return {
@@ -1517,6 +1518,11 @@ function buildCarMesh(k,color){
     const y=T.h+0.1;
     part(g,trimMat,1.1,0.08,0.3,0,T.h+0.02,-T.len*0.06,false);
     lights=[part(g,sirenR,0.5,0.16,0.26,-0.28,y,-T.len*0.06,false), part(g,sirenB,0.5,0.16,0.26,0.28,y,-T.len*0.06,false)];
+  }
+  if (k==='ambulance'){   // SAMU: franjas amarillas y rojas, cruz y luces azules en el techo
+    for (const sg of [-1,1]){ part(g,paint('#f2c230'),0.03,0.22,T.len*0.9,sg*(T.w/2+0.04),0.95,0,false); part(g,paint('#d7262e'),0.03,0.14,T.len*0.9,sg*(T.w/2+0.04),0.75,0,false);
+      part(g,paint('#d7262e'),0.03,0.6,0.18,sg*(T.w/2+0.045),1.8,-T.len*0.18,false); part(g,paint('#d7262e'),0.03,0.18,0.6,sg*(T.w/2+0.045),1.8,-T.len*0.18,false); }
+    lights=[part(g,sirenB,0.5,0.16,0.26,-0.45,T.h+0.1,T.len*0.22,false), part(g,sirenB,0.5,0.16,0.26,0.45,T.h+0.1,T.len*0.22,false)];
   }
   if (k==='taxi'){ for (const sg of [-1,1]) part(g,paint('#b0262b'),0.03,0.14,T.len*0.8,sg*(T.w/2+0.075),0.62,0,false); part(g,new THREE.MeshBasicMaterial({color:'#39d353'}),0.5,0.18,0.24,0,T.h+0.1,-T.len*0.06,false); }
   if (k==='sports' && color==='#1f8a4c'){ part(g,paint('#f4f4f0'),0.42,0.02,T.len*0.7,0,top+0.01,T.len*0.1,false); }
@@ -1695,7 +1701,7 @@ class Ped{
     b.corners.forEach((c,i)=>{ const d=d2(c[0],c[1],this.x,this.z); if(d<bd){bd=d;best=i;} });
     this.k=best; [this.tx,this.tz]=b.corners[best]; this.cross=false;
   }
-  scare(fx,fz,t=6){ if (this.state==='call') this.endCall(false); if (this.state==='dead' || this.state==='cop' || this.state==='stagger' || this.state==='dragged') return; if (this.state==='cower'||this.state==='backoff') this.resetPose(); this.lookT=0; if (this.state!=='hit'){ this.state='flee'; } this.fx=fx; this.fz=fz; this.t=t; }
+  scare(fx,fz,t=6){ if (this.medic) return; if (this.state==='call') this.endCall(false); if (this.state==='dead' || this.state==='cop' || this.state==='stagger' || this.state==='dragged') return; if (this.state==='cower'||this.state==='backoff') this.resetPose(); this.lookT=0; if (this.state!=='hit'){ this.state='flee'; } this.fx=fx; this.fz=fz; this.t=t; }
   startCall(){   // el testigo saca el móvil y llama a la policía
     this.resetPose(); this.state='call'; this.ct=0; this.callDur=mrand(3.5,5.2); this.lookT=0; this.bumpT=0;
     if (!this.phone){ this.phone=new THREE.Mesh(phoneGeo,phoneMat); this.phone.position.set(0,-0.33,0.03); this.mesh.userData.elbows[0].add(this.phone); }
@@ -1708,8 +1714,8 @@ class Ped{
     if (done && r){ policeCall(r,false); say(this,mpick(['Ya vienen...','Dense prisa, por favor','Sí, ha sido aquí']),1.6); this.home(); }
   }
   look(t){ if (this.state==='walk'){ this.lookT=t; if (Math.random()<0.3) say(this,mpick(['¿Eh?','¿Qué...?','Uy...']),1.2); } }
-  cower(mode,t=2.5){ if (this.state==='call') this.endCall(false); if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return; this.resetPose(); this.state='cower'; this.cmode=mode; this.t=t; this.lookT=0; this.bumpT=0; }
-  backoff(t,handsUp){ if (this.state==='call') this.endCall(false); if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return; this.resetPose(); this.state='backoff'; this.t=t; this.handsUp=handsUp; this.lookT=0; this.bumpT=0; }
+  cower(mode,t=2.5){ if (this.medic) return; if (this.state==='call') this.endCall(false); if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return; this.resetPose(); this.state='cower'; this.cmode=mode; this.t=t; this.lookT=0; this.bumpT=0; }
+  backoff(t,handsUp){ if (this.medic) return; if (this.state==='call') this.endCall(false); if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return; this.resetPose(); this.state='backoff'; this.t=t; this.handsUp=handsUp; this.lookT=0; this.bumpT=0; }
   meleeHit(dmg,dx,dz,power,bat){
     if (this.state==='dead') return false;
     this.hp-=dmg;
@@ -1743,6 +1749,7 @@ class Ped{
   knock(vx,vz,kill){
     if (this.state==='call') this.endCall(false);
     if (this.state==='dead') return;
+    if (!this.medic && (kill || Math.hypot(vx,vz)>6)) emsReport(this.x,this.z);   // muerto o herido de gravedad (atropello, explosión): alguien llama al 112
     this.vx=vx; this.vz=vz; this.vy=kill?5:3; this.y=Math.max(this.y,0.01);
     this.state = kill ? 'dead' : 'hit'; this.t = kill ? 25 : 2.2;
   }
@@ -1750,6 +1757,10 @@ class Ped{
     const m=this.mesh;
     if (this.bubbleT>0){ this.bubbleT-=dt; if (this.bubbleT<=0) this.bubble.visible=false; }
     if (this.state==='dragged'){ if (!jack||jack.p!==this){ this.knock(0,0,false); } return; }   // lo mueve el robo del coche
+    if (this.state==='medic'){ const u=m.userData; m.position.set(this.x,0.02,this.z); m.rotation.y=this.h;   // sanitario: lo mueve updateEMS
+      if (this.mStep==='work'){ u.legs[0].rotation.x=u.legs[1].rotation.x=-1.3; u.knees[0].rotation.x=u.knees[1].rotation.x=2.2; u.arms[0].rotation.x=u.arms[1].rotation.x=-1.2; m.position.y=-0.45; }
+      else { u.knees[0].rotation.x=u.knees[1].rotation.x=0; animPed(m,this.phase,0.8); }
+      return; }
     const baseY=()=>this.y+(this.wgA!=null?0.06:this.block&&!this.cross?0.25:0.02);
     if (this.state==='cower'){   // asustado: manos arriba o agachado cubriéndose mientras le apuntan
       this.t-=dt; const u=m.userData, k=Math.min(1,(this.ct=(this.ct||0)+dt)*5);
@@ -2675,7 +2686,7 @@ function sirenVoice(S){
   lfo.frequency.value=6; lg.gain.value=8; lfo.connect(lg); lg.connect(o.frequency);   // un poco de vibrato
   o.connect(f); f.connect(g); g.connect(p); p.connect(master); o.start(); lfo.start(); return {o,g,p,lfo,S,ph:Math.random()};
 }
-function sirenOn(c){ return c.driver==='police' && c.ai && c.ai.mode==='chase' && player.stars>0; }
+function sirenOn(c){ return (c.driver==='police' && c.ai && c.ai.mode==='chase' && player.stars>0) || (c.emsOn && c.driver==='npc'); }
 function updateSirens(){
   if (!AC) return; const t=AC.currentTime, want=[];
   if (soundOn && state==='play') for (const c of cars){ const S=SIRENS[vAudio(c.k).siren]; if (S && sirenOn(c)){ const d=d2(c.x,c.z,camera.position.x,camera.position.z); if (d<300*300) want.push([d,c,S]); } }
@@ -3420,9 +3431,9 @@ function cruise(c,dt){
     ai.plan.shift(); buildPath(c); [s,lat]=pathProj(ai,c.x,c.z); }
   const A=nodes[ai.a], B=nodes[ai.b], v=Math.max(0,c.fwd());
   // velocidad de crucero del tipo de vía
-  let base = c.driver==='police' ? 15 : Math.min(12,c.T.max*0.6);
+  let base = c.driver==='police' || c.emsOn ? 15 : Math.min(12,c.T.max*0.6);
   if (A.hwy || B.hwy) base = Math.min(c.T.max*0.75, c.driver==='police'?30:22);
-  if ((A.real || B.real) && c.driver!=='police') base = Math.min(base,9);
+  if ((A.real || B.real) && c.driver!=='police' && !c.emsOn) base = Math.min(base,9);
   let desired=base;
   // curvas por delante: velocidad según el giro y distancia para frenar a tiempo (4,5 m/s²)
   for (let k=1;k<ai.pts.length-1;k++){ const d=ai.cum[k]-s; if (d>50) break; if (d<-6) continue; const th=turnAt(ai,k); if (th<0.18) continue;   // la curva cuenta hasta dejarla atrás
@@ -3549,7 +3560,7 @@ function spawnCarNear(mode,kind){
     const flip=e.ow ? e.ow===-1 : Math.random()<0.5, a=flip?B:A, b=flip?A:B;
     if (e.len<10) continue;
     const t=mrand(Math.min(15,e.len*0.3),e.len-Math.min(15,e.len*0.3)), ux=(b.x-a.x)/e.len, uz=(b.z-a.z)/e.len;
-    const parked = mode==='cruise' && Math.random()<0.14 && (e.real ? e.w>=9 : !e.diag && !e.hwy && !e.conn);   // nunca junto a conectores diagonales (quedaría en mitad de otra calzada)
+    const parked = !kind && mode==='cruise' && Math.random()<0.14 && (e.real ? e.w>=9 : !e.diag && !e.hwy && !e.conn);   // nunca junto a conectores diagonales (quedaría en mitad de otra calzada)
     if (!parked && !inNav(a.id,b.id)) continue;   // el tráfico solo nace en la red conectada y fuera de callejones sin salida
     const off = parked?parkOff(a.id,b.id):laneOff(a.id,b.id); if (off===null) continue; const x=a.x+ux*t-uz*off, z=a.z+uz*t+ux*off;
     const dd=Math.hypot(x-player.x,z-player.z); if (dd<95 || dd>230) continue;
@@ -3826,7 +3837,7 @@ function manage(dt){
   spawnT-=dt;
   if (spawnT<=0){
     spawnT=0.4;
-    for (const c of cars.slice()){ if (c===player.inCar||c.mission||(phoneTaxi&&phoneTaxi.car===c)) continue; if (d2(c.x,c.z,player.x,player.z)>270*270) c.remove();
+    for (const c of cars.slice()){ if (c===player.inCar||c.mission||c.ems||(phoneTaxi&&phoneTaxi.car===c)) continue; if (d2(c.x,c.z,player.x,player.z)>270*270) c.remove();
       else if (c.exploded && c.wreckT!==undefined){ const age=now-c.wreckT, d=Math.hypot(c.x-player.x,c.z-player.z), P=player.inCar||player, ahead=(c.x-P.x)*Math.sin(camYaw)+(c.z-P.z)*Math.cos(camYaw);
         if (age>240 || (age>75 && (d>60 || (d>25 && ahead<0)))) c.remove(); } }   // los restos se retiran con el tiempo, cuando no se ven; el tráfico vuelve a salir
     for (const p of peds.slice()){ if (d2(p.x,p.z,player.x,player.z)>210*210 || (p.state==='dead'&&p.t<=0)) p.remove(); }
@@ -4223,7 +4234,7 @@ function update(dt){
     if (sp>10 && Math.random()<0.2) for (const p of peds) if (p.state==='walk' && d2(p.x,p.z,c.x+c.vx*0.6,c.z+c.vz*0.6)<25) p.scare(c.x,c.z,2);
   }
   for (const p of peds) p.update(dt);
-  for (const c of cars){ c.sync(); if (c.lights){ const on=Math.floor(now*6)%2===0; c.lights[0].visible=on; c.lights[1].visible=!on; } }
+  for (const c of cars){ c.sync(); if (c.lights){ const on=Math.floor(now*6)%2===0, act=c.k!=='ambulance'||c.emsOn; c.lights[0].visible=act&&on; c.lights[1].visible=act&&!on; } }
 
   // policía: detención
   if (state==='play' && player.stars>0){
@@ -4249,7 +4260,7 @@ function update(dt){
     g.position.set(x,y,470); takeoff.inner.rotation.x=pitch; g.visible=t<66; }
   manage(dt);
   updateGrenades(dt); updatePickups(dt); updateClients(dt);
-  if (state==='play'){ autoSave(dt); updatePhoneTaxi(); updateMissions(dt); updateShops(dt); updateActivities(dt); perceiveWeapons(dt); }
+  if (state==='play'){ autoSave(dt); updatePhoneTaxi(); updateEMS(dt); updateMissions(dt); updateShops(dt); updateActivities(dt); perceiveWeapons(dt); }
   updatePool(glowP,dt); updatePool(smokeP,dt);
 }
 
@@ -4483,6 +4494,59 @@ function updatePhoneTaxi(){
     return; }
   if (d2(c.x,c.z,P.x,P.z)<22*22 || d2(c.x,c.z,c.ai.goal.x,c.ai.goal.z)<12*12){ c.ai.goal=null; c.ai.route=null; c.driver='taxi'; c.ai.mode='wait'; c.ai.waitT=90; c.pickup=true; taxiCall={car:c,quote:null}; horn2(c); T.waiting=true;
     const d=Math.hypot(c.x-P.x,c.z-P.z); if (d<12) return; setDest({x:c.x,z:c.z,name:'Tu taxi'}); dest.taxi=true; toast(`🚕 Tu taxi te espera a ${fmtDist(d)}: acércate`,2.6); }
+}
+/* ================= ambulancias (SAMU) =================
+   Aviso (atropello, explosión, herido grave) → sale una ambulancia desde fuera de la vista → llega con sirena por la red de
+   navegación → dos sanitarios atienden a las víctimas (el herido se levanta y se va; el fallecido se retira) → vuelven y se marcha.
+   Preparado para bomberos: otra unidad con su tipo, su sirena ('fire' ya existe) y su forma de atender. */
+const EMS={calls:[],max:2};
+function emsReport(x,z){
+  if (state!=='play' && state!=='dead') return;
+  const c=EMS.calls.find(q=>d2(q.x,q.z,x,z)<45*45 && q.st!=='done'); if (c){ c.t=Math.max(c.t,now); return; }
+  EMS.calls.push({x,z,t:now,at:now+mrand(7,14),st:'wait',unit:null});
+}
+function emsDispatch(call){
+  if (EMS.calls.filter(q=>q.unit&&q.st!=='done').length>=EMS.max) return;
+  let c=null; const saved=player.x, savedz=player.z;
+  // la ambulancia sale de fuera de la vista del jugador, cerca del aviso
+  for (let k=0;k<6 && !c;k++) c=spawnCarNear('cruise','ambulance');
+  if (!c) return; c.ems=call; c.emsOn=true; c.pass=0; c.ai.goal={x:call.x,z:call.z,r:30}; c.ai.route=null; call.unit=c; call.st='go'; call.t0=now;
+}
+function updateEMS(dt){
+  for (const call of EMS.calls.slice()){
+    const c=call.unit;
+    if (call.st==='wait'){ if (now>call.at) emsDispatch(call); if (now-call.t>120) call.st='done'; }
+    else if (call.st==='go'){
+      if (!c || !cars.includes(c) || c.dead || c.driver!=='npc' || now-call.t0>150){ if (c && cars.includes(c)){ c.emsOn=false; if (c.ai) c.ai.goal=null; } call.st='done'; continue; }
+      const dd=Math.hypot(c.x-call.x,c.z-call.z); c.emsBest=Math.min(c.emsBest??1e9,dd);
+      const R=c.ai.route, last=R&&R.length?R[R.length-1]:null, atEnd=last!==null && (c.ai.a===last || (c.ai.b===last && d2(c.x,c.z,nodes[last].x,nodes[last].z)<10*10));
+      if (dd<20 || (dd<75 && dd>c.emsBest+1.5) || (atEnd && dd<160)){   // aparca al pasar por el punto de la calle más cercano al aviso
+        // aparca y bajan los sanitarios
+        c.driver=null; c.ai.goal=null; resvDropAll(c); c.emsOn=true; call.st='attend'; call.t1=now; call.medics=[];
+        const fx=Math.sin(c.h), fz=Math.cos(c.h);
+        for (const sg of [-1,1]){ const p=new Ped(c.x-fx*(c.T.len/2+0.8)+(-fz)*sg*0.7, c.z-fz*(c.T.len/2+0.8)+fx*sg*0.7); p.medic=true; p.state='medic'; p.mStep='go'; p.speed=2.2;
+          scene.remove(p.mesh); disposePed(p.mesh); p.mesh=makePedMesh('#dfe8ea','#2f7d4f',mpick(SKIN),mpick(HAIR)); p.mesh.traverse(o=>{ if(o.isMesh) o.castShadow=false; }); scene.add(p.mesh); call.medics.push(p); }
+        call.victims=peds.filter(p=>(p.state==='dead'||p.state==='hit'||p.limp) && !p.medic && !p.cop && d2(p.x,p.z,call.x,call.z)<30*30).slice(0,4);
+      }
+    }
+    else if (call.st==='attend'){
+      const alive=call.medics.filter(m=>peds.includes(m));
+      if (!c || !cars.includes(c) || c.dead || c.driver){ for (const m of alive){ m.medic=false; m.state='walk'; m.home(); m.scare(player.x,player.z,6); } if (c) c.emsOn=false; call.st='done'; continue; }   // le han robado la ambulancia o la han destrozado
+      let busy=false;
+      alive.forEach((m,i)=>{ const v=call.victims.filter(q=>peds.includes(q))[i%Math.max(1,call.victims.length)];
+        if (m.mStep==='go'){ const tx=v?v.x+(i?0.9:-0.9):call.x, tz=v?v.z:call.z; if (medicWalk(m,tx,tz,dt)) { m.mStep='work'; m.wT=mrand(6,9); } busy=true; }
+        else if (m.mStep==='work'){ m.wT-=dt; if (v) m.h=Math.atan2(v.x-m.x,v.z-m.z); busy=true;
+          if (m.wT<=0){ if (v){ if (v.state==='dead'){ if (i===0) v.t=0; } else { v.state='walk'; v.hp=Math.max(v.hp,60); v.limp=false; v.y=0; v.home(); say(v,mpick(['Gracias...','Ay, qué susto','Estoy bien, estoy bien']),1.8); } } m.mStep='back'; } }
+        else if (m.mStep==='back'){ const fx=Math.sin(c.h), fz=Math.cos(c.h); if (medicWalk(m,c.x-fx*(c.T.len/2+0.8),c.z-fz*(c.T.len/2+0.8),dt)){ m.remove(); } else busy=true; } });
+      if ((!busy && !call.medics.some(m=>peds.includes(m))) || now-call.t1>60){ for (const m of call.medics) if (peds.includes(m)) m.remove();
+        c.emsOn=false; c.driver='npc'; assignEdge(c); c.ems=null; call.st='done'; }   // se marcha sin sirena; el tráfico normal se la lleva
+    }
+    if (call.st==='done') EMS.calls.splice(EMS.calls.indexOf(call),1);
+  }
+}
+function medicWalk(m,tx,tz,dt){   // andar deprisa hasta un punto esquivando lo justo; true al llegar
+  const dx=tx-m.x, dz=tz-m.z, L=Math.hypot(dx,dz); if (L<0.9) return true;
+  const sp=Math.min(L,m.speed*dt*1.4); m.h=Math.atan2(dx,dz); m.x+=dx/L*sp; m.z+=dz/L*sp; pushCircle(m,0.35); m.phase+=dt*9; return false;
 }
 function pause(){
   state='paused'; $('pause').hidden=false; $('bPCancel').hidden=!mission.cur;
