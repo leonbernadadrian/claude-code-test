@@ -523,7 +523,21 @@ const SHOPS=[
   const gridNodes=nodes.filter(n=>n.i>=0);
   const used=new Set();
   const plist=[...portals].map(s=>s.split(':').map(Number)).sort((a,b)=>b[1]-a[1]);
+  const lineOk=(ax,az,bx,bz)=>{ for (let t=0.1;t<1;t+=0.1){ const x=lerp(ax,bx,t), z=lerp(az,bz,t); if (riverBlocked(x,z) || inRZ(x,z,-3)) return false; } return true; };
   for (const [pid] of plist){ const P=nodes[pid];
+    const nm0=(RZ_ROADS.find(r=>r.pts.some(q=>Math.abs(q[0]-P.x)<0.6&&Math.abs(q[1]-P.z)<0.6))||{}).n||'';
+    /* si una calle de la cuadrícula pasa cerca, cruce en T justo enfrente (partiendo el tramo) en vez de una diagonal larga por dentro de otra calzada */
+    let be=null, bd=30, bt=0;
+    for (const e of edges){ if (e.real || e.diag || e.hwy) continue; const A=nodes[e.a], B=nodes[e.b]; if (A.i<0&&!A.split || B.i<0&&!B.split) continue;
+      const dx=B.x-A.x, dz=B.z-A.z, t=clamp(((P.x-A.x)*dx+(P.z-A.z)*dz)/(e.len*e.len),0,1), d=Math.hypot(A.x+dx*t-P.x,A.z+dz*t-P.z);
+      if (d<bd && t*e.len>12 && (1-t)*e.len>12){ bd=d; be=e; bt=t; } }
+    if (be){ const A=nodes[be.a], B=nodes[be.b], qx=lerp(A.x,B.x,bt), qz=lerp(A.z,B.z,bt);
+      if (lineOk(P.x,P.z,qx,qz)){
+        const q=nodes.length; nodes.push({id:q,i:-1,j:-1,x:qx,z:qz,nb:[],split:true});
+        const e2={...be, a:q, b:be.b, len:be.len*(1-bt)}; be.b=q; be.len*=bt;
+        A.nb[A.nb.indexOf(B.id)]=q; B.nb[B.nb.indexOf(A.id)]=q; nodes[q].nb.push(A.id,B.id); edges.push(e2);
+        edges.push({a:pid,b:q,len:Math.max(0.5,bd),diag:true,name:nm0,conn:true}); P.nb.push(q); nodes[q].nb.push(pid);
+        diagSegs.push([P.x,P.z,qx,qz]); continue; } }
     const cand=gridNodes.filter(g=>!used.has(g.id)).map(g=>[g,Math.hypot(g.x-P.x,g.z-P.z)]).filter(([g,d])=>d<90).sort((a,b)=>a[1]-b[1]);
     for (const [g] of cand.slice(0,3)){
       let ok=true; for (let t=0.1;t<1;t+=0.1){ const x=lerp(P.x,g.x,t), z=lerp(P.z,g.z,t); if (riverBlocked(x,z) || inRZ(x,z,-3)) { ok=false; break; } }
@@ -549,8 +563,37 @@ const mainNodes=(()=>{ const comp=new Map(); let best=[]; for (const n of liveNo
   while (st.length){ const c=st.pop(); for (const m of nodes[c].nb) if (!comp.has(m)){ comp.set(m,1); list.push(m); st.push(m); } } if (list.length>best.length) best=list; }
   return best.map(i=>nodes[i]); })();
 const edgeMap=new Map(); for (const e of edges){ edgeMap.set(e.a+'_'+e.b,e); edgeMap.set(e.b+'_'+e.a,e); }
-function canGo(a,b){ const e=edgeMap.get(a+'_'+b); if (!e || !e.ow) return true; return e.ow===1 ? e.a===a : e.b===a; }
-function laneOff(a,b){ const e=edgeMap.get(a+'_'+b); if (!e || !e.real) return 3.4; return e.ow ? 0 : Math.min(3.4,e.w/4); }
+function canGo(a,b){ const e=edgeMap.get(a+'_'+b); if (!e) return true; if (!edgeFits(a,b)) return false; if (!e.ow) return true; return e.ow===1 ? e.a===a : e.b===a; }
+function edgeFits(a,b){ const [l,r]=edgeClear(a,b); return l+r>=2*CAR_HALF+0.4; }   // calles reales por las que no cabe un coche: sin tráfico
+// Carril de cada tramo dirigido. En la cuadrícula la calzada es ancha (3,4 m a la derecha del eje). En el centro real se mide
+// el hueco libre a cada lado (fachadas, farolas...) y el carril se ajusta para que el coche quepa sin rozar.
+const VCLEAR=new Map(), CAR_HALF=1.05;
+function edgeClear(a,b){   // [libre a la izquierda, libre a la derecha] desde el eje, yendo de a a b (medido sobre el contorno real de los obstáculos)
+  const k=a+'_'+b; let v=VCLEAR.get(k); if (v) return v;
+  const A=nodes[a], B=nodes[b], L=Math.hypot(B.x-A.x,B.z-A.z)||1, ux=(B.x-A.x)/L, uz=(B.z-A.z)/L; let l=9, r=9;
+  const cands=query((A.x+B.x)/2,(A.z+B.z)/2,L/2+10).slice();
+  const see=(x,z)=>{ const dx=x-A.x, dz=z-A.z, t=dx*ux+dz*uz; if (t<-0.5||t>L+0.5) return; const d=-dx*uz+dz*ux;   // d>0: a la izquierda
+    if (d>=0) l=Math.min(l,d); else r=Math.min(r,-d); };
+  for (const c of cands){ if (c.h<=0.25) continue;   // bancos, jardineras, postes... también cuentan
+    const P=c.poly||[[c.x0,c.z0],[c.x1,c.z0],[c.x1,c.z1],[c.x0,c.z1]];
+    for (let i=0;i<P.length;i++){ const [px,pz]=P[i], [qx,qz]=P[(i+1)%P.length], n=Math.max(1,Math.ceil(Math.hypot(qx-px,qz-pz)/0.4));
+      for (let j=0;j<n;j++) see(px+(qx-px)*j/n,pz+(qz-pz)*j/n); }
+    // el eje atraviesa el obstáculo: no hay hueco
+    for (let t=0;t<=L;t+=0.5){ const x=A.x+ux*t, z=A.z+uz*t; if (x>c.x0&&x<c.x1&&z>c.z0&&z<c.z1&&(!c.poly||pointInPoly(x,z,c.poly))){ l=0; r=0; break; } } }
+  v=[l,r]; VCLEAR.set(k,v); VCLEAR.set(b+'_'+a,[r,l]); return v;
+}
+function laneOff(a,b){
+  const e=edgeMap.get(a+'_'+b); if (!e) return 3.4;
+  const [l,r]=edgeClear(a,b), want=!e.real?3.4:e.ow?0:Math.min(3.4,e.w/4), lo=-(l-CAR_HALF-0.25), hi=r-CAR_HALF-0.25;
+  return lo>hi ? (lo+hi)/2 : clamp(want,lo,hi);
+}
+function edgeNarrow(a,b){   // doble sentido pero sin sitio para dos carriles: se circula de uno en uno
+  const e=edgeMap.get(a+'_'+b); if (!e || !e.real || e.ow) return false; const [l,r]=edgeClear(a,b); return l+r<2*(2*CAR_HALF+0.35);
+}
+function parkOff(a,b){   // dónde aparcar sin invadir el carril (null si no cabe)
+  const e=edgeMap.get(a+'_'+b); if (!e || !e.real) return 6.0; const [,r]=edgeClear(a,b), lane=laneOff(a,b), off=r-1.15;
+  return off-CAR_HALF-(lane+CAR_HALF)>0.5 ? off : null;
+}
 
 /* ---- manzanas ---- */
 const blocks=[], blockMap=new Map();
@@ -1058,7 +1101,7 @@ const inCorridor=(x,z,m=0)=>Math.abs(x-riverX(z))<RHz(z)+m;
   const pos=[], nor=[], col=[];
   // edificios reales recortados en el borde del centro que invaden una calzada de la cuadrícula: se quitan (los coches se estrellaban contra ellos)
   { const gridE=edges.filter(e=>!e.real).map(e=>{ const A=nodes[e.a],B=nodes[e.b]; return [A.x,A.z,B.x,B.z,Math.min(A.x,B.x)-8,Math.min(A.z,B.z)-8,Math.max(A.x,B.x)+8,Math.max(A.z,B.z)+8]; });
-    for (let k=RZ_BLD.length-1;k>=0;k--){ const b=RZ_BLD[k]; if (b.n) continue;
+    for (let k=RZ_BLD.length-1;k>=0;k--){ const b=RZ_BLD[k];
       let x0=1e9,z0=1e9,x1=-1e9,z1=-1e9; for (const [x,z] of b.pts){ x0=Math.min(x0,x); x1=Math.max(x1,x); z0=Math.min(z0,z); z1=Math.max(z1,z); }
       if (x0>RZ.x0+12 && x1<RZ.x1-12 && z0>RZ.z0+12 && z1<RZ.z1-12) continue;
       const near=gridE.filter(q=>!(x1<q[4]||x0>q[6]||z1<q[5]||z0>q[7])); if (!near.length) continue;
@@ -1182,7 +1225,8 @@ const lampBulbMat=new THREE.MeshBasicMaterial({color:'#6b6555'}); let lampGlow=n
     for (let t=16; t<e.len-12; t+=34){
       const x=A.x+ux*t+(-uz)*7.5*side, z=A.z+uz*t+ux*7.5*side; side=-side;
       if (Math.abs(x-riverX(z))<RHz(z)+2 || inRZ(x,z)) continue;
-      if (NOROAD.some(r=>inRect(r,x,z)) || pointBlocked(x,z)) continue;
+      if (NOROAD.some(r=>inRect(r,x,z)) || pointBlocked(x,z) || inRZ(x,z,8)) continue;
+      if (edges.some(o=>(o.real||o.diag||o.conn||nodes[o.a].i<0||nodes[o.b].i<0) && segDist(x,z,nodes[o.a].x,nodes[o.a].z,nodes[o.b].x,nodes[o.b].z)<3.5)) continue;   // no en la trayectoria de conectores y calles reales
       poles.push({x,y:3.3,z,sx:0.22,sy:6.6,sz:0.22}); bulbs.push({x,y:6.7,z,sx:0.7,sy:0.35,sz:0.7});
       addCollider(x-0.2,z-0.2,x+0.2,z+0.2,6);
     }
@@ -1292,7 +1336,7 @@ const barrels=[];
   for (let i=0;i<9;i++){ g.save(); g.translate(R(20,480),R(40,230)); g.rotate(R(-0.3,0.3)); g.font=`bold ${Math.round(R(34,70))}px Impact,"Arial Black",sans-serif`; g.lineWidth=8; g.strokeStyle='#111'; const t=pick(tags); g.strokeText(t,-60,0); g.fillStyle=pick(['#ff3d7f','#3dd6ff','#ffe03d','#7dff3d','#ff8a3d','#b36bff']); g.fillText(t,-60,0); g.restore(); }
   const gt=new THREE.CanvasTexture(gcv); gt.colorSpace=THREE.SRGBColorSpace; const gm=new THREE.MeshLambertMaterial({map:gt});
   for (const sh of SHOPS){
-    if (sh.id==='bicis') continue;
+    if (sh.id!=='armas' && sh.id!=='droga') continue;   // la chabola con grafitis es solo del mercado negro del Palmeral
     const [x,z]=sh.pos;
     addBox(6,3,4.5,'#8b8f93',x,1.77,z-6.5,{col:true}); addBox(6.8,0.2,5.4,'#6b7075',x,3.4,z-6.5,{ry:0.05});
     const wall=new THREE.Mesh(new THREE.PlaneGeometry(10,2.6),gm); wall.position.set(x+7,1.57,z-2); wall.rotation.y=-Math.PI/2; scene.add(wall);
@@ -1459,7 +1503,7 @@ class Car{
     this.mesh.position.set(this.x,0,this.z); this.mesh.rotation.y=this.h;
     for (let i=0;i<4;i++){ this.wheels[i].rotation.x=this.spin; if (i<2) this.wheels[i].rotation.y=this.steerV*0.45; }
   }
-  remove(){ scene.remove(this.mesh); const i=cars.indexOf(this); if (i>=0) cars.splice(i,1); }
+  remove(){ scene.remove(this.mesh); resvDropAll(this); const i=cars.indexOf(this); if (i>=0) cars.splice(i,1); }
 }
 
 /* ================= peatones ================= */
@@ -3009,13 +3053,16 @@ function assignEdge(c){
   for (const nb of n.nb){ const m=nodes[nb], L=Math.hypot(m.x-n.x,m.z-n.z); const s=((m.x-n.x)*fx+(m.z-n.z)*fz)/L; if (s>bs){bs=s;best=nb;} }
   c.ai={mode:'cruise',a:n.id,b:best,stuck:0,rev:0,repath:0,path:null,pi:0,wait:0};
 }
-function aiControl(c,tx,tz,desired,dt){
+function aiControl(c,tx,tz,desired,dt,pursuit){
   const ai=c.ai, hd=Math.atan2(tx-c.x,tz-c.z), diff=wrapA(hd-c.h), v=c.fwd();
   let steer=clamp(-diff*2.3,-1,1);
+  if (pursuit && Math.abs(diff)<1.4){ const Ld=Math.max(1,Math.hypot(tx-c.x,tz-c.z)), k=2*Math.sin(diff)/Ld;   // curvatura necesaria → ángulo de volante
+    steer=clamp(-Math.atan(k*c.T.len*0.62)/(0.62*(1-Math.min(Math.abs(v)/c.T.max,1)*0.55)),-1,1); }
   let thr = v<desired-1 ? 1 : (v>desired+1.5 ? -0.7 : 0.1);
   if (desired<0.5) thr = v>0.5 ? -1 : 0;
   if (Math.abs(diff)>1.1 && v>9) thr=-0.6;
-  if (ai.rev>0){ ai.rev-=dt; thr=-1; steer=-steer; }
+  if (ai.rev>0){ ai.rev-=dt; thr=v>-2.5?-0.55:0; steer=-steer;   // marcha atrás despacio y solo si detrás hay sitio
+    const bl=c.T.len*0.5+1.4; if (circleBlocked(c.x-Math.sin(c.h)*bl,c.z-Math.cos(c.h)*bl,c.T.w*0.5) || carAt(c.x-Math.sin(c.h)*bl,c.z-Math.cos(c.h)*bl,0.3)){ ai.rev=0; thr=0; } }
   else if (thr>0.5 && Math.abs(v)<1){ ai.stuck+=dt; if (ai.stuck>1.3){ ai.rev=1.2; ai.stuck=0; } }
   else ai.stuck=Math.max(0,ai.stuck-dt);
   c.drive(dt,thr,steer,false);
@@ -3033,41 +3080,192 @@ function shooPeds(c){   // el que pita aparta a los peatones que tiene delante (
   for (const p of peds){ if (p.state==='dead'||p.cop) continue; const dx=p.x-c.x, dz=p.z-c.z, f=dx*fx+dz*fz, l=dx*(-fz)+dz*fx;
     if (f>hl*0.3 && f<hl+13 && Math.abs(l)<2.2){ if (p.state==='call') continue; const s=l>=0?1:-1; p.scare(p.x+fz*s*-6,p.z-fx*s*-6,1.6); } }
 }
+/* ---- conducción del tráfico ----
+   Cada coche lleva un plan de nodos por delante (el siguiente cruce se decide con antelación, o sale de la ruta si tiene
+   destino) y sigue una trayectoria por su carril con las esquinas en el cruce de los carriles. Mira un punto por delante
+   que depende de la velocidad, frena antes de las curvas según lo cerradas que sean, sigue al vehículo o peatón que tenga
+   delante sobre esa trayectoria y pide paso en los cruces y en las calles de un solo carril (uno cada vez). */
+const RESV=new Map();   // cruce o tramo estrecho → Map(coche → {dir,to,t})
+function resvFree(key,c,dir,to,straight){
+  const m=RESV.get(key); if (!m) return true;
+  for (const [o,r] of m){ if (o===c) continue;
+    if (!cars.includes(o) || o.dead || now-r.t>1){ m.delete(o); continue; }   // caduca solo si su dueño deja de renovarla
+    if (r.dir===dir) continue;                                    // mismo sentido: detrás del otro
+    if (straight && r.straight && r.opp===dir) continue;          // de frente y los dos siguen recto: no se cruzan
+    return false; }
+  return true;
+}
+function resvTake(key,c,info){ let m=RESV.get(key); if (!m){ m=new Map(); RESV.set(key,m); } info.t=now; m.set(c,info); (c.ai.holds||(c.ai.holds=new Set())).add(key); }
+function resvDrop(key,c){ const m=RESV.get(key); if (m){ m.delete(c); if (!m.size) RESV.delete(key); } if (c.ai&&c.ai.holds) c.ai.holds.delete(key); }
+function resvDropAll(c){ if (c.ai&&c.ai.holds) for (const k of [...c.ai.holds]) resvDrop(k,c); }
+// Fondos de saco: nodos sin salida y las cadenas de tramos que solo llevan a ellos. El tráfico no entra (no caben cambios de sentido).
+let DEAD=null, MAINSET=null;
+const inMain=n=>(MAINSET||(MAINSET=new Set(mainNodes.map(m=>m.id)))).has(n);
+function deadEnds(){ if (DEAD) return DEAD; DEAD=new Set(); for (const n of nodes) if (!inMain(n.id)) DEAD.add(n.id); let changed=true;   // fuera de la red conectada también cuenta
+  while (changed){ changed=false; for (const n of mainNodes){ if (DEAD.has(n.id)) continue; const live=n.nb.filter(m=>!DEAD.has(m)); if (live.length<=1){ DEAD.add(n.id); changed=true; } } }
+  return DEAD; }
+function pickNext(c,from,at){
+  const ai=c.ai, A=nodes[from], B=nodes[at];
+  if (ai.goal){ let i=ai.route?ai.route.indexOf(at):-1;
+    if (i<0){ const g=nearestNode(ai.goal.x,ai.goal.z); ai.route=pathTo(B,g,true)||pathTo(B,g)||null; i=0; }
+    const want=ai.route&&ai.route[i+1]; if (want!==undefined && B.nb.includes(want) && (want===from || turnOk(from,at,want))) return want; ai.route=null; }   // giro que no cabe: sigue por otra y recalcula
+  const D=deadEnds();
+  let opts=B.nb.filter(n=>n!==from && inNav(at,n) && turnOk(from,at,n));   // dentro de la red navegable
+  if (!opts.length) opts=B.nb.filter(n=>n!==from && canGo(at,n) && !D.has(n) && turnOk(from,at,n)); if (!opts.length) opts=B.nb.filter(n=>n!==from && canGo(at,n) && turnOk(from,at,n)); if (!opts.length) opts=B.nb.filter(n=>n!==from && canGo(at,n)); if (!opts.length) opts=B.nb.filter(n=>n!==from); if (!opts.length) return from;
+  const ux=B.x-A.x, uz=B.z-A.z, L=Math.hypot(ux,uz)||1;
+  const straight=opts.find(n=>{ const m=nodes[n], d=Math.hypot(m.x-B.x,m.z-B.z)||1; return ((m.x-B.x)*ux+(m.z-B.z)*uz)/(d*L)>0.95; });
+  return straight!==undefined && Math.random()<0.55 ? straight : mpick(opts);
+}
+// capa de navegación: tramos con sentido desde los que se puede seguir circulando siempre, sin media vuelta ni giros que no caben
+// (componente fuertemente conexa mayor del grafo de tramos dirigidos; fuera de ella quedan callejones y fragmentos a los que no se entra)
+let NAVSET=null;
+function navSet(){
+  if (NAVSET) return NAVSET;
+  const ids=[], idx=new Map();
+  for (const e of edges){ if (e.blocked) continue; for (const [a,b] of [[e.a,e.b],[e.b,e.a]]) if (canGo(a,b)){ idx.set(a+'_'+b,ids.length); ids.push([a,b]); } }
+  const out=ids.map(([a,b])=>{ const r=[]; for (const c of nodes[b].nb){ if (c===a) continue; const j=idx.get(b+'_'+c); if (j!==undefined && turnOk(a,b,c)) r.push(j); } return r; });
+  const inn=ids.map(()=>[]); out.forEach((r,i)=>r.forEach(j=>inn[j].push(i)));
+  const seen=new Uint8Array(ids.length), order=[];
+  for (let i=0;i<ids.length;i++){ if (seen[i]) continue; const st=[[i,0]]; seen[i]=1;
+    while (st.length){ const top=st[st.length-1], r=out[top[0]]; if (top[1]<r.length){ const j=r[top[1]++]; if (!seen[j]){ seen[j]=1; st.push([j,0]); } } else { order.push(top[0]); st.pop(); } } }
+  const comp=new Int32Array(ids.length).fill(-1), size=[]; let nc=0;
+  for (let k=order.length-1;k>=0;k--){ const i=order[k]; if (comp[i]>=0) continue; let n=0; const st=[i]; comp[i]=nc;
+    while (st.length){ const x=st.pop(); n++; for (const j of inn[x]) if (comp[j]<0){ comp[j]=nc; st.push(j); } } size.push(n); nc++; }
+  const big=size.indexOf(Math.max(...size)); NAVSET=new Set(); ids.forEach(([a,b],i)=>{ if (comp[i]===big) NAVSET.add(a+'_'+b); });
+  return NAVSET;
+}
+const inNav=(a,b)=>navSet().has(a+'_'+b);
+// ¿cabe un coche por la trayectoria real de este giro (carril, esquina y el recorte de la curva) sin tocar edificios?
+const TURNOK=new Map();
+function turnOk(p,n,q){
+  const key=p+'>'+n+'>'+q; let v=TURNOK.get(key); if (v!==undefined) return v;
+  const P=nodes[p], N=nodes[n], Q=nodes[q], L1=Math.hypot(N.x-P.x,N.z-P.z)||1, L2=Math.hypot(Q.x-N.x,Q.z-N.z)||1;
+  const u1x=(N.x-P.x)/L1, u1z=(N.z-P.z)/L1, u2x=(Q.x-N.x)/L2, u2z=(Q.z-N.z)/L2, o1=laneOff(p,n), o2=laneOff(n,q);
+  const a1x=P.x-u1z*o1, a1z=P.z+u1x*o1, a2x=N.x-u2z*o2, a2z=N.z+u2x*o2, cr=u1x*u2z-u1z*u2x;
+  let cx=(a1x+u1x*L1+a2x)/2, cz=(a1z+u1z*L1+a2z)/2;
+  if (Math.abs(cr)>0.12){ const t=((a2x-a1x)*u2z-(a2z-a1z)*u2x)/cr, x=a1x+u1x*t, z=a1z+u1z*t; if (d2(x,z,N.x,N.z)<=36){ cx=x; cz=z; } }
+  if (Math.abs(cr)<0.2 && u1x*u2x+u1z*u2z>0){ TURNOK.set(key,true); return true; }   // casi recto
+  const b=Math.min(5,L1*0.8), f=Math.min(5,L2*0.8), p1x=cx-u1x*b, p1z=cz-u1z*b, p2x=cx+u2x*f, p2z=cz+u2z*f;
+  const clear=(ax,az,bx,bz)=>{ const L=Math.hypot(bx-ax,bz-az), k=Math.max(1,Math.ceil(L/0.5)); for (let i=0;i<=k;i++){ if (circleBlocked(lerp(ax,bx,i/k),lerp(az,bz,i/k),CAR_HALF)) return false; } return true; };
+  v=clear(p1x,p1z,cx,cz) && clear(cx,cz,p2x,p2z) && clear(p1x,p1z,(p1x+p2x)/2*0.5+cx*0.5,(p1z+p2z)/2*0.5+cz*0.5) && clear((p1x+p2x)/2*0.5+cx*0.5,(p1z+p2z)/2*0.5+cz*0.5,p2x,p2z);
+  TURNOK.set(key,v); return v;
+}
+function buildPath(c){   // puntos del carril: inicio, esquinas (cruce de los carriles de dos tramos seguidos) y final
+  const ai=c.ai, P=ai.plan;
+  while (P.length<3 || planLen(P)<55){ const n=P.length; if (P.length>10) break; P.push(pickNext(c,P[n-2],P[n-1])); }
+  const pts=[], seg=[];
+  for (let k=0;k<P.length-1;k++){ const A=nodes[P[k]], B=nodes[P[k+1]], L=Math.hypot(B.x-A.x,B.z-A.z)||1, ux=(B.x-A.x)/L, uz=(B.z-A.z)/L, o=laneOff(P[k],P[k+1]); seg.push({ax:A.x-uz*o,az:A.z+ux*o,ux,uz,L}); }
+  pts.push([seg[0].ax,seg[0].az]);
+  for (let k=0;k<seg.length-1;k++){ const s1=seg[k], s2=seg[k+1], cr=s1.ux*s2.uz-s1.uz*s2.ux, B=nodes[P[k+1]];
+    let px, pz;
+    if (Math.abs(cr)>0.12){ const t=((s2.ax-s1.ax)*s2.uz-(s2.az-s1.az)*s2.ux)/cr; px=s1.ax+s1.ux*t; pz=s1.az+s1.uz*t; if (d2(px,pz,B.x,B.z)>36){ px=undefined; } }
+    if (px===undefined){ px=(s1.ax+s1.ux*s1.L+s2.ax)/2; pz=(s1.az+s1.uz*s1.L+s2.az)/2; }
+    pts.push([px,pz]); }
+  const sl=seg[seg.length-1]; pts.push([sl.ax+sl.ux*sl.L,sl.az+sl.uz*sl.L]);
+  const cum=[0]; for (let k=1;k<pts.length;k++) cum.push(cum[k-1]+Math.hypot(pts[k][0]-pts[k-1][0],pts[k][1]-pts[k-1][1]));
+  ai.pts=pts; ai.cum=cum; ai.si=0; ai.a=P[0]; ai.b=P[1];
+}
+function planLen(P){ let L=0; for (let k=0;k<P.length-1;k++){ const A=nodes[P[k]],B=nodes[P[k+1]]; L+=Math.hypot(B.x-A.x,B.z-A.z); } return L; }
+function pathProj(ai,x,z){   // proyección de un punto sobre la trayectoria: [distancia recorrida, separación lateral]
+  const pts=ai.pts, cum=ai.cum; let best=1e9, bs=0;
+  for (let k=Math.max(0,ai.si-1);k<pts.length-1 && k<ai.si+6;k++){ const [ax,az]=pts[k],[bx,bz]=pts[k+1], dx=bx-ax, dz=bz-az, l2=dx*dx+dz*dz||1, t=clamp(((x-ax)*dx+(z-az)*dz)/l2,0,1), px=ax+dx*t, pz=az+dz*t, d=Math.hypot(x-px,z-pz);
+    if (d<best){ best=d; bs=cum[k]+t*Math.sqrt(l2); } }
+  return [bs,best];
+}
+function pathPoint(ai,s){ const pts=ai.pts, cum=ai.cum; let k=0; while (k<pts.length-2 && cum[k+1]<s) k++; const L=cum[k+1]-cum[k]||1, t=clamp((s-cum[k])/L,0,1); return [pts[k][0]+(pts[k+1][0]-pts[k][0])*t, pts[k][1]+(pts[k+1][1]-pts[k][1])*t]; }
+const turnAt=(ai,k)=>{ const p=ai.pts; if (k<=0||k>=p.length-1) return 0; const a1=Math.atan2(p[k][0]-p[k-1][0],p[k][1]-p[k-1][1]), a2=Math.atan2(p[k+1][0]-p[k][0],p[k+1][1]-p[k][1]); return Math.abs(wrapA(a2-a1)); };
 function cruise(c,dt){
-  const ai=c.ai; let A=nodes[ai.a], B=nodes[ai.b];
-  let L=Math.hypot(B.x-A.x,B.z-A.z), ux=(B.x-A.x)/L, uz=(B.z-A.z)/L;
-  let lo=laneOff(ai.a,ai.b), ox=-uz*lo, oz=ux*lo;
-  let t=(c.x-A.x-ox)*ux+(c.z-A.z-oz)*uz;
-  if (t>L-5){
-    let opts=B.nb.filter(n=>n!==A.id && canGo(B.id,n)); if (!opts.length) opts=B.nb.filter(n=>n!==A.id); if (!opts.length) opts=[A.id];
-    let nx=opts[Math.floor(Math.random()*opts.length)];
-    const straight=opts.find(n=>{ const m=nodes[n]; return Math.abs(((m.x-B.x)*ux+(m.z-B.z)*uz)/Math.hypot(m.x-B.x,m.z-B.z)-1)<0.05; });
-    if (straight!==undefined && Math.random()<0.5) nx=straight;
-    if (ai.goal){   // con una ruta planificada (taxis) elige el siguiente cruce de la ruta en vez de girar al azar
-      let i=ai.route?ai.route.indexOf(B.id):-1;
-      if (i<0){ const g=nearestNode(ai.goal.x,ai.goal.z); ai.route=pathTo(B,g,true)||pathTo(B,g)||null; i=0; }
-      const want=ai.route&&ai.route[i+1]; if (want!==undefined && B.nb.includes(want)) nx=want;
-    }
-    ai.a=B.id; ai.b=nx; A=nodes[ai.a]; B=nodes[ai.b];
-    L=Math.hypot(B.x-A.x,B.z-A.z); ux=(B.x-A.x)/L; uz=(B.z-A.z)/L;
-    lo=laneOff(ai.a,ai.b); ox=-uz*lo; oz=ux*lo; t=Math.max(0,(c.x-A.x-ox)*ux+(c.z-A.z-oz)*uz);
+  const ai=c.ai;
+  if (!ai.plan || ai.plan[0]!==ai.a || ai.plan[1]!==ai.b){ resvDropAll(c); ai.plan=[ai.a,ai.b]; buildPath(c); }
+  let [s,lat]=pathProj(ai,c.x,c.z);
+  while (ai.si<ai.pts.length-2 && ai.cum[ai.si+1]<s) ai.si++;
+  if (s>=ai.cum[1]+4 && ai.pts.length>2){   // ha dejado atrás la esquina del siguiente nodo: avanza el plan
+    ai.plan.shift(); buildPath(c); [s,lat]=pathProj(ai,c.x,c.z); }
+  const A=nodes[ai.a], B=nodes[ai.b], v=Math.max(0,c.fwd());
+  // velocidad de crucero del tipo de vía
+  let base = c.driver==='police' ? 15 : Math.min(12,c.T.max*0.6);
+  if (A.hwy || B.hwy) base = Math.min(c.T.max*0.75, c.driver==='police'?30:22);
+  if ((A.real || B.real) && c.driver!=='police') base = Math.min(base,9);
+  let desired=base;
+  // curvas por delante: velocidad según el giro y distancia para frenar a tiempo (4,5 m/s²)
+  for (let k=1;k<ai.pts.length-1;k++){ const d=ai.cum[k]-s; if (d>50) break; if (d<-6) continue; const th=turnAt(ai,k); if (th<0.18) continue;   // la curva cuenta hasta dejarla atrás
+    let vt=clamp(base*(1-th/2.2)+1.5,3,base); if (c.T.len>7) vt*=0.8; desired=Math.min(desired,Math.sqrt(vt*vt+2*4.5*Math.max(0,d-1))); }
+  // paradas de autobús (sobre el tramo actual)
+  const ux=(B.x-A.x), uz=(B.z-A.z), Le=Math.hypot(ux,uz)||1, te=((c.x-A.x)*ux+(c.z-A.z)*uz)/Le;
+  if (c.k==='bus'){ const key=ai.a+'_'+ai.b, st=busStopMap.get(key); if (st!==undefined && c.lastStop!==key && te>st-18 && te<st-4){ desired=0; if (c.speed<0.6){ c.busWait=(c.busWait||0)+dt; if (c.busWait>4){ c.lastStop=key; c.busWait=0; } } } }
+  // semáforo en el próximo nodo
+  const dB=ai.cum[1]-s;
+  if (B.light && dB>3 && dB<26 && lightState(Math.abs(ux)>Math.abs(uz)?'H':'V')!=='green') desired=Math.min(desired,Math.sqrt(2*6*Math.max(0,dB-5)));
+  // lo que tiene delante sobre su trayectoria (coches, peatones, jugador): distancia de seguimiento según la velocidad
+  const range=8+v*2.2; let gap=1e9, who=null;
+  const test=(o,x,z,wid,len)=>{ if (d2(x,z,c.x,c.z)>(range+12)*(range+12)) return; const [so,lo]=pathProj(ai,x,z); if (lo>wid || so<=s+0.3 || so-s>range) return; const g=so-s-c.T.len/2-len; if (g<gap){ gap=g; who=o; } };
+  if (ai.byp && (!cars.includes(ai.byp.car) || now>ai.byp.until || pathProj(ai,ai.byp.car.x,ai.byp.car.z)[0]<s-ai.byp.car.T.len/2-c.T.len/2-1)) ai.byp=null;
+  for (const o of cars) if (o!==c && !(ai.byp && ai.byp.car===o)){ const ca=Math.abs(Math.cos(o.h-c.h)), sa=Math.abs(Math.sin(o.h-c.h));   // un coche cruzado ocupa su largo a lo ancho de la trayectoria
+    test(o,o.x,o.z,ca*o.T.w/2+sa*o.T.len/2+c.T.w/2+0.15,ca*o.T.len/2+sa*o.T.w/2); }
+  for (const p of peds) if (p.state!=='dead') test(p,p.x,p.z,c.T.w/2+0.55,0.3);
+  if (!player.inCar) test(player,player.x,player.z,c.T.w/2+0.6,0.3);
+  if (who){ const vf=Math.max(0,(gap-2.2)*0.95); desired=Math.min(desired,vf); }
+  ai.dbg={who:who?(who.k||(who===player?'player':'ped')):null,gap:+gap.toFixed(1),yieldAt:ai.yieldKey||null};
+  if (who && gap<4){ ai.wait+=dt; if (ai.wait>6 && who.ai && who.ai.wait>3) desired=Math.max(desired,2.2);   // dos coches esperándose el uno al otro: este avanza despacio
+    if (ai.wait>2.5 && c.hornT<=0){ c.hornT=4; if (d2(c.x,c.z,player.x,player.z)<900) hornAt(c,Math.random()<0.5?0.18:0.4,Math.random()<0.5?2:1); shooPeds(c); } }
+  else ai.wait=Math.max(0,ai.wait-dt*2);
+  // coche parado sin conductor (aparcado mal, abandonado, destrozado) en el carril: lo rodea si el carril contrario está libre
+  if (!ai.byp && who && who.T && gap<7 && ai.wait>2.5 && (!who.driver || who.dead || who.exploded) && who.speed<0.3){
+    const [so]=pathProj(ai,who.x,who.z), [px,pz]=pathPoint(ai,so), [qx,qz]=pathPoint(ai,so+1), L=Math.hypot(qx-px,qz-pz)||1, nx=-(qz-pz)/L, nz=(qx-px)/L, sh=(who.x-px)*nx+(who.z-pz)*nz-(who.T.w+c.T.w)/2-0.7;   // hacia el lado del carril contrario
+    const bx=px+nx*sh, bz=pz+nz*sh; let free=!circleBlocked(bx,bz,c.T.w*0.5+0.2) && !circleBlocked(px+nx*sh+(qx-px)/L*6,pz+nz*sh+(qz-pz)/L*6,c.T.w*0.5+0.2);
+    if (free) for (const o of cars) if (o!==c && o!==who && d2(o.x,o.z,bx,bz)<30*30 && o.speed>0.5) { free=false; break; }
+    if (free) ai.byp={car:who,sh,until:now+8}; }
+  // cruces y calles de un solo carril: pedir paso
+  const P=ai.plan; ai.yieldKey=null;
+  for (let k=1;k<P.length-1;k++){ const d=ai.cum[k]-s; if (d>18) break;
+    const n=P[k], junction=nodes[n].nb.length>=3, narrow=edgeNarrow(n,P[k+1]);
+    if (!junction && !narrow) continue;
+    const straight=turnAt(ai,k)<0.35, info={dir:P[k-1],to:P[k+1],straight,opp:P[k+1]};
+    const keys=[]; if (junction) keys.push('n'+n); if (narrow) keys.push('e'+Math.min(n,P[k+1])+'_'+Math.max(n,P[k+1]));
+    let ok=true; for (const key of keys){ const inf=key[0]==='e'?{dir:n,to:P[k+1],straight:true,opp:-1}:info; if (!resvFree(key,c,inf.dir,inf.to,inf.straight)) ok=false; }
+    const committed=d<3+c.T.len*0.5 && ai.holds && keys.every(key=>ai.holds.has(key));   // ya está dentro del cruce: sigue
+    if (committed) ok=true; else if (ok && gap<d+10 && gap<1e8){ ok=false; }   // no entra si no puede atravesarlo (hay algo parado delante): no bloquea el cruce
+    // ya tiene el morro dentro del cruce sin permiso y lleva rato quieto: lo toma para despejarlo (si no, él y quien cruza se esperan para siempre)
+    if (!ok && !committed && d-c.T.len*0.5<ROAD+0.5 && c.speed<1 && ai.yieldKey0===keys.join(',') && now-ai.yieldT0>3) ok=true;
+    if (ok) for (const key of keys) resvTake(key,c,key[0]==='e'?{dir:n,to:P[k+1],straight:true,opp:-1}:{...info});
+    else { desired=Math.min(desired,Math.sqrt(2*6*Math.max(0,d-8.5-c.T.len*0.5))); ai.yieldKey=keys.join(','); if (ai.yieldKey0!==ai.yieldKey){ ai.yieldKey0=ai.yieldKey; ai.yieldT0=now; }
+      // si el que ya está cruzando no puede seguir porque este le tapa el paso (giro abierto de un camión...), retrocede un poco
+      if (c.speed<1 && !(ai.rev>0) && now>(ai.backT||0)) for (const key of keys){ const m=RESV.get(key); if (m) for (const o of m.keys()) if (o!==c && o.ai && o.ai.dbg && o.ai.dbg.who===c && o.ai.dbg.gap<3){ ai.rev=1.4; ai.backT=now+3; } }
+      break; }
   }
-  const look=Math.min(t+10,L);
-  const tx=A.x+ox+ux*look, tz=A.z+oz+uz*look;
-  let desired = c.driver==='police' ? 15 : Math.min(12,c.T.max*0.6);
-  if (A.hwy || B.hwy) desired = Math.min(c.T.max*0.75, c.driver==='police'?30:22);
-  if ((A.real || B.real) && c.driver!=='police') desired = Math.min(desired,9);
-  if (c.k==='bus'){ const key=ai.a+'_'+ai.b, st=busStopMap.get(key); if (st!==undefined && c.lastStop!==key && t>st-18 && t<st-4){ desired=0; if (c.speed<0.6){ c.busWait=(c.busWait||0)+dt; if (c.busWait>4){ c.lastStop=key; c.busWait=0; } } } }
-  if (L-t<16+c.T.len*0.5) desired=Math.min(desired,c.T.len>7?5:7);
-  if (B.light && L-t>9 && L-t<26 && lightState(Math.abs(ux)>Math.abs(uz)?'H':'V')!=='green') desired=0;
-  const blk=blockedAhead(c,11);
-  if (blk){ ai.wait+=dt; desired=(ai.wait>6 && blk.ai && blk.ai.wait>3)?2.5:0;   // dos coches esperándose el uno al otro: este avanza despacio y se deshace el atasco
-    if (ai.wait>2.5 && c.hornT<=0){ c.hornT=4; if (d2(c.x,c.z,player.x,player.z)<900) hornAt(c,Math.random()<0.5?0.18:0.4,Math.random()<0.5?2:1); shooPeds(c); } } else ai.wait=0;
-  aiControl(c,tx,tz,desired,dt);
+  // soltar lo que ya ha dejado atrás (o lo que tiene reservado mientras está parado detrás de otro)
+  if (ai.holds && ai.holds.size && c.speed<0.5 && ai.wait>3 && !(ai.cum[1]-s<ROAD+0.5+c.T.len*0.5)) resvDropAll(c);   // con el morro dentro del cruce no lo suelta
+  if (ai.holds) for (const key of [...ai.holds]){ const n=key[0]==='n'?+key.slice(1):null;
+    if (n!==null){ const k=P.indexOf(n); if (k<0 || (k===0 && s>5+c.T.len*0.5)) resvDrop(key,c); }   // hasta que la cola sale del cruce
+    else { const [x,y]=key.slice(1).split('_').map(Number); if (!(P[0]===x&&P[1]===y || P[0]===y&&P[1]===x || P.slice(0,4).includes(x)&&P.slice(0,4).includes(y))) resvDrop(key,c); } }
+  // dirección: persecución pura sobre la trayectoria
+  const Ld=clamp(3+0.55*v,4,11); let [tx,tz]=pathPoint(ai,s+Ld);
+  if (ai.byp){ const [qx,qz]=pathPoint(ai,s+Ld+1), L=Math.hypot(qx-tx,qz-tz)||1, nx=-(qz-tz)/L, nz=(qx-tx)/L; tx+=nx*ai.byp.sh; tz+=nz*ai.byp.sh; desired=Math.min(desired,5); lat=0; }
+  const he=Math.abs(wrapA(Math.atan2(tx-c.x,tz-c.z)-c.h)); desired=Math.min(desired,Math.max(2.5,base*(1-he/1.1)-lat*1.2));   // mal orientado o fuera del carril: despacio hasta recolocarse
+  ai.des=desired; ai.lat=lat;
+  aiControl(c,tx,tz,desired,dt,true);
+}
+function copAhead(c,v,range){   // coche civil delante en su trayectoria: velocidad a la que puede ir sin embestirlo (al del jugador sí puede)
+  const fx=Math.sin(c.h), fz=Math.cos(c.h); let lim=1e9;
+  for (const o of cars){ if (o===c || o===player.inCar) continue; const dx=o.x-c.x, dz=o.z-c.z; if (dx*dx+dz*dz>(range+8)*(range+8)) continue;
+    const f=dx*fx+dz*fz, l=Math.abs(-dx*fz+dz*fx); if (f<=0 || f>range || l>(o.T.w+c.T.w)/2+0.4) continue;
+    const gap=f-(o.T.len+c.T.len)/2, ov=Math.max(0,o.vx*fx+o.vz*fz); lim=Math.min(lim,ov+Math.sqrt(2*7*Math.max(0,gap-2))); }
+  return lim;
 }
 function chase(c,dt){
   const ai=c.ai; ai.repath-=dt; ai.slowT=c.speed<2?(ai.slowT||0)+dt:0;
   const K=policeTarget(); let P=player.inCar||player;
+  // sin estrellas solo investiga: va hasta la zona como un coche más, respetando cruces y distancias; al llegar rastrea despacio
+  if (player.stars===0){ const dK=Math.hypot(K.x-c.x,K.z-c.z);
+      if (!ai.inv){ const n=nearestNode(c.x,c.z); if (n){ let best=n.nb[0], bs=-2; const fx=Math.sin(c.h), fz=Math.cos(c.h);
+          for (const nb of n.nb){ const m=nodes[nb], L=Math.hypot(m.x-n.x,m.z-n.z)||1, sc=((m.x-n.x)*fx+(m.z-n.z)*fz)/L; if (sc>bs){ bs=sc; best=nb; } }
+          resvDropAll(c); ai.a=n.id; ai.b=best; ai.plan=null; ai.route=null; ai.wait=0; } ai.inv=true; }
+      if (dK<40 && !ai.search) ai.search=true;   // ya en la zona: recorre las calles cercanas
+      if (ai.search){ if (!ai.goal || d2(c.x,c.z,ai.goal.x,ai.goal.z)<18*18 || now>ai.sT){ const cand=mainNodes.filter(n=>{ const d=d2(n.x,n.z,K.x,K.z); return d>15*15 && d<130*130; });
+          const n=cand.length?mpick(cand):nearestNode(K.x,K.z); ai.goal={x:n.x,z:n.z}; ai.route=null; ai.sT=now+18; } }
+      else ai.goal={x:K.x,z:K.z};
+      cruise(c,dt); ai.slowT=0; return;
+  } else if (ai.inv){ ai.inv=false; ai.search=false; ai.sx=undefined; ai.goal=null; ai.route=null; resvDropAll(c); ai.repath=0; }
   if (!K.live){   // no te ve: va al último punto conocido y luego rastrea la zona
     const kn=nearestNode(K.x,K.z);
     if (!ai.search && (d2(c.x,c.z,K.x,K.z)<30*30 || d2(c.x,c.z,kn.x,kn.z)<25*25)) ai.search=true;   // ha llegado: rastrea calles cercanas
@@ -3088,7 +3286,7 @@ function chase(c,dt){
   }
   // fuera de la vista del jugador avanza por la ruta de forma simplificada: no se atasca en callejones
   if (hidden && ai.path && ai.pi<ai.path.length && dP>15){
-    const n=nodes[ai.path[ai.pi]], dx=n.x-c.x, dz=n.z-c.z, L=Math.hypot(dx,dz), v=K.live?28:22;
+    const n=nodes[ai.path[ai.pi]], dx=n.x-c.x, dz=n.z-c.z, L=Math.hypot(dx,dz), v=Math.max(0,Math.min(K.live?28:22,copAhead(c,22,30)));
     if (L<3){ if (ai.pi<ai.path.length-1) ai.pi++; else { c.vx*=0.8; c.vz*=0.8; } }
     else { c.h=Math.atan2(dx,dz); c.vx=dx/L*v; c.vz=dz/L*v; const st=Math.min(L,v*dt); c.x+=dx/L*st; c.z+=dz/L*st; c.px=c.x; c.pz=c.z; c.spin+=st*2; }
     ai.slowT=0; return;
@@ -3099,26 +3297,28 @@ function chase(c,dt){
   if (!(dP<42 || !ai.path || ai.pi>=ai.path.length)){ let n=nodes[ai.path[ai.pi]]; if (d2(c.x,c.z,n.x,n.z)<(rzc?36:144) && ai.pi<ai.path.length-1){ ai.pi++; n=nodes[ai.path[ai.pi]]; } tx=n.x; tz=n.z;
     const nn=ai.path[ai.pi+1]!=null?nodes[ai.path[ai.pi+1]]:null;   // frena antes de las curvas cerradas
     if (nn){ const turn=Math.abs(wrapA(Math.atan2(nn.x-n.x,nn.z-n.z)-Math.atan2(n.x-c.x,n.z-c.z))), dn=Math.hypot(n.x-c.x,n.z-c.z); if (turn>0.5 && dn<35) cap=Math.min(cap,lerp(22,8,Math.min(1,(turn-0.5)/1.2))); } }
-  let desired = Math.min(cap, !K.live ? (dP<11?6:20) : dP<11 ? (player.inCar?18:0) : 34);
+  let desired = Math.min(cap, !K.live ? (dP<11?6:player.stars?20:8) : dP<11 ? (player.inCar?18:0) : 34);
+  if (ai.slowT<3) desired=Math.min(desired,copAhead(c,c.speed,10+c.speed*1.6));   // si lleva rato parada tras otro coche, intenta rodearlo
   aiControl(c,tx,tz,desired,dt);
 }
 
 /* ---- gestión de tráfico, peatones y policía ---- */
 const MAX_PEDS=isTouch?32:52, MAX_CARS=isTouch?18:28;
 function spawnCarNear(mode){
-  const near=edges.filter(e=>{ const A=nodes[e.a], B=nodes[e.b]; return segDist(player.x,player.z,A.x,A.z,B.x,B.z)<230; });
+  const D=deadEnds(), near=edges.filter(e=>{ if (e.blocked) return false; const A=nodes[e.a], B=nodes[e.b]; return segDist(player.x,player.z,A.x,A.z,B.x,B.z)<230; });
   if (!near.length) return null;
   for (let tries=0;tries<30;tries++){
     const e=near[Math.floor(Math.random()*near.length)]; const A=nodes[e.a], B=nodes[e.b];
     const flip=e.ow ? e.ow===-1 : Math.random()<0.5, a=flip?B:A, b=flip?A:B;
     if (e.len<10) continue;
     const t=mrand(Math.min(15,e.len*0.3),e.len-Math.min(15,e.len*0.3)), ux=(b.x-a.x)/e.len, uz=(b.z-a.z)/e.len;
-    const parked = mode==='cruise' && Math.random()<0.14 && (!e.real || e.w>=9);
-    const off = parked?(e.real?e.w/2-1.1:6.0):laneOff(a.id,b.id), x=a.x+ux*t-uz*off, z=a.z+uz*t+ux*off;
+    const parked = mode==='cruise' && Math.random()<0.14 && (e.real ? e.w>=9 : !e.diag && !e.hwy && !e.conn);   // nunca junto a conectores diagonales (quedaría en mitad de otra calzada)
+    if (!parked && !inNav(a.id,b.id)) continue;   // el tráfico solo nace en la red conectada y fuera de callejones sin salida
+    const off = parked?parkOff(a.id,b.id):laneOff(a.id,b.id); if (off===null) continue; const x=a.x+ux*t-uz*off, z=a.z+uz*t+ux*off;
     const dd=Math.hypot(x-player.x,z-player.z); if (dd<95 || dd>230) continue;
     if (cars.some(c=>d2(c.x,c.z,x,z)<196)) continue;
     if (Math.abs(x-riverX(z))<RHz(z)+4 && !onBridge(x,z)) continue;
-    if (pointBlocked(x,z)) continue;
+    if (pointBlocked(x,z) || circleBlocked(x+ux*1.5,z+uz*1.5,1.1) || circleBlocked(x-ux*1.5,z-uz*1.5,1.1)) continue;   // la carrocería entera, no solo el centro
     const k = mode==='police' ? 'police' : parked ? mpick(['compact','sedan','sedan','van','pickup','sports']) : e.real&&e.w<8 ? mpick(['compact','compact','sedan','taxi','sports']) : mpick(['compact','compact','sedan','sedan','sedan','van','taxi','sports','bus','boxvan','boxvan','truck','pickup','pickup']);
     const c=new Car(k); c.x=x; c.z=z; c.h=Math.atan2(ux,uz);
     if (parked){ c.driver=null; }
