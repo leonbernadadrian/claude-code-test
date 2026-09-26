@@ -693,7 +693,7 @@ scene.background=null;
 scene.fog=new THREE.Fog(0x9cc3dc, 150, 560);
 const hemi=new THREE.HemisphereLight(0xcfe3f5, 0x6b5a40, 0.9); scene.add(hemi);
 const sun=new THREE.DirectionalLight(0xffffff, 1.8);
-sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
+sun.castShadow=true; sun.shadow.mapSize.set(2048,2048); sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.04;
 Object.assign(sun.shadow.camera,{left:-110,right:110,top:110,bottom:-110,near:10,far:520});
 sun.shadow.bias=-0.0006; scene.add(sun); scene.add(sun.target);
 // Calidad gráfica
@@ -939,33 +939,88 @@ const winU={uNight:{value:0}};
 const bldMat=new THREE.MeshLambertMaterial({color:0xffffff});
 const bldMatReal=new THREE.MeshLambertMaterial({vertexColors:true});
 bldMatReal.onBeforeCompile = sh => { bldMat.onBeforeCompile(sh,true); };
-bldMat.onBeforeCompile = (sh,plain) => {
+bldMat.onBeforeCompile = (sh,plain) => {   // fachadas procedurales: planta baja con comercios y portales, pisos con ventanas, balcones y cornisa
   sh.uniforms.uNight=winU.uNight;
   sh.vertexShader = sh.vertexShader
-    .replace('#include <common>','#include <common>\nvarying vec3 vWP;\nvarying vec3 vWN;')
-    .replace('#include <begin_vertex>', plain===true ? '#include <begin_vertex>\nvec4 wpX = modelMatrix * vec4(transformed,1.0); vWP = wpX.xyz; vWN = normalize(mat3(modelMatrix)*objectNormal);' : '#include <begin_vertex>\nvec4 wpX = modelMatrix * instanceMatrix * vec4(transformed,1.0); vWP = wpX.xyz; vWN = normalize(mat3(modelMatrix*instanceMatrix)*objectNormal);');
+    .replace('#include <common>','#include <common>\nvarying vec3 vWP;\nvarying vec3 vWN;\nvarying float vTop;'+(plain===true?'\nattribute float aTop;':''))
+    .replace('#include <begin_vertex>', plain===true ? '#include <begin_vertex>\nvec4 wpX = modelMatrix * vec4(transformed,1.0); vWP = wpX.xyz; vWN = normalize(mat3(modelMatrix)*objectNormal); vTop = aTop;'
+      : '#include <begin_vertex>\nvec4 wpX = modelMatrix * instanceMatrix * vec4(transformed,1.0); vWP = wpX.xyz; vWN = normalize(mat3(modelMatrix*instanceMatrix)*objectNormal); vTop = instanceMatrix[3][1] + length(instanceMatrix[1].xyz)*0.5;');
   sh.fragmentShader = sh.fragmentShader
-    .replace('#include <common>','#include <common>\nvarying vec3 vWP;\nvarying vec3 vWN;\nuniform float uNight;')
+    .replace('#include <common>',`#include <common>
+varying vec3 vWP;
+varying vec3 vWN;
+varying float vTop;
+uniform float uNight;
+float h21(vec2 p){ vec3 p3=fract(vec3(p.xyx)*0.1031); p3+=dot(p3,p3.yzx+33.33); return fract((p3.x+p3.y)*p3.z); }   // hash estable (sin seno: sin ruido de precisión con coordenadas grandes)
+float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(h21(i),h21(i+vec2(1.0,0.0)),f.x),mix(h21(i+vec2(0.0,1.0)),h21(i+vec2(1.0,1.0)),f.x),f.y); }
+float box2(vec2 p,vec4 r){ return step(r.x,p.x)*step(p.x,r.z)*step(r.y,p.y)*step(p.y,r.w); }
+float stripe(float v,float fw){ return mix(step(0.5,fract(v)),0.5,smoothstep(0.2,0.7,fw)); }   // rayas que se funden a media tinta a lo lejos (sin moiré)`)
     .replace('#include <color_fragment>',`#include <color_fragment>
       float wall = 1.0 - step(0.5, abs(vWN.y));
-      vec2 wuv = abs(vWN.x) > 0.5 ? vec2(vWP.z, vWP.y) : vec2(vWP.x, vWP.y);
-      vec2 cell = vec2(wuv.x/3.1, (wuv.y-0.6)/3.4);
-      vec2 fw = fract(cell);
-      float upper = step(1.0,cell.y)*wall;
-      float frameO = step(0.17,fw.x)*step(fw.x,0.83)*step(0.25,fw.y)*step(fw.y,0.87)*upper;
-      float win = step(0.22,fw.x)*step(fw.x,0.78)*step(0.3,fw.y)*step(fw.y,0.82)*upper;
-      float wr = fract(sin(dot(floor(cell)+floor(vWP.xz*0.013)*17.0, vec2(12.9898,78.233)))*43758.5453);
-      float shutH = step(0.35,wr)*fract(wr*13.7)*0.95;
-      float shut = win*step(0.82-0.52*shutH, fw.y);
-      float bid = fract(sin(dot(floor(vWP.xz*0.02),vec2(7.1,3.7)))*917.3);
-      vec3 shutCol = bid<0.4 ? vec3(0.24,0.38,0.22) : (bid<0.7 ? vec3(0.48,0.32,0.19) : vec3(0.8,0.78,0.72));
-      shutCol *= 0.82+0.18*step(0.5,fract(wuv.y*14.0));
-      diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb*1.1+0.07, (frameO-win)*0.85);
-      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.09,0.12,0.16)+wr*0.07, (win-shut)*0.88);
-      diffuseColor.rgb = mix(diffuseColor.rgb, shutCol, shut);
-      diffuseColor.rgb *= 1.0 - 0.28*wall*step(vWP.y,1.35);
-      float glass = win-shut;`)
-    .replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\ntotalEmissiveRadiance += glass*step(0.55,wr)*uNight*vec3(0.95,0.62,0.3)*0.85;');
+      vec2 tn = normalize(vec2(-vWN.z, vWN.x) + vec2(1e-5));
+      float u = dot(vWP.xz, tn), y = vWP.y, gy = y - 0.25, fu = fwidth(u), fy = fwidth(y);
+      float bid = h21(floor(vWP.xz*0.013)+floor(vWN.xz*2.0+2.0)*3.1);
+      vec3 base = diffuseColor.rgb;
+      float n1 = vnoise(vec2(u,y)*0.8)*0.6 + vnoise(vec2(u,y)*4.1)*0.4;
+      n1 = mix(n1, 0.5, smoothstep(0.1,0.5,fu*4.1));
+      base *= mix(1.0, 0.9 + 0.16*n1, wall);                                   // revoco
+      float glass = 0.0, shopLit = 0.0; vec3 plain = base; float farK = smoothstep(0.12, 0.45, max(fu,fy));   // a lo lejos, el detalle se funde en un tono medio
+      if (wall > 0.5) {
+        float GF = 3.7;
+        if (gy < GF) {                                                         // planta baja: escaparates, portales, persianas
+          float bw = 3.6, bay = floor(u/bw), fb = fract(u/bw), r = h21(vec2(bay, bid*57.0)), r2 = fract(r*91.7);
+          vec3 stone = base*0.72 + vec3(0.03);
+          if (r < 0.46) {
+            float fr = box2(vec2(fb,gy), vec4(0.06,0.45,0.94,3.05)), gl = box2(vec2(fb,gy), vec4(0.1,0.52,0.9,2.98));
+            base = mix(base, vec3(0.16,0.15,0.14), fr);
+            float refl = smoothstep(0.35,0.5,fract((fb*3.6+gy)*0.22+r2))*(1.0-smoothstep(0.5,0.65,fract((fb*3.6+gy)*0.22+r2)));
+            base = mix(base, vec3(0.07,0.1,0.13) + vec3(0.05,0.04,0.03)*r2 + vec3(0.12,0.14,0.16)*refl*(1.0-farK), gl*0.95);   // escaparate: cristal con un reflejo
+            float sign = box2(vec2(fb,gy), vec4(0.04,3.1,0.96,3.6));
+            vec3 sc = r2<0.33 ? vec3(0.62,0.12,0.1) : (r2<0.66 ? vec3(0.1,0.3,0.5) : vec3(0.15,0.4,0.2));
+            base = mix(base, sc, sign*0.9); glass = 0.0; shopLit = gl*step(0.25,r2)*(0.45+0.4*fract(r2*7.0))*(0.75+0.25*smoothstep(0.5,2.9,gy));
+          } else if (r < 0.66) {
+            float fr = box2(vec2(fb,gy), vec4(0.3,0.0,0.7,2.55)), dr = box2(vec2(fb,gy), vec4(0.34,0.0,0.66,2.48));
+            base = mix(base, stone, fr); base = mix(base, (r2<0.5 ? vec3(0.32,0.2,0.12) : vec3(0.18,0.2,0.22))*(0.85+0.15*stripe(fb*8.0,fu*8.0/3.6)), dr);
+            base = mix(base, vec3(0.1,0.12,0.15), box2(vec2(fb,gy), vec4(0.4,1.9,0.6,2.35)));
+          } else if (r < 0.86) {
+            float sh2 = box2(vec2(fb,gy), vec4(0.06,0.0,0.94,2.8));
+            base = mix(base, vec3(0.52,0.53,0.55)*(0.82+0.18*stripe(gy*9.0,fy*9.0)) - vec3(0.06)*vnoise(vec2(u*3.0,gy*2.0)), sh2);
+            base = mix(base, vec3(0.2), box2(vec2(fb,gy), vec4(0.06,2.8,0.94,3.0)));
+          } else {
+            base = mix(base, vec3(0.1,0.12,0.15), box2(vec2(fb,gy), vec4(0.35,1.3,0.65,2.6)));
+          }
+          base = mix(base, stone, step(gy,0.55));                                 // zócalo
+          base *= 1.0 - 0.18*(1.0-smoothstep(0.0,1.6,gy));                         // suciedad junto al suelo
+        } else {                                                               // pisos
+          vec2 cell = vec2(u/3.1, (gy-GF)/3.3); vec2 fw = fract(cell);
+          float frameO = box2(fw, vec4(0.17,0.24,0.83,0.87)), win = box2(fw, vec4(0.22,0.3,0.78,0.82));
+          float wr = h21(floor(cell)+floor(vWP.xz*0.013)*17.0);
+          float shutH = step(0.35,wr)*fract(wr*13.7)*0.95, shut = win*step(0.82-0.52*shutH, fw.y);
+          vec3 shutCol = bid<0.4 ? vec3(0.24,0.38,0.22) : (bid<0.7 ? vec3(0.48,0.32,0.19) : vec3(0.8,0.78,0.72));
+          shutCol *= 0.82+0.18*stripe(y*14.0,fy*14.0);
+          base = mix(base, base*1.12+0.06, (frameO-win)*0.85);
+          base = mix(base, base*1.18+0.08, box2(fw, vec4(0.15,0.2,0.85,0.25)));  // alféizar
+          base = mix(base, vec3(0.09,0.12,0.16)+wr*0.07, (win-shut)*0.88);
+          base = mix(base, shutCol, shut);
+          float balc = step(fract(wr*7.3), 0.38)*step(bid,0.8);                   // balcón con barandilla
+          float rail = box2(fw, vec4(0.12,0.04,0.88,0.33))*balc;
+          float bars = max(mix(step(0.55,fract(u*7.0)),0.45,smoothstep(0.2,0.7,fu*7.0)), box2(fw,vec4(0.12,0.3,0.88,0.33))+box2(fw,vec4(0.12,0.04,0.88,0.07)));
+          base = mix(base, vec3(0.12,0.12,0.13), rail*mix(bars,0.45,farK)*0.9);
+          base = mix(base, base*0.62, box2(fw, vec4(0.1,0.0,0.9,0.04))*balc);     // sombra de la losa
+          base *= 1.0 - 0.1*step(fw.y,0.025);                                     // imposta entre plantas
+          glass = win - shut;
+          glass *= step(0.55,wr);
+        }
+        float farW = smoothstep(0.5, 1.4, max(fu,fy));   // la rejilla de ventanas aguanta más lejos que el detalle fino
+        float k2 = gy<3.7 ? farK : farW; base = mix(base, plain*(gy<3.7?0.62:0.74), k2); glass *= 1.0-k2*0.6; shopLit *= 1.0-farK*0.6;
+        float dt = vTop - y;                                                    // cornisa y peto
+        base = mix(base, base*1.15+0.05, step(dt,0.55));
+        base = mix(base, base*0.6, step(0.55,dt)*step(dt,0.75));
+      } else if (vWN.y > 0.5) {
+        base = mix(vec3(0.46,0.45,0.43), base*0.8, 0.35) * (0.86+0.2*vnoise(vWP.xz*1.7));   // azotea
+      }
+      diffuseColor.rgb = base;`)
+    .replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\ntotalEmissiveRadiance += (glass*vec3(0.95,0.62,0.3)*0.85 + shopLit*vec3(1.0,0.72,0.42)*0.75)*uNight;');
 };
 const buildings=[], roofProps=[], roofProps2=[], awnings=[], signs=[], balconies=[], cornices=[];
 const GLORIETA={x:55,z:-55};
@@ -1172,7 +1227,7 @@ const inCorridor=(x,z,m=0)=>Math.abs(x-riverX(z))<RHz(z)+m;
   const PAL=['#efe6d6','#e8d3a9','#d9b98a','#f2efe9','#cfa77a','#e6c9b5','#dcc7a1','#c98b6b','#e2d6c2','#d8c3a5'];
   const SPECIAL_COL={'Basílica de Santa Maria':'#d8bd8f',"Palau d'Altamira":'#c7a06a','Torre de la Calaforra':'#c9a46e',"Ajuntament d'Elx":'#e4cfa6',"Gran Teatre d'Elx":'#efe2c8'};
   const SPECIAL_H={'Torre de la Calaforra':22,"Palau d'Altamira":13,'Basílica de Santa Maria':19};
-  const pos=[], nor=[], col=[];
+  const pos=[], nor=[], col=[], tops=[];
   // edificios reales recortados en el borde del centro que invaden una calzada de la cuadrícula: se quitan (los coches se estrellaban contra ellos)
   { const gridE=edges.filter(e=>!e.real).map(e=>{ const A=nodes[e.a],B=nodes[e.b]; return [A.x,A.z,B.x,B.z,Math.min(A.x,B.x)-8,Math.min(A.z,B.z)-8,Math.max(A.x,B.x)+8,Math.max(A.z,B.z)+8]; });
     for (let k=RZ_BLD.length-1;k>=0;k--){ const b=RZ_BLD[k];
@@ -1191,11 +1246,11 @@ const inCorridor=(x,z,m=0)=>Math.abs(x-riverX(z))<RHz(z)+m;
     const g=new THREE.ExtrudeGeometry(new THREE.Shape(b.pts.map(q=>new THREE.Vector2(q[0],-q[1]))),{depth:b.h,bevelEnabled:false}); g.rotateX(-Math.PI/2); g.translate(0,0.02,0);
     const gg=g.index?g.toNonIndexed():g; _c.set(SPECIAL_COL[b.n]||PAL[k%PAL.length]);
     pos.push(...gg.attributes.position.array); nor.push(...gg.attributes.normal.array);
-    for (let i=0;i<gg.attributes.position.count;i++) col.push(_c.r,_c.g,_c.b);
+    for (let i=0;i<gg.attributes.position.count;i++){ col.push(_c.r,_c.g,_c.b); tops.push(b.h+0.02); }
     addPolyCollider(b.pts,b.h+0.02);
     if (!b.n && b.h>9 && rnd()<0.5){ _c.multiplyScalar(0.85); roofProps2.push({x:b.cx,y:b.h+1.2,z:b.cz,sx:3,sy:2.4,sz:3,c:'#'+_c.getHexString()}); }
   });
-  const bgeo=new THREE.BufferGeometry(); bgeo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); bgeo.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3)); bgeo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  const bgeo=new THREE.BufferGeometry(); bgeo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); bgeo.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3)); bgeo.setAttribute('color',new THREE.Float32BufferAttribute(col,3)); bgeo.setAttribute('aTop',new THREE.Float32BufferAttribute(tops,1));
   const bm=new THREE.Mesh(bgeo,bldMatReal); bm.castShadow=bm.receiveShadow=true; scene.add(bm);
   // puentes reales sobre el Vinalopó
   for (const b of REAL_BRIDGES){ const P=b.pts;
@@ -1218,7 +1273,7 @@ const inCorridor=(x,z,m=0)=>Math.abs(x-riverX(z))<RHz(z)+m;
   if (glo){ let cx=0,cz=0; glo.pts.forEach(q=>{cx+=q[0];cz+=q[1];}); cx/=glo.pts.length; cz/=glo.pts.length; GLORIETA.x=cx; GLORIETA.z=cz;
     addCyl(5.2,5.6,1.1,'#cfc2a8',cx,0.62,cz,24); addCyl(4.6,4.6,0.2,'#4fa3c7',cx,1.2,cz,24); addCyl(0.7,1,3.4,'#e0d4bc',cx,2.6,cz,10); addCollider(cx-5.2,cz-5.2,cx+5.2,cz+5.2,1.4); }
 }
-instanced(boxGeo, new THREE.MeshLambertMaterial({color:0xffffff}), awnings);
+instanced(boxGeo, new THREE.MeshLambertMaterial({color:0xffffff}), awnings, false);   // piezas finas: sin sombra propia (evita acné sobre la fachada)
 instanced(boxGeo, new THREE.MeshBasicMaterial({color:0xffffff}), signs, false);
 instanced(boxGeo, new THREE.MeshLambertMaterial({color:0xffffff}), balconies, false);
 instanced(boxGeo, new THREE.MeshLambertMaterial({color:0xffffff}), [...roofProps,...roofProps2]);
