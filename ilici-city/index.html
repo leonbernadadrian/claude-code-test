@@ -248,7 +248,7 @@
         <kbd>Rojo</kbd><span>En coche, disparar desde la ventanilla</span>
         <kbd>Arrastrar</kbd><span>En primera persona, arrastra en la pantalla para mirar</span>
       </div>
-      <p class="fine">Bicis: en la tienda «Bicis Elx» de La Glorieta (cuadrado verde del mapa) compras una por 10 € y sales montado. En primera persona (Pausa → Vista, o tecla V) apuntas con la mira del centro: haz clic para controlar la cámara con el ratón y pulsa Esc para soltarlo. En tercera persona, mantén el clic derecho para apuntar por encima del hombro con una mira y dispara con el clic izquierdo. Sin apuntar, el tiro va solo al objetivo más cercano delante de ti. Las armas, la munición, el chaleco y los paquetes se consiguen en el mercado negro de Los Palmerales (cuadrados rojo y morado del mapa).</p>
+      <p class="fine">Bicis: en la tienda «Bicis Elx» de La Glorieta (cuadrado verde del mapa) compras una por 10 € y sales montado. En primera persona (Pausa → Vista, o tecla V) apuntas con la mira del centro: haz clic para controlar la cámara con el ratón y pulsa Esc para soltarlo. En tercera persona, mantén el clic derecho para apuntar por encima del hombro con una mira y dispara con el clic izquierdo. Sin apuntar, el tiro va solo al objetivo más cercano delante de ti. Las armas, la munición, el chaleco y los paquetes se consiguen en el mercado negro de Los Palmerales (cuadrados rojo y morado del mapa). Los marcadores azules son trabajos para ganar dinero y los naranjas, comercios que se pueden atracar. La policía solo te busca si te ve, si un testigo llama o si te graba una cámara.</p>
       <div class="prow"><button class="btn" id="bHelpClose" type="button">Cerrar</button></div>
     </div>
   </div>
@@ -458,6 +458,16 @@ const SHOPS=[
   {id:'armas',name:'El Chatarrero',title:'Armería clandestina',pos:[165,378],color:'#e8464b'},
   {id:'droga',name:'El Rata',title:'Trapicheo del Palmeral',pos:[385,282],color:'#b36bff'},
   {id:'bicis',name:'Bicis Elx',title:'Tienda de bicicletas',pos:[70,-84],color:'#34a364'},
+  // actividades para ganar dinero (azul) y comercios que se pueden atracar (naranja)
+  {id:'reparto',name:'Reparto Exprés',title:'Reparto Exprés Elx',pos:[339.2,-449.2],color:'#35c6e8',job:true,shirt:'#d9262c'},
+  {id:'poligono',name:'Logística Vinalopó',title:'Logística Vinalopó · Polígono Industrial',pos:[-650.8,540.8],color:'#35c6e8',job:true,shirt:'#f2a900'},
+  {id:'taxi',name:'Parada de taxis',title:'Parada de taxis de la Estación',pos:[-27.1,-321.2],color:'#35c6e8',job:true,shirt:'#f4f4f0'},
+  {id:'taller',name:'Taller de Carrús',title:'Taller y compraventa de Carrús',pos:[-540.8,-449.2],color:'#35c6e8',job:true,shirt:'#2d4a8a'},
+  {id:'carreras',name:'Carreras del Pla',title:'Carreras clandestinas del Pla',pos:[339.2,-669.2],color:'#35c6e8',job:true,shirt:'#111111'},
+  {id:'inmo',name:'Inmobiliaria Glorieta',title:'Inmobiliaria Glorieta · Negocios',pos:[22.1,-97.2],color:'#35c6e8',job:true,shirt:'#5a5f6a'},
+  {id:'rob_estanco',name:'Estanco de Altabix',title:'Estanco de Altabix',pos:[559.2,-119.2],color:'#ff8a3d',rob:true,loot:[300,650],shirt:'#8a6a3a'},
+  {id:'rob_gasolinera',name:'Gasolinera del Raval',title:'Gasolinera del Raval',pos:[-390.7,197.9],color:'#ff8a3d',rob:true,loot:[400,900],shirt:'#1f7a3a'},
+  {id:'rob_joyeria',name:'Joyería de la Corredora',title:'Joyería de la Corredora',pos:[-21.2,-150.1],color:'#ff8a3d',rob:true,loot:[900,1800],shirt:'#3a3a3a'},
 ];
 // Calles reales: cada punto de la polilínea es un nodo; dirección prohibida guardada en e.ow
 {
@@ -1768,11 +1778,13 @@ const mission={cur:null,step:0,timer:0,got:[],car:null,leaveReq:null,stopT:0};
 /* ---- mercado negro del Palmeral ---- */
 const shopMat=new THREE.MeshBasicMaterial({color:'#b36bff',transparent:true,opacity:0.45,depthWrite:false,side:THREE.DoubleSide});
 const shopState={cur:null,leave:null};
-for (const sh of SHOPS){
+function buildPlace(sh){
   sh.mx=sh.pos[0]; sh.mz=sh.pos[1]+3;
-  sh.marker=new THREE.Mesh(markerGeo,sh.id==='bicis'?new THREE.MeshBasicMaterial({color:'#39d353',transparent:true,opacity:0.45,depthWrite:false,side:THREE.DoubleSide}):shopMat); sh.marker.position.set(sh.mx,1.5,sh.mz); scene.add(sh.marker);
-  sh.dealer=makePedMesh(sh.id==='armas'?'#2b2b2b':sh.id==='bicis'?'#2f8a4c':'#6b2fa3','#1b1b1b','#c68863','#111'); sh.dealer.position.set(sh.pos[0],0.27,sh.pos[1]-1.5); scene.add(sh.dealer);
+  sh.marker=new THREE.Mesh(markerGeo,sh.id==='droga'?shopMat:new THREE.MeshBasicMaterial({color:sh.id==='bicis'?'#39d353':sh.color,transparent:true,opacity:0.45,depthWrite:false,side:THREE.DoubleSide})); sh.marker.position.set(sh.mx,1.5,sh.mz); scene.add(sh.marker);
+  sh.dealer=makePedMesh(sh.shirt||(sh.id==='armas'?'#2b2b2b':sh.id==='bicis'?'#2f8a4c':'#6b2fa3'),'#1b1b1b','#c68863','#111'); sh.dealer.position.set(sh.pos[0],0.27,sh.pos[1]-1.5); scene.add(sh.dealer);
 }
+function removePlace(sh){ scene.remove(sh.marker); scene.remove(sh.dealer); disposePed(sh.dealer); const i=SHOPS.indexOf(sh); if (i>=0) SHOPS.splice(i,1); }
+for (const sh of SHOPS) buildPlace(sh);
 function openShop(sh){ try{ document.exitPointerLock?.(); }catch(e){} state='shop'; shopState.cur=sh; renderShop(); $('shop').hidden=false; hud.hint.hidden=true; }
 function closeShop(){ $('shop').hidden=true; shopState.leave=shopState.cur; shopState.cur=null; state='play'; persist(); }
 function renderShop(){
@@ -1790,6 +1802,7 @@ function renderShop(){
   } else if (sh.id==='bicis'){
     items.push({label:'Bicicleta urbana',sub:'Sales montado. Unos 40 km/h, sin gasolina y sin ruido',price:10,buy:()=>{ closeShop(); const b=new Car('bike'); b.x=sh.mx+2.5; b.z=sh.mz; b.h=0; b.sync(); player.x=b.x+0.8; player.z=b.z; enterExit(); toast('¡Bici nueva! Pedalea con W y frena con S',3); }});
     $('shopWho').textContent='En «Bicis Elx» tienen bicis de paseo para moverse por Elche. Te la llevas puesta.';
+  } else if (sh.job || sh.rob || sh.errand){ placeMenu(sh,items);
   } else {
     items.push({label:'1 paquete',sub:`Llevas ${player.drugs}/10`,price:50,buy:()=>{ player.drugs++; },dis:player.drugs>=10});
     items.push({label:'5 paquetes',sub:'Precio de mayorista',price:230,buy:()=>{ player.drugs+=5; },dis:player.drugs>5});
@@ -1799,18 +1812,20 @@ function renderShop(){
   const ul=$('shopList'); ul.innerHTML='';
   for (const it of items){
     const li=document.createElement('li'); li.innerHTML=`<div><b>${it.label}</b><small>${it.sub}</small></div>`;
-    const b=document.createElement('button'); b.type='button'; b.className='btn buy'; b.textContent=`${it.price} €`; b.disabled=player.money<it.price||!!it.dis;
+    const b=document.createElement('button'); b.type='button'; b.className='btn buy'; b.textContent=it.btn||`${it.price} €`; b.disabled=player.money<it.price||!!it.dis;
     b.addEventListener('click',()=>{ if (player.money<it.price||it.dis) return; player.money-=it.price; shownMoney=player.money; it.buy(); sfxPick(); if (state==='shop') renderShop(); });
     li.appendChild(b); ul.appendChild(li);
   }
 }
 let barrelT=0;
 function updateShops(dt){
-  if (shopState.leave && (player.inCar || d2(player.x,player.z,shopState.leave.mx,shopState.leave.mz)>36)) shopState.leave=null;
-  for (const sh of SHOPS){
+  if (shopState.leave && d2(player.x,player.z,shopState.leave.mx,shopState.leave.mz)>36) shopState.leave=null;
+  for (const sh of SHOPS.slice()){
+    if (sh.until && now>sh.until){ removePlace(sh); continue; }
     sh.marker.scale.y=1+Math.sin(now*3)*0.08;
     if (d2(player.x,player.z,sh.pos[0],sh.pos[1])<400) sh.dealer.rotation.y=Math.atan2(player.x-sh.pos[0],player.z-sh.pos[1]+1.5);
-    if (!player.inCar && sh!==shopState.leave && d2(player.x,player.z,sh.mx,sh.mz)<6.25){ openShop(sh); return; }
+    const carOk=(sh.job||sh.errand) && !mission.cur && player.inCar && player.inCar.speed<2;   // a las actividades se puede llegar en coche
+    if ((!player.inCar||carOk) && sh!==shopState.leave && d2(player.x,player.z,sh.mx,sh.mz)<(carOk?30:6.25)){ openShop(sh); return; }
   }
   barrelT-=dt;
   if (barrelT<=0){ barrelT=0.08; for (const [x,z] of barrels) if (d2(x,z,player.x,player.z)<22500) emit(glowP,x+mrand(-.3,.3),1.5,z+mrand(-.3,.3),mrand(-.3,.3),mrand(1.5,3),mrand(-.3,.3),0.5,0.4,mpick(['#ff9a2a','#ffcf4a','#ff5a1a']),0,-0.5); }
@@ -1890,7 +1905,7 @@ function drawBlip(ctx,x,y,color,r,shape){
 function objectivePoints(){
   const ms=mission.cur; if (!ms) return [];
   const st=ms.steps[mission.step]; if (!st) return [];
-  if (st.type==='goto') return [st.p];
+  if (st.type==='goto'||st.type==='wait') return [st.p];
   if (st.type==='collect') return st.pts.filter((_,i)=>!mission.got.includes(i));
   if (st.type==='steal' && mission.car && !mission.car.dead) return [[mission.car.x,mission.car.z]];
   return [];
@@ -2643,12 +2658,12 @@ const CAMS=[];
 { const add=(x,z)=>{ if (pointBlocked(x,z)||CAMS.some(c=>d2(c.x,c.z,x,z)<100)) return; CAMS.push({x,z});
     addCyl(0.06,0.07,3.3,'#3a3d42',x,1.65,z,6); addBox(0.26,0.2,0.4,'#e6e6e6',x,3.4,z,{shadow:false}); addBox(0.06,0.06,0.06,'#ff2a2a',x,3.45,z+0.21,{shadow:false}); };
   for (const n of ["Ajuntament d'Elx","Gran Teatre d'Elx",'Basílica de Santa Maria',"Palau d'Altamira"]){ const b=RZ_BLD.find(b=>b.n===n); if (!b) continue; const i=wgNearest(b.cx,b.cz); if (i>=0) add(WG.nodes[i][0],WG.nodes[i][1]); }
-  for (const sh of SHOPS) if (sh.id==='bicis') add(sh.pos[0]+2.5,sh.pos[1]);
+  for (const sh of SHOPS) if (sh.id==='bicis'||sh.rob) add(sh.pos[0]+2.5,sh.pos[1]);
   { const i=wgNearest(55,-55); if (i>=0) add(WG.nodes[i][0],WG.nodes[i][1]); } }
 const intel={x:0,z:0,t:-99,vx:0,vz:0,car:null,seenT:-99,inv:null};   // última información de la policía
 const reports=[];                                                     // grabaciones de cámaras pendientes
 let copSeeT=0, copSeeing=false, crimeSeq=0; const reportedCrimes=new Set();
-const CRIME_TXT={shots:'unos disparos',explosion:'una explosión',murder:'un cadáver',assault:'una pelea',carjack:'un robo de coche',runover:'un atropello',drugs:'un trapicheo'};
+const CRIME_TXT={shots:'unos disparos',explosion:'una explosión',murder:'un cadáver',assault:'una pelea',carjack:'un robo de coche',runover:'un atropello',drugs:'un trapicheo',robbery:'un atraco'};
 function copCanSee(x,z,r){
   for (const c of cars) if (c.driver==='police' && d2(c.x,c.z,x,z)<r*r && !losBlocked(c.x,c.z,x,z,1.3)) return true;
   const rf=r*0.75; for (const p of peds) if (p.cop && p.state!=='dead' && p.state!=='hit' && p.state!=='dragged' && d2(p.x,p.z,x,z)<rf*rf && !losBlocked(p.x,p.z,x,z,1.3)) return true;
@@ -2785,6 +2800,8 @@ function startMission(ms){
   mission.cur=ms; mission.step=0; mission.timer=ms.time||0; mission.got=[]; mission.stopT=0;
   toast(`<em>${ms.name}</em><br>${ms.intro}`,6); tone(660,0.15,'square',0.06); tone(990,0.2,'square',0.06,0.12);
   if (ms.id==='deportivo'){ const c=new Car('sports','#1f8a4c'); c.x=550; c.z=550; c.h=Math.PI/2; c.mission=true; c.sync(); mission.car=c; }
+  else mission.car=ms.vehicle||null;
+  mission.wt=0; ms.steps[0].onStart?.();
   if (ms.car && !player.inCar) setTimeout(()=>{ if (mission.cur===ms && !player.inCar) toast('Consigue un coche: acércate a uno y pulsa <em>E</em>',3); },6200);
   updateObjective();
 }
@@ -2797,7 +2814,7 @@ function updateObjective(){
 function advanceMission(){
   mission.step++; mission.stopT=0; sfxPick();
   if (mission.step>=mission.cur.steps.length) return completeMission();
-  const st=mission.cur.steps[mission.step];
+  const st=mission.cur.steps[mission.step]; mission.wt=0; st.onStart?.(); mission.cur.onStep?.(mission.step);
   if (mission.cur.id==='taxi' && mission.step===1) toast('El aficionado se sube al coche. ¡Al estadio!',2.5);
   if (mission.cur.id==='datiles' && mission.step===1) toast('Tienes las cajas. Vuelve al mercado.',2.5);
   if (mission.cur.id==='deportivo' && st.noStars) addStars(2,'¡Alarma! La policía busca el deportivo');
@@ -2809,14 +2826,146 @@ function endMission(){
   mission.car=null;
 }
 function completeMission(){
-  const ms=mission.cur; player.money+=ms.reward;
+  const ms=mission.cur;
+  if (ms.job){ const Pp=player.inCar||player, near=SHOPS.find(q=>d2(q.mx,q.mz,Pp.x,Pp.z)<400); if (near) shopState.leave=near;   // no reabrir el menú al acabar allí
+    const pay=Math.max(0,Math.round(ms.payFn?ms.payFn():ms.reward)); player.money+=pay; banner(ms.doneTitle||'¡TRABAJO HECHO!',`+${pay} €`,'var(--gold)',3.5); sfxWin(); endMission(); ms.onDone?.(); persist(); return; }
+  player.money+=ms.reward;
   if (!save.done.includes(ms.id)) save.done.push(ms.id);
   banner('¡MISIÓN SUPERADA!',`+${ms.reward} €`,'var(--gold)',4); sfxWin();
   if (ms.id==='alba'){ fireworks(-55,-55,40); toast("¡Bona Nit de l'Albà! Mira al cielo.",4); }
   if (ms.id==='deportivo' && mission.car){ const c=mission.car; if (player.inCar===c) exitCar(true,true); c.remove(); }
   endMission(); persist();
 }
-function failMission(why){ if (!mission.cur) return; banner('MISIÓN FALLIDA',why,'var(--red)',3.5); sfxFail(); endMission(); }
+function failMission(why){ if (!mission.cur) return; const ms=mission.cur; banner(ms.job?'TRABAJO FALLIDO':'MISIÓN FALLIDA',why,'var(--red)',3.5); sfxFail(); endMission(); ms.onFail?.(); }
+/* ================= actividades para ganar dinero =================
+   Cada actividad es un punto del mapa (mismo menú que las tiendas). Los trabajos son misiones generadas al vuelo
+   con el mismo motor (pasos goto/collect/wait/escape, temporizador y marcadores), marcadas con job:true:
+   se repiten, la paga se calcula al terminar y no cuentan para las 5 misiones de la historia. */
+const VALUE={compact:1500,sedan:2600,taxi:2400,van:3200,pickup:4200,sports:9500,boxvan:3800,truck:6000,bus:5000,bike:10};
+const BIZ=[{id:'kiosco',name:'Kiosco de prensa en La Glorieta',price:4000,inc:500},{id:'bar',name:'Bar de tapas en El Raval',price:12000,inc:1500},
+  {id:'lavado',name:'Autolavado en Carrús',price:25000,inc:3200},{id:'disco',name:'Discoteca en el Polígono',price:60000,inc:8000}];   // inc: € por día de juego
+save.biz=save.biz||[]; save.bizAcc=save.bizAcc||0;
+const robT={};
+const placeOf=id=>SHOPS.find(s=>s.id===id);
+function spotAround(x,z,rmin,rmax,car){
+  const c=clientSpots.filter(([a,b])=>{ const d=(a-x)**2+(b-z)**2; return d>rmin*rmin && d<rmax*rmax; });
+  return snapIfReal(c.length?mpick(c):[x+rmin,z],car);
+}
+function jobCar(k,sh){   // vehículo de trabajo en la calle más cercana al punto
+  const n=nearestNode(sh.mx,sh.mz), nb=nodes[n.nb[0]]||n, c=new Car(k); c.x=n.x; c.z=n.z; c.h=Math.atan2(nb.x-n.x,nb.z-n.z)||0; c.mission=true; c.owned=true; c.sync(); return c;
+}
+function freeCar(c){ if (c) c.mission=false; }
+const job=o=>Object.assign({job:true,start:[player.x,player.z],reward:0},o);
+const CARGO=[{n:'Mercado Central',p:[55,-131]},{n:'Huerto del Cura',p:[324,-110]},{n:'Estadio Martínez Valero',p:[436,500]},{n:'Hospital General',p:[-385,-462]},{n:'Terminal de carga del aeropuerto',p:[2640,665]}];
+function genReparto(sh){
+  const pts=[]; let x=sh.mx, z=sh.mz, tot=0; for (let i=0;i<3;i++){ const p=spotAround(x,z,120,420,false); tot+=Math.hypot(p[0]-x,p[1]-z); pts.push(p); x=p[0]; z=p[1]; }
+  const time=Math.round(45+tot/8);
+  return job({id:'job_reparto',name:'Reparto urgente',time,reward:Math.round(90+tot*0.35),
+    intro:`Tres paquetes urgentes por Elche. Vale cualquier vehículo, también la bici. Tienes ${time} s.`,
+    steps:pts.map((p,i)=>({type:'goto',p,r:7,text:`Entrega el paquete <em>${i+1}/3</em> en ${zoneName(p[0],p[1])}`}))});
+}
+function genCarga(sh){
+  const d=mpick(CARGO), c=jobCar(mpick(['boxvan','truck']),sh), dist=Math.hypot(d.p[0]-sh.mx,d.p[1]-sh.mz), base=180+dist*0.55;
+  return job({id:'job_carga',name:'Transporte de mercancías',vehicle:c,needCar:true,reward:base,payFn:()=>base*(0.3+0.7*c.health/100),
+    intro:`Lleva el camión cargado a <em>${d.n}</em> y devuélvelo al polígono. Cada golpe se descuenta de la paga.`,
+    steps:[{type:'goto',p:d.p,r:10,car:'mission',stop:true,text:`Lleva la carga a <em>${d.n}</em>`},{type:'goto',p:[sh.mx,sh.mz],r:10,car:'mission',stop:true,text:'Devuelve el camión al <em>polígono</em>'}],
+    onDone:()=>{ if (player.inCar===c) exitCar(true,true); c.remove(); }, onFail:()=>freeCar(c)});
+}
+function genAlmacen(sh){
+  const pts=[]; for (let i=0;i<6;i++){ const a=Math.random()*6.28, r=mrand(10,40); let p=[sh.mx+Math.cos(a)*r,sh.mz+Math.sin(a)*r]; if (pointBlocked(p[0],p[1])||blockedAt(p[0],p[1])) p=spotAround(sh.mx,sh.mz,8,60,false); pts.push(p); }
+  return job({id:'job_almacen',name:'Mozo de almacén',time:90,reward:170,
+    intro:'Recoge las 6 cajas del polígono y llévalas al muelle de carga antes de que salga el camión.',
+    steps:[{type:'collect',pts,r:3,item:'Caja',text:'Recoge las cajas'},{type:'goto',p:[sh.mx,sh.mz],r:4,text:'Déjalas en el <em>muelle de carga</em>'}]});
+}
+function genTaxi(sh,taxi){
+  const P=player.inCar||player, a=spotAround(P.x,P.z,60,260,true), b=spotAround(a[0],a[1],220,700,true), d=Math.hypot(b[0]-a[0],b[1]-a[1]);
+  return job({id:'job_taxi',name:'Carrera de taxi',vehicle:taxi,needCar:true,time:Math.round(40+(Math.hypot(a[0]-P.x,a[1]-P.z)+d)/9),reward:Math.round(45+d*0.45),
+    intro:'Un cliente te espera. Recógelo y llévalo a su destino (frena encima de cada marcador).',
+    steps:[{type:'goto',p:a,r:8,stop:true,car:'mission',text:'Recoge al <em>cliente</em>'},{type:'goto',p:b,r:8,stop:true,car:'mission',text:`Lleva al cliente a <em>${zoneName(b[0],b[1])}</em>`}],
+    onStep:i=>{ if (i===1) toast('El cliente se sube al taxi',1.5); },
+    onDone:()=>{ toast('Otro cliente te llama. Sigue en el taxi para aceptarlo; bájate para terminar el turno.',3);
+      setTimeout(()=>{ if (!mission.cur && player.inCar===taxi && state==='play') startMission(genTaxi(null,taxi)); },3500); }, onFail:()=>freeCar(taxi)});
+}
+function genGrua(sh){
+  const p=spotAround(sh.mx,sh.mz,150,520,true), c=new Car(mpick(['compact','sedan','van'])); c.x=p[0]; c.z=p[1]; c.h=Math.random()*6.28; c.health=28; c.mission=true; c.sync();
+  const dist=Math.hypot(p[0]-sh.mx,p[1]-sh.mz);
+  return job({id:'job_grua',name:'Asistencia en carretera',time:Math.round(60+dist/8),reward:Math.round(160+dist*0.25),
+    intro:`Un coche se ha averiado en ${zoneName(p[0],p[1])}. Ve hasta él y repáralo.`,
+    steps:[{type:'goto',p,r:9,text:'Ve al <em>coche averiado</em>'},{type:'wait',p,r:4,t:6,foot:true,text:'Bájate y repara el motor'}],
+    onDone:()=>{ c.health=100; c.mission=false; }, onFail:()=>freeCar(c)});
+}
+function genCarrera(sh,bet){
+  const pts=[]; let x=sh.mx, z=sh.mz, tot=0; for (let i=0;i<5;i++){ const p=spotAround(x,z,140,300,true); tot+=Math.hypot(p[0]-x,p[1]-z); pts.push(p); x=p[0]; z=p[1]; }
+  tot+=Math.hypot(sh.mx-x,sh.mz-z); pts.push([sh.mx,sh.mz]);
+  const time=Math.round(10+tot/20);
+  return job({id:'job_carrera',name:'Carrera clandestina',time,reward:bet*2.5,doneTitle:'¡CARRERA GANADA!',
+    intro:`Apuesta de ${bet} €. Pasa por los 6 puntos de control y vuelve antes de ${time} s para batir a «El Nano».`,
+    steps:pts.map((p,i)=>({type:'goto',p,r:11,car:true,text:`Punto de control <em>${i+1}/6</em>`}))});
+}
+function genAtraco(sh){
+  const [a,b]=sh.loot, loot=Math.round(mrand(a,b)/10)*10;
+  return job({id:'job_atraco',name:`Atraco: ${sh.name}`,reward:loot,doneTitle:'¡ATRACO COMPLETADO!',
+    intro:'Encañona al dependiente y vacía la caja. Hay cámara de seguridad: huye y despista a la policía para quedarte el botín.',
+    steps:[{type:'wait',p:[sh.mx,sh.mz],r:5,t:8,foot:true,text:'Vacía la <em>caja registradora</em>',onStart:()=>{ crime('robbery',sh.pos[0],sh.pos[1],2,{copMsg:'¡La policía te ha visto atracando!'}); sh.dealer.userData.arms[0].rotation.x=sh.dealer.userData.arms[1].rotation.x=-2.8; }},
+      {type:'escape',from:sh.pos,dist:160,text:'Huye con el botín y <em>despista a la policía</em>',onStart:()=>{ toast(`Tienes ${loot} € en la bolsa. ¡Corre!`,2); }}],
+    onDone:()=>{ robT[sh.id]=now+300; sh.dealer.userData.arms[0].rotation.x=sh.dealer.userData.arms[1].rotation.x=0; },
+    onFail:()=>{ robT[sh.id]=now+120; sh.dealer.userData.arms[0].rotation.x=sh.dealer.userData.arms[1].rotation.x=0; }});
+}
+function genEncargo(sh){
+  const kind=Math.random()<0.5?'sobre':'paquete', p=spotAround(sh.mx,sh.mz,250,650,false), q=spotAround(p[0],p[1],150,450,false), who=sh.who;
+  if (kind==='sobre') return job({id:'job_encargo',name:`Encargo de ${who}`,time:Math.round(50+Math.hypot(p[0]-sh.mx,p[1]-sh.mz)/7),reward:Math.round(mrand(250,450)),
+    intro:`${who} necesita que lleves un sobre a ${zoneName(p[0],p[1])} sin llamar la atención de la policía.`,
+    steps:[{type:'goto',p,r:6,noStars:true,text:`Lleva el sobre a <em>${zoneName(p[0],p[1])}</em> (sin estrellas)`}]});
+  return job({id:'job_encargo',name:`Encargo de ${who}`,time:Math.round(70+(Math.hypot(p[0]-sh.mx,p[1]-sh.mz)+Math.hypot(q[0]-p[0],q[1]-p[1]))/7),reward:Math.round(mrand(350,600)),
+    intro:`${who} quiere que recojas un paquete en ${zoneName(p[0],p[1])} y lo entregues en ${zoneName(q[0],q[1])}.`,
+    steps:[{type:'goto',p,r:6,text:`Recoge el paquete en <em>${zoneName(p[0],p[1])}</em>`},{type:'goto',p:q,r:6,text:`Entrégalo en <em>${zoneName(q[0],q[1])}</em>`}]});
+}
+function takeJob(ms){ closeShop(); startMission(ms); }
+function placeMenu(sh,items){
+  const busy=!!mission.cur, P=player.inCar, busyTxt='Termina antes lo que estás haciendo';
+  const add=(label,sub,fn,o={})=>items.push(Object.assign({label,sub,price:0,btn:'Aceptar',buy:fn,dis:busy&&!o.free},o));
+  let who='';
+  if (sh.id==='reparto'){ who='Reparto Exprés Elx busca repartidores por horas. Se paga por entrega y distancia.';
+    add('Reparto urgente (3 paquetes)',busy?busyTxt:'Cualquier vehículo, también la bici. Paga 150–400 €',()=>takeJob(genReparto(sh))); }
+  else if (sh.id==='poligono'){ who='Logística Vinalopó mueve la mercancía de medio Elche. Trabajo duro, paga segura.';
+    add('Transporte de mercancías',busy?busyTxt:'Te damos el camión. Paga 300–1.900 € según destino y estado de la carga',()=>takeJob(genCarga(sh)));
+    add('Mozo de almacén',busy?busyTxt:'A pie: recoge 6 cajas en 90 s. 170 €',()=>takeJob(genAlmacen(sh))); }
+  else if (sh.id==='taxi'){ who='En la parada siempre hay clientes. Cada carrera se paga según la distancia; al terminar puedes encadenar otra.';
+    add('Turno de taxista',busy?busyTxt:(P&&P.k==='taxi'?'Usarás tu taxi':'Te dejan un taxi de la cooperativa'),()=>{ const t=P&&P.k==='taxi'?P:jobCar('taxi',sh); t.mission=true; closeShop(); if (player.inCar!==t){ if (player.inCar) exitCar(true,true); player.x=t.x+1.2; player.z=t.z; enterExitCar(t); } startMission(genTaxi(sh,t)); }); }
+  else if (sh.id==='taller'){ who='El taller de Carrús repara, compra y vende coches. Y si hay averías en la calle, busca mecánico.';
+    add('Asistencia en carretera',busy?busyTxt:'Repara un coche averiado en la calle. 200–300 €',()=>takeJob(genGrua(sh)));
+    if (P && !P.T.bike){ const cost=Math.round((100-P.health)*7); items.push({label:'Reparar tu coche',sub:P.dead?'Está siniestro total':`Motor y chapa al ${Math.round(P.health)}%`,price:cost,btn:`${cost} €`,dis:P.dead||P.health>=99,buy:()=>{ P.health=100; toast('Coche como nuevo',1.5); }});
+      const v=P.driver==='player'&&P.k!=='police'&&!P.mission?Math.round((VALUE[P.k]||1500)*(P.owned?0.7:0.35)*P.health/100/10)*10:0;
+      items.push({label:'Vender este coche',sub:P.k==='police'?'Aquí no se compran coches patrulla':player.stars>0?'Con la policía detrás no te lo compran':P.mission?'Este vehículo no es tuyo':P.owned?'Es tuyo: te dan el 70% de su valor':'Robado: te pagan una miseria (35%)',price:0,btn:`+${v} €`,dis:!v||player.stars>0,
+        buy:()=>{ const c=player.inCar; exitCar(true,true); c.remove(); player.money+=v; shownMoney=player.money; toast(`Vendido por ${v} €`,2); closeShop(); }}); }
+    for (const k of ['compact','sedan','van','pickup','sports']) items.push({label:`Comprar ${({compact:'utilitario',sedan:'sedán',van:'furgoneta',pickup:'pick-up',sports:'deportivo'})[k]}`,sub:'A tu nombre: no es delito conducirlo y lo puedes revender',price:VALUE[k],
+      buy:()=>{ closeShop(); if (player.inCar) exitCar(true,true); const c=jobCar(k,sh); c.mission=false; player.x=c.x+1.2; player.z=c.z; enterExitCar(c); toast('¡Coche nuevo!',2); }}); }
+  else if (sh.id==='carreras'){ const night=gameMin>=21*60||gameMin<6*60;
+    who=night?'«El Nano» organiza carreras en el polígono del Pla. Apuesta y bate su tiempo con tu coche.':'Las carreras son de noche (de 21:00 a 6:00). Vuelve más tarde.';
+    for (const bet of [100,500,2000]) items.push({label:`Carrera con apuesta de ${bet} €`,sub:!night?'Solo de noche':busy?busyTxt:!P?'Necesitas un coche':`Si ganas cobras ${bet*2.5} €`,price:bet,btn:`${bet} €`,dis:!night||busy||!P,buy:()=>takeJob(genCarrera(sh,bet))}); }
+  else if (sh.id==='inmo'){ const acc=Math.floor(save.bizAcc); who=save.biz.length?`Tus negocios facturan ${BIZ.filter(b=>save.biz.includes(b.id)).reduce((a,b)=>a+b.inc,0)} € al día. La caja se cobra aquí.`:'Compra negocios: cada día de juego generan dinero en su caja.';
+    items.push({label:'Cobrar la caja de tus negocios',sub:save.biz.length?`Hay ${acc} € acumulados`:'Todavía no tienes negocios',price:0,btn:`+${acc} €`,dis:acc<1,buy:()=>{ player.money+=acc; save.bizAcc-=acc; shownMoney=player.money; toast(`Cobras ${acc} €`,2); persist(); }});
+    for (const b of BIZ){ const own=save.biz.includes(b.id); items.push({label:b.name,sub:own?'Es tuyo':`Genera ${b.inc} € por día de juego`,price:own?0:b.price,btn:own?'Tuyo':`${b.price} €`,dis:own,buy:()=>{ save.biz.push(b.id); toast(`Ya eres dueño: ${b.name}`,2.5); persist(); }}); } }
+  else if (sh.rob){ const W=WEAPONS.find(w=>!w.melee&&!w.throw&&player.owned.includes(w.id)&&(player.ammo[w.id]||0)>0), cd=Math.max(0,Math.ceil((robT[sh.id]||0)-now));
+    who=`${sh.name}. El dependiente te mira de reojo. Hay una cámara sobre la puerta.`;
+    add('Atracar',busy?busyTxt:cd?`Acaban de atracarlos: vuelve en ${cd} s`:!W?'Necesitas un arma de fuego con munición':'Un botín de '+sh.loot[0]+'–'+sh.loot[1]+' €. Conseguirás estrellas',()=>{ selectWeapon(player.owned.indexOf(W.id)); takeJob(genAtraco(sh)); },{dis:busy||cd>0||!W,btn:'Atracar'}); }
+  else if (sh.errand){ who=`${sh.who} te hace una seña desde la acera: tiene un trabajito para ti.`;
+    add('Aceptar el encargo',busy?busyTxt:'Dinero rápido, sin preguntas',()=>{ const ms=genEncargo(sh); removePlace(sh); takeJob(ms); }); }
+  $('shopWho').textContent=who;
+}
+function enterExitCar(c){ if (player.inCar) return; c.driver=null; c.ai=null; c.driver='player'; c.fallen=false; player.inCar=c; player.mesh.visible=false; setCrouch(false); player.y=0; player.vy=0; }
+// encargos de NPC que aparecen por la calle y negocios que hacen caja
+let errandT=90;
+function updateActivities(dt){
+  if (save.biz.length){ const perDay=BIZ.filter(b=>save.biz.includes(b.id)).reduce((a,b)=>a+b.inc,0), cap=perDay*3, before=save.bizAcc;
+    save.bizAcc=Math.min(cap,save.bizAcc+perDay*dt/(24*60));
+    if (Math.floor(before/500)!==Math.floor(save.bizAcc/500)) toast(`La caja de tus negocios ya tiene ${Math.floor(save.bizAcc)} €. Cóbrala en la Inmobiliaria Glorieta`,3); }
+  errandT-=dt;
+  if (errandT<=0){ errandT=mrand(140,240);
+    if (!mission.cur && !SHOPS.some(s=>s.errand) && player.stars===0){ const P=player.inCar||player, p=spotAround(P.x,P.z,35,90,false);
+      const sh={id:'encargo',errand:true,name:'Encargo',title:'Un encargo',pos:p,color:'#35c6e8',shirt:mpick(['#7a2d2d','#2d5a7a','#4a4a4a']),who:mpick(['Toni «el Gafas»','la señora Remedios','Paco el del bar','Vicentet','una tal Mari Carmen']),until:now+90};
+      buildPlace(sh); SHOPS.push(sh); toast(`📞 ${sh.who} te busca para un encargo: marcador azul cercano`,3); } }
+}
 function updateMissions(dt){
   const P=player.inCar||player;
   if (!mission.cur){
@@ -2826,7 +2975,16 @@ function updateMissions(dt){
   }
   const ms=mission.cur, st=ms.steps[mission.step];
   if (ms.time){ mission.timer-=dt; hud.timer.hidden=false; const t=Math.max(0,mission.timer); hud.timer.textContent=`${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,'0')}`; hud.timer.classList.toggle('low',t<15); if (mission.timer<=0) return failMission('Se acabó el tiempo'); }
-  if (st.type==='goto'){
+  if (ms.needCar && mission.car && (mission.car.exploded||mission.car.dead)) return failMission('El vehículo ha quedado destrozado');
+  if (st.type==='wait'){   // quedarse un rato en un sitio (reparar, vaciar una caja...)
+    const inside=d2(P.x,P.z,st.p[0],st.p[1])<st.r*st.r && (!st.foot||!player.inCar);
+    mission.wt=inside?mission.wt+dt:Math.max(0,mission.wt-dt*0.5);
+    const pct=Math.min(100,Math.floor(mission.wt/st.t*100)), t=`${st.text} <em>${pct}%</em>`; if (hud.obj.innerHTML!==t) setObj(t);
+    if (mission.wt>=st.t) advanceMission();
+  } else if (st.type==='escape'){   // alejarse y despistar a la policía
+    const far=d2(P.x,P.z,st.from[0],st.from[1])>st.dist*st.dist;
+    if (far && player.stars===0) advanceMission(); else if (far) showHint('¡Despista a la policía!');
+  } else if (st.type==='goto'){
     const inside=d2(P.x,P.z,st.p[0],st.p[1])<st.r*st.r;
     if (!inside) return;
     if (st.car && !player.inCar){ showHint('Necesitas un coche'); return; }
@@ -2835,7 +2993,7 @@ function updateMissions(dt){
     if (st.stop && player.inCar && player.inCar.speed>3){ showHint('Frena'); return; }
     advanceMission();
   } else if (st.type==='collect'){
-    st.pts.forEach((p,i)=>{ if (!mission.got.includes(i) && d2(P.x,P.z,p[0],p[1])<st.r*st.r){ mission.got.push(i); sfxPick(); toast(`Caja de pólvora ${mission.got.length}/${st.pts.length}`,1.5); updateObjective(); } });
+    st.pts.forEach((p,i)=>{ if (!mission.got.includes(i) && d2(P.x,P.z,p[0],p[1])<st.r*st.r){ mission.got.push(i); sfxPick(); toast(`${st.item||'Caja de pólvora'} ${mission.got.length}/${st.pts.length}`,1.5); updateObjective(); } });
     if (mission.got.length===st.pts.length) advanceMission();
   } else if (st.type==='steal'){
     if (!mission.car || mission.car.exploded) failMission('El deportivo ha quedado destruido');
@@ -3023,7 +3181,7 @@ function update(dt){
     g.position.set(x,y,470); takeoff.inner.rotation.x=pitch; g.visible=t<66; }
   manage(dt);
   updateGrenades(dt); updatePickups(dt); updateClients(dt);
-  if (state==='play'){ updateMissions(dt); updateShops(dt); }
+  if (state==='play'){ updateMissions(dt); updateShops(dt); updateActivities(dt); }
   updatePool(glowP,dt); updatePool(smokeP,dt);
 }
 

@@ -18,7 +18,8 @@ cd ilici-city && python3 -m http.server 8000
 | Espacio | Saltar (a pie) / freno de mano (en coche) |
 | Z | Agacharse o levantarse |
 | E / Enter | Entrar, robar un coche o salir |
-| F / clic | Disparar, golpear o lanzar granada (mantén para ráfaga) |
+| F / clic | Disparar, golpear o lanzar granada (mantén para ráfaga). Con puños o bate, mantén para cargar un golpe fuerte |
+| Clic derecho (mantener) | Apuntar por encima del hombro (tercera persona) |
 | Q / rueda / 1-7 | Cambiar de arma |
 | H | Claxon |
 | C | Cámara normal / cenital |
@@ -27,7 +28,7 @@ cd ilici-city && python3 -m http.server 8000
 | I | Mostrar u ocultar los controles en pantalla |
 | P / Esc | Pausa, misiones y controles |
 
-Los controles aparecen en pantalla al empezar (tecla I) y en el menú de pausa. En móvil hay joystick, botones táctiles (Saltar y Agachar incluidos) y un botón «?» con la ayuda. En tercera persona apuntar es automático; en primera persona se apunta con la mira. Los avisos salen en una columna pequeña arriba a la derecha para no tapar el juego.
+Los controles aparecen en pantalla al empezar (tecla I) y en el menú de pausa. En móvil hay joystick, botones táctiles (Saltar y Agachar incluidos) y un botón «?» con la ayuda. En tercera persona, sin apuntar, el tiro va al objetivo más cercano; manteniendo el clic derecho apuntas por encima del hombro con mira. En primera persona se apunta con la mira del centro. Los avisos salen en una columna pequeña arriba a la derecha para no tapar el juego.
 
 ## Qué incluye
 
@@ -43,8 +44,14 @@ Los controles aparecen en pantalla al empezar (tecla I) y en el menú de pausa. 
 - **Vehículos**: utilitarios, sedanes, deportivos, taxis, furgonetas, furgonetas de reparto, pick-ups, camiones y autobuses urbanos que paran en las paradas. Todos se pueden robar y conducir.
 - **Bicicletas**: en «Bicis Elx» (La Glorieta, cuadrado verde del mapa) compras una bici por 10 € y sales pedaleando.
 - **Carretera al aeropuerto**: sale de la ronda de Levante hacia el este y llega al Aeropuerto de Alicante-Elche (El Altet), con terminal, torre de control, pista, aviones aparcados, uno despegando cada poco y aparcamiento.
+- **Combate cuerpo a cuerpo**: golpes con los dos brazos (directos, ganchos, uppercuts). Un golpe normal hace tambalearse al NPC; el golpe cargado (mantén el botón) puede tumbarlo.
+- **Daño por zonas**: la cabeza hace mucho más daño, las piernas hacen cojear o caer y los brazos y el torso hacen tambalearse.
+- **Robo de coches con animación**: abres la puerta, sacas al conductor a rastras (cae al suelo, se levanta y huye) y te subes. No puedes robar un coche en marcha rápida.
+- **Atropellos realistas**: el resultado depende de la velocidad, el ángulo y el peso del vehículo. A poca velocidad solo empujas; los golpes fuertes tumban y los muy fuertes matan. En bici te pueden disparar, te caes en choques fuertes o explosiones y la bici queda en el suelo.
+- **Testigos, cámaras y policía**: la policía solo sabe lo que ve o lo que le cuentan. Los testigos tardan unos segundos en llamar (se ve en el HUD) y hay cámaras de seguridad en monumentos, tiendas y comercios. Sin testigos no hay estrellas; un ruido sin testigos solo hace que la policía investigue la zona. La policía persigue lo que ve o tu última posición conocida y después rastrea la zona, también a pie. Para escapar: rompe la línea de visión, métete en callejones y plazas peatonales, agáchate, aprovecha la noche o cambia de vehículo.
+- **Actividades para ganar dinero** (marcadores azules): Reparto Exprés (paquetes urgentes, vale la bici), Logística Vinalopó en el Polígono (transporte con camión y mozo de almacén), Parada de taxis de la Estación (carreras encadenadas), Taller de Carrús (asistencia en carretera, reparar, comprar y vender coches), Carreras clandestinas del Pla (de noche, con apuesta), Inmobiliaria Glorieta (negocios que hacen caja cada día de juego) y encargos de NPC que te llaman por la calle. Los comercios naranjas (estanco, gasolinera, joyería) se pueden atracar con un arma de fuego.
 - **Tráfico y peatones**: los coches circulan por la derecha y siguen la red de calles. Los peatones caminan por las aceras, cruzan la calle y huyen si pasa algo.
-- **Sistema de búsqueda de 5 estrellas**: la policía te persigue calculando rutas por las calles. Con 2 o más estrellas dispara y se baja del coche para perseguirte a pie. Te detiene si te quedas quieto y las estrellas bajan si la despistas. Los peatones abatidos sueltan dinero.
+- **Sistema de búsqueda de 5 estrellas**: la policía te persigue calculando rutas por las calles. Con 2 o más estrellas dispara y se baja del coche para perseguirte a pie. Te detiene si te quedas quieto y las estrellas bajan cuando pasa un rato sin verte.
 - **Daños**: los coches echan humo, se incendian y explotan.
 - **5 misiones**: Dátiles para la abuela, Taxi al Martínez Valero, Carrera del Palmeral, El deportivo del míster y La Nit de l'Albà (termina con fuegos artificiales).
 - **12 dátiles de oro** escondidos, a 100 € cada uno.
