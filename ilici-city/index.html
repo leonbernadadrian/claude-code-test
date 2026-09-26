@@ -61,6 +61,11 @@
   #banner{position:absolute;left:0;right:0;top:34%;text-align:center;font-size:clamp(34px,7vw,64px);line-height:1;opacity:0;transition:opacity .4s;padding-inline:16px}
   #banner.show{opacity:1}
   #banner small{display:block;font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;margin-top:10px;color:var(--paper)}
+  #cross{position:absolute;left:50%;top:50%;width:22px;height:22px;margin:-11px 0 0 -11px;pointer-events:none}
+  #cross::before,#cross::after{content:'';position:absolute;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.7)}
+  #cross::before{left:10px;top:0;width:2px;height:22px}
+  #cross::after{top:10px;left:0;height:2px;width:22px}
+  #cross.hit::before,#cross.hit::after{background:var(--red)}
   #feed{display:flex;flex-direction:column;align-items:flex-end;gap:4px;margin-top:6px;max-width:min(300px,52vw)}
   #feed div{background:rgba(15,21,28,.74);border-right:3px solid var(--gold);padding:4px 10px;font-size:15px;font-weight:600;line-height:1.22;text-align:right;transition:opacity .4s}
   #feed div em{font-style:normal;color:var(--gold)}
@@ -149,6 +154,7 @@
     <div id="timer" class="disp outline" hidden>1:40</div>
     <div id="zone" class="disp outline"><small>Elche</small><span>Centro Histórico</span></div>
     <div id="banner" class="disp outline"></div>
+    <div id="cross" hidden></div>
     <div id="hint" hidden></div>
     <div id="obj" class="outline"></div>
     <div id="keys"><div class="ctr">
@@ -158,7 +164,7 @@
       <kbd>F · clic</kbd><span>Disparar o golpear</span>
       <kbd>Q · rueda · 1-7</kbd><span>Cambiar de arma</span>
       <kbd>H</kbd><span>Claxon</span>
-      <kbd>C</kbd><span>Cambiar cámara</span>
+      <kbd>C · V</kbd><span>Cámara cenital · primera persona</span>
       <kbd>M</kbd><span>Mapa con calles</span>
       <kbd>P</kbd><span>Pausa y misiones</span>
     </div><p>Pulsa I para mostrar u ocultar los controles</p></div>
@@ -192,6 +198,7 @@
         <button class="btn sec" id="bCtl" type="button">Controles</button>
         <button class="btn sec" id="bSound" type="button">Sonido: sí</button>
         <button class="btn sec" id="bQual" type="button">Gráficos: alta</button>
+        <button class="btn sec" id="bView" type="button">Vista: tercera persona</button>
         <button class="btn sec" id="bReset" type="button">Borrar progreso</button>
       </div>
     </div>
@@ -210,6 +217,7 @@
         <kbd>1-7</kbd><span>Puños, bate, Desert Eagle, pistola, subfusil, escopeta, granadas</span>
         <kbd>H</kbd><span>Claxon</span>
         <kbd>C</kbd><span>Cámara normal / cenital</span>
+        <kbd>V</kbd><span>Primera o tercera persona (también en Pausa)</span>
         <kbd>M</kbd><span>Mapa con nombres de calles</span>
         <kbd>I</kbd><span>Mostrar u ocultar los controles en pantalla</span>
         <kbd>P · Esc</kbd><span>Pausa</span>
@@ -221,8 +229,9 @@
         <kbd>Freno</kbd><span>En coche, el mismo botón es el freno de mano</span>
         <kbd>Arma</kbd><span>Cambiar de arma</span>
         <kbd>Rojo</kbd><span>En coche, disparar desde la ventanilla</span>
+        <kbd>Arrastrar</kbd><span>En primera persona, arrastra en la pantalla para mirar</span>
       </div>
-      <p class="fine">Apuntar es automático: disparas al objetivo más cercano delante de ti. Las armas, la munición, el chaleco y los paquetes se consiguen en el mercado negro de Los Palmerales (cuadrados rojo y morado del mapa).</p>
+      <p class="fine">En primera persona (Pausa → Vista, o tecla V) apuntas con la mira del centro: haz clic para controlar la cámara con el ratón y pulsa Esc para soltarlo. En tercera persona apuntar es automático: disparas al objetivo más cercano delante de ti. Las armas, la munición, el chaleco y los paquetes se consiguen en el mercado negro de Los Palmerales (cuadrados rojo y morado del mapa).</p>
       <div class="prow"><button class="btn" id="bHelpClose" type="button">Cerrar</button></div>
     </div>
   </div>
@@ -427,6 +436,7 @@ renderer.shadowMap.enabled = !isTouch;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
+renderer.autoClear = false;
 renderer.domElement.className='gl';
 container.prepend(renderer.domElement);
 const scene=new THREE.Scene();
@@ -1398,7 +1408,7 @@ for (const sh of SHOPS){
   sh.marker=new THREE.Mesh(markerGeo,shopMat); sh.marker.position.set(sh.mx,1.5,sh.mz); scene.add(sh.marker);
   sh.dealer=makePedMesh(sh.id==='armas'?'#2b2b2b':'#6b2fa3','#1b1b1b','#c68863','#111'); sh.dealer.position.set(sh.pos[0],0.27,sh.pos[1]-1.5); scene.add(sh.dealer);
 }
-function openShop(sh){ state='shop'; shopState.cur=sh; renderShop(); $('shop').hidden=false; hud.hint.hidden=true; }
+function openShop(sh){ try{ document.exitPointerLock?.(); }catch(e){} state='shop'; shopState.cur=sh; renderShop(); $('shop').hidden=false; hud.hint.hidden=true; }
 function closeShop(){ $('shop').hidden=true; shopState.leave=shopState.cur; shopState.cur=null; state='play'; persist(); }
 function renderShop(){
   const sh=shopState.cur, items=[];
@@ -1613,7 +1623,8 @@ addEventListener('keydown',e=>{
   if (e.code==='KeyI') toggleKeys();
   if (/^Digit[1-7]$/.test(e.code)){ const id=WEAPONS[+e.code.slice(5)-1].id, i=player.owned.indexOf(id); if (i>=0) selectWeapon(i); else toast(`No tienes ${W_BY[id].name.toLowerCase()}`,1.2); }
   if (e.code==='KeyH') horn();
-  if (e.code==='KeyC') camMode=(camMode+1)%2;
+  if (e.code==='KeyC' && !fp) camMode=(camMode+1)%2;
+  if (e.code==='KeyV') setFP(!fp);
   if (e.code==='KeyM') openMap();
   if (e.code==='KeyP'||e.code==='Escape') pause();
 });
@@ -1640,8 +1651,9 @@ let wheelT=0; renderer.domElement.addEventListener('wheel',e=>{ if (state!=='pla
 }
 function axis(){
   let x=0,y=0;
-  if (keys.has('KeyA')||keys.has('ArrowLeft')) x-=1;
-  if (keys.has('KeyD')||keys.has('ArrowRight')) x+=1;
+  const arrows=!fp||player.inCar;
+  if (keys.has('KeyA')||(arrows&&keys.has('ArrowLeft'))) x-=1;
+  if (keys.has('KeyD')||(arrows&&keys.has('ArrowRight'))) x+=1;
   if (keys.has('KeyW')||keys.has('ArrowUp')) y+=1;
   if (keys.has('KeyS')||keys.has('ArrowDown')) y-=1;
   if (joy.active){ x=joy.x; y=joy.y; }
@@ -1653,6 +1665,58 @@ let keysT=0;
 function toggleKeys(force){ const k=$('keys'); const on=force??!k.classList.contains('show'); k.classList.toggle('show',on); keysT=on&&force?25:0; }
 function openHelp(){ state='help'; $('help').hidden=false; $('pause').hidden=true; }
 function closeHelp(){ $('help').hidden=true; state='play'; }
+
+/* ================= primera persona ================= */
+let fp=false; try{ fp=localStorage.getItem('ilici-fp')==='1'; }catch(e){}
+let fpPitch=0, fpCarLook=0, vmKick=0, vmBob=0, hitFlash=0, lastRayHit=null;
+const vmScene=new THREE.Scene(), vmCam=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,0.01,10);
+const vmHemi=new THREE.HemisphereLight(0xdfe8f5,0x6b5a40,1), vmSun=new THREE.DirectionalLight(0xffffff,1.2); vmSun.position.set(1,2,1); vmScene.add(vmHemi,vmSun);
+const vmRoot=new THREE.Group(); vmScene.add(vmRoot); vmRoot.visible=false;
+const vmR1=new THREE.Group(); vmR1.rotation.z=Math.PI; vmRoot.add(vmR1);
+const vmR2=new THREE.Group(); vmR2.rotation.x=Math.PI/2; vmR1.add(vmR2);
+const vmHolder=new THREE.Group(); vmHolder.position.y=0.3; vmHolder.scale.setScalar(0.72); vmR2.add(vmHolder);
+const vmWM=makeWeaponModels(vmHolder);
+{ const skinM=lambert('#e0ac85'), sleeveM=lambert('#1f8a4c');
+  const fa=new THREE.Mesh(new THREE.CapsuleGeometry(0.042,0.3,3,10),skinM); fa.rotation.x=Math.PI/2; fa.position.set(0.01,-0.04,-0.18); vmRoot.add(fa);
+  const sl=new THREE.Mesh(new THREE.CapsuleGeometry(0.055,0.25,3,10),sleeveM); sl.rotation.x=Math.PI/2; sl.position.set(0.03,-0.07,0.08); vmRoot.add(sl);
+  const hand=new THREE.Mesh(new THREE.SphereGeometry(0.048,12,10),skinM); hand.scale.set(1,0.8,1.2); hand.position.set(0,-0.02,-0.36); vmRoot.add(hand); }
+function setFP(v,quiet){
+  fp=v; try{ localStorage.setItem('ilici-fp',v?'1':'0'); }catch(e){}
+  camera.near=v?0.2:0.4; camera.updateProjectionMatrix(); fpPitch=0; fpCarLook=0;
+  if (!v){ camYaw=player.inCar?player.inCar.h:player.h; camPos.set(player.x-Math.sin(camYaw)*6,3,player.z-Math.cos(camYaw)*6); try{ document.exitPointerLock?.(); }catch(e){} }
+  $('bView').textContent='Vista: '+(v?'primera persona':'tercera persona');
+  if (!quiet) toast(v?`Primera persona. ${isTouch?'Arrastra en la pantalla para mirar.':'Haz clic para mirar con el ratón (Esc lo suelta).'}`:'Tercera persona',3);
+}
+function lookDelta(dx,dy,k){ if (player.inCar) fpCarLook=clamp(fpCarLook-dx*k,-2.2,2.2); else player.h-=dx*k; fpPitch=clamp(fpPitch-dy*k,-1.25,1.25); }
+const lockEl=renderer.domElement;
+lockEl.addEventListener('click',()=>{ if (fp && state==='play' && !isTouch && document.pointerLockElement!==lockEl){ try{ const r=lockEl.requestPointerLock(); if (r&&r.catch) r.catch(()=>{}); }catch(e){} } });
+lockEl.addEventListener('contextmenu',e=>e.preventDefault());
+addEventListener('mousemove',e=>{ if (!fp||state!=='play') return; if (document.pointerLockElement!==lockEl && !(e.buttons&2)) return; lookDelta(e.movementX||0,e.movementY||0,0.0024); });
+document.addEventListener('pointerlockchange',()=>{ if (!document.pointerLockElement && fp && state==='play') pause(); });
+{ let lt=null;
+  lockEl.addEventListener('touchstart',e=>{ if (!fp||lt) return; const t=e.changedTouches[0]; lt={id:t.identifier,x:t.clientX,y:t.clientY}; },{passive:true});
+  lockEl.addEventListener('touchmove',e=>{ if (!lt) return; for (const t of e.changedTouches) if (t.identifier===lt.id){ lookDelta(t.clientX-lt.x,t.clientY-lt.y,0.0065); lt.x=t.clientX; lt.y=t.clientY; } },{passive:true});
+  const te=e=>{ if (lt) for (const t of e.changedTouches) if (t.identifier===lt.id) lt=null; };
+  lockEl.addEventListener('touchend',te); lockEl.addEventListener('touchcancel',te); }
+function updateViewmodel(dt){
+  const show=fp && !player.inCar && (state==='play'||state==='dead') && player.health>0;
+  vmRoot.visible=show; $('cross').hidden=!(fp && (state==='play') && player.health>0);
+  if (hitFlash>0){ hitFlash-=dt; $('cross').classList.toggle('hit',hitFlash>0); }
+  if (!show) return;
+  const W=curW();
+  for (const k in vmWM) vmWM[k].visible = k===(W.throw?(player.ammo.grenade>0?'grenade':''):W.id);
+  const sp=Math.hypot(player.vx,player.vz); vmBob+=dt*sp*1.7; vmKick=Math.max(0,vmKick-dt*7);
+  let px=0.2+Math.sin(vmBob)*0.012*Math.min(1,sp/4), py=-0.23-Math.abs(Math.cos(vmBob))*0.014*Math.min(1,sp/4), pz=-0.08+vmKick*0.09, rx=vmKick*0.3, rz=0;
+  if (player.punchT>0 && player.punchDur){
+    const f=1-player.punchT/player.punchDur, e=1-Math.pow(1-f,3);
+    if (W.id==='bat'){ rx=lerp(0.9,-0.7,e); rz=lerp(0.7,-0.5,e); px-=0.05; }
+    else if (W.throw){ rx=f<0.35?lerp(0,1.2,f/0.35):lerp(1.2,-0.6,(f-0.35)/0.65); }
+    else { const k=f<0.35?f/0.35:1-(f-0.35)/0.65; pz-=0.28*k; px-=0.1*k; }
+  }
+  if (W.id==='bat' && !(player.punchT>0)){ rx+=0.35; rz+=0.25; }
+  vmRoot.position.set(px,py,pz); vmRoot.rotation.set(rx,0,rz);
+  vmHemi.intensity=hemi.intensity; vmSun.intensity=sun.intensity*0.8;
+}
 
 /* ================= mecánicas ================= */
 let now=0, gameMin=17*60+30, camMode=0, camYaw=Math.PI, shakeA=0, state='title';
@@ -1792,7 +1856,7 @@ function rayShot(ox,oz,a,range,dmg){
   for (const c of cars){ if (c===player.inCar||c.exploded) continue;
     const fx=Math.sin(c.h), fz=Math.cos(c.h), o=c.T.len*0.27, r=c.T.w*0.62;
     for (const sg of [1,-1]){ const rx=c.x+fx*o*sg-ox, rz=c.z+fz*o*sg-oz, t=rx*dx+rz*dz, lat=Math.abs(rx*dz-rz*dx); if (lat>=r) continue; const th=t-Math.sqrt(r*r-lat*lat); if (th>0 && th<bt){ bt=th; best=c; } } }
-  const ex=ox+dx*bt, ez=oz+dz*bt; tracer(ox,oz,ex,ez);
+  const ex=ox+dx*bt, ez=oz+dz*bt; tracer(ox,oz,ex,ez); lastRayHit=best;
   if (best instanceof Ped){
     for (let i=0;i<5;i++) emit(smokeP,ex,1.2,ez,mrand(-1,1),mrand(0,2),mrand(-1,1),0.4,0.22,'#7a1010',6);
     const killed=best.damage(dmg,dx,dz,false);
@@ -1807,10 +1871,14 @@ function rayShot(ox,oz,a,range,dmg){
 function shoot(W){
   const car=player.inCar; let h=car?car.h:player.h;
   const ox=car?car.x+Math.sin(h)*car.T.len*0.5:player.x+Math.sin(h)*0.5, oz=car?car.z+Math.cos(h)*car.T.len*0.5:player.z+Math.cos(h)*0.5;
-  const tgt=aimTarget(ox,oz,h,W.range,car?0.3:0.75);
-  if (tgt){ h=Math.atan2(tgt.x-ox,tgt.z-oz); if (!car) player.h=h; }
+  if (fp && car) h+=fpCarLook;
+  const tgt=aimTarget(ox,oz,h,W.range,fp?(car?0.12:0.07):(car?0.3:0.75));
+  if (tgt){ h=Math.atan2(tgt.x-ox,tgt.z-oz); if (!car && !fp) player.h=h; }
+  vmKick=Math.min(1.4,vmKick+(W.kick?1.3:W.pellets?1.1:0.6)); let hit=false;
   aimT=0.5;
-  for (let k=0;k<(W.pellets||1);k++) rayShot(ox,oz,h+mrand(-W.spread,W.spread),W.range,W.dmg);
+  const skyShot=fp && !car && fpPitch>0.5;
+  for (let k=0;k<(W.pellets||1);k++){ if (skyShot){ tracer(ox,oz,ox+Math.sin(h)*20,oz+Math.cos(h)*20); continue; } rayShot(ox,oz,h+mrand(-W.spread,W.spread)*(player.crouch?0.5:1),W.range,W.dmg); if (lastRayHit) hit=true; }
+  if (hit) hitFlash=0.18;
   emit(glowP,ox+Math.sin(h)*0.3,1.35,oz+Math.cos(h)*0.3,0,0,0,0.06,0.55,'#ffd27a');
   noise(W.snd[1],W.snd[2],W.snd[0]); shake(W.kick||(W.pellets?0.35:0.1));
   for (const p of peds) if (p.state!=='dead' && d2(p.x,p.z,ox,oz)<2025) p.scare(ox,oz,7);
@@ -1828,7 +1896,7 @@ function copShot(ox,oz,P,d,dmg=7,range=40){
 const grenades=[], grenGeo=new THREE.SphereGeometry(0.2,8,6);
 function throwGrenade(){
   const h=player.h, m=new THREE.Mesh(grenGeo,lambert('#3d4a2a')); scene.add(m);
-  grenades.push({m,x:player.x+Math.sin(h)*0.6,y:1.6,z:player.z+Math.cos(h)*0.6,vx:Math.sin(h)*14+player.vx*0.5,vy:6.5,vz:Math.cos(h)*14+player.vz*0.5,t:2.1});
+  grenades.push({m,x:player.x+Math.sin(h)*0.6,y:1.6,z:player.z+Math.cos(h)*0.6,vx:Math.sin(h)*14+player.vx*0.5,vy:fp?clamp(6.5+fpPitch*9,2,14):6.5,vz:Math.cos(h)*14+player.vz*0.5,t:2.1});
   player.punchT=player.punchDur=0.45; tone(300,0.08,'triangle',0.05);
 }
 function updateGrenades(dt){
@@ -2155,6 +2223,22 @@ function update(dt){
     const c=player.inCar;
     c.drive(dt, c.dead?0:ax.y, ax.x, handbrake());
     player.x=c.x; player.z=c.z; player.vx=c.vx; player.vz=c.vz;
+  } else if (state==='play' && fp){
+    if (keys.has('ArrowLeft')) player.h+=2.2*dt; if (keys.has('ArrowRight')) player.h-=2.2*dt;
+    const mag=Math.min(1,Math.hypot(ax.x,ax.y));
+    if (mag>0.12){
+      const fx=Math.sin(player.h), fz=Math.cos(player.h), rx=-fz, rz=fx;
+      let dx=fx*ax.y+rx*ax.x, dz=fz*ax.y+rz*ax.x; const L=Math.hypot(dx,dz)||1; dx/=L; dz/=L;
+      const spd=(running()&&ax.y>0.3?8.2:4)*mag;
+      player.vx=dx*spd; player.vz=dz*spd;
+      const ox=player.x, oz=player.z; player.x+=player.vx*dt; player.z+=player.vz*dt;
+      if (riverBlocked(player.x,player.z)){ player.x=ox; player.z=oz; }
+      player.phase+=dt*spd*4.2;
+    } else { player.vx=player.vz=0; }
+    pushCircle(player,0.42);
+    player.x=clamp(player.x,-LIM,LIM); player.z=clamp(player.z,-LIM,LIM);
+    const near=nearestCar(4.2);
+    if (near) showHint(isTouch?`Pulsa ENTRAR para ${near.driver==='npc'||near.driver==='police'?'robar':'subir a'} este coche`:`E: ${near.driver==='npc'||near.driver==='police'?'Robar':'Subir a'} este coche`);
   } else if (state==='play'){
     const mag=Math.min(1,Math.hypot(ax.x,ax.y));
     if (mag>0.12){
@@ -2260,6 +2344,18 @@ function update(dt){
 }
 
 function updateCamera(dt){
+  if (fp){
+    let yaw, x, y, z;
+    if (player.inCar){ const c=player.inCar, fx=Math.sin(c.h), fz=Math.cos(c.h), rx=-fz, rz=fx; fpCarLook*=Math.exp(-dt*0.8);
+      x=c.x-rx*0.36-fx*0.15; z=c.z-rz*0.36-fz*0.15; y=c.k==='van'?1.9:c.k==='sports'?1.18:1.4; yaw=c.h+fpCarLook; }
+    else { yaw=player.h; x=player.x+Math.sin(yaw)*0.1; z=player.z+Math.cos(yaw)*0.1; y=0.25+(player.y||0)+(player.crouch?1.05:1.62)+Math.abs(Math.sin(vmBob))*0.03; }
+    camera.position.set(x,y,z); camera.up.set(0,1,0);
+    const cp=Math.cos(fpPitch); camLook.set(x+Math.sin(yaw)*cp,y+Math.sin(fpPitch),z+Math.cos(yaw)*cp); camera.lookAt(camLook);
+    if (shakeA>0){ camera.rotation.x+=mrand(-1,1)*shakeA*0.02; shakeA=Math.max(0,shakeA-dt*2.5); }
+    camYaw=yaw; camPos.copy(camera.position);
+    const fovT=camera.aspect<1?80:72; if (Math.abs(camera.fov-fovT)>0.01){ camera.fov=fovT; camera.updateProjectionMatrix(); }
+    return;
+  }
   const P=player.inCar||player;
   const spd=player.inCar?player.inCar.speed:0;
   const moving=player.inCar ? spd>1 : Math.hypot(player.vx,player.vz)>0.5;
@@ -2349,7 +2445,7 @@ function startGame(){
   $('title').hidden=true; $('hud').hidden=false; if (isTouch) $('touch').hidden=false;
   state='play'; camYaw=player.h; camPos.set(player.x-Math.sin(camYaw)*6,3,player.z-Math.cos(camYaw)*6);
   if (!isTouch) toggleKeys(true);
-  if (player.owned.includes('deagle') && !save.deagleTip){ save.deagleTip=true; persist(); setTimeout(()=>{ if (state==='play') toast(`Llevas una <em>Desert Eagle</em> con ${player.ammo.deagle||0} balas. ${isTouch?'Pulsa DISPARAR':'Pulsa F o haz clic'} para disparar: apunta sola al objetivo más cercano que tengas delante.`,6); },5500); }
+  if (player.owned.includes('deagle') && !save.deagleTip){ save.deagleTip=true; persist(); setTimeout(()=>{ if (state==='play') toast(`Llevas una <em>Desert Eagle</em> con ${player.ammo.deagle||0} balas. ${isTouch?'Pulsa DISPARAR':'Pulsa F o haz clic'} para disparar. En tercera persona apunta sola; en primera persona (tecla V o Pausa) usa la mira.`,6); },5500); }
   toast(save.done.length?`Bienvenido de nuevo a Elche. Llevas ${save.done.length}/5 misiones.`:'Estás en <em>La Glorieta</em>. Busca un marcador amarillo en el minimapa o roba el primer coche que veas.',5);
   try{ navigator.wakeLock?.request('screen').catch(()=>{}); }catch(e){}
 }
@@ -2360,7 +2456,7 @@ function pause(){
   $('bSound').textContent='Sonido: '+(soundOn?'sí':'no'); $('bQual').textContent='Gráficos: '+QUALITY[quality].label.toLowerCase(); $('bReset').textContent='Borrar progreso'; $('bReset').dataset.arm='';
 }
 function resume(){ $('pause').hidden=true; state='play'; }
-function openMap(){ state='map'; $('bigmap').hidden=false; drawBigMap(); }
+function openMap(){ try{ document.exitPointerLock?.(); }catch(e){} state='map'; $('bigmap').hidden=false; drawBigMap(); }
 function closeMap(){ $('bigmap').hidden=true; state='play'; }
 $('bPlay').addEventListener('click',startGame);
 $('bResume').addEventListener('click',resume);
@@ -2370,12 +2466,14 @@ $('bReset').addEventListener('click',e=>{
   save={money:150,done:[],dates:[],deagleGift:true}; player.owned=['fist','deagle']; player.ammo={deagle:35}; player.w=1; player.armor=0; player.drugs=0; player.money=150; shownMoney=150; dateMeshes.forEach(m=>m.visible=true); persist(); b.dataset.arm=''; b.textContent='Progreso borrado';
 });
 $('bigmap').addEventListener('click',closeMap);
+$('bView').addEventListener('click',()=>{ setFP(!fp,true); });
+setFP(fp,true);
 $('bQual').addEventListener('click',()=>{ quality={alta:'media',media:'baja',baja:'alta'}[quality]; try{ localStorage.setItem('ilici-q',quality); }catch(e){} applyQuality(); $('bQual').textContent='Gráficos: '+QUALITY[quality].label.toLowerCase(); });
 $('bShopClose').addEventListener('click',closeShop);
 $('bHelpClose').addEventListener('click',closeHelp);
 $('bCtl').addEventListener('click',openHelp);
 
-addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); vmCam.aspect=camera.aspect; vmCam.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
 applyQuality();
 document.addEventListener('visibilitychange',()=>{ if (document.hidden && state==='play') pause(); });
 
@@ -2397,10 +2495,10 @@ function frame(t){
   const dt=Math.min(0.05,(t-last)/1000); last=t;
   if (state==='play'||state==='dead'){
     now+=dt; update(dt);
-    player.mesh.position.set(player.x,0.25,player.z); player.mesh.rotation.y=player.h;
+    player.mesh.position.set(player.x,0.25,player.z); player.mesh.rotation.y=player.h; player.mesh.visible=!player.inCar && !fp;
     if (!player.inCar){ const sp=Math.hypot(player.vx,player.vz); animPed(player.mesh,player.phase,sp>0.3?Math.min(0.9,sp*0.14):0); weaponPose(); }
     if (keysT>0){ keysT-=dt; if (keysT<=0) $('keys').classList.remove('show'); }
-    updateCamera(dt); updateHUD(dt); updateMarkers(); updateAudio();
+    updateCamera(dt); updateViewmodel(dt); updateHUD(dt); updateMarkers(); updateAudio();
   } else if (state==='title'){
     now+=dt; titleA+=dt*0.06; gameMin=(gameMin+dt*0.3)%(1440);
     camera.position.set(-55+Math.sin(titleA)*110,55,-55+Math.cos(titleA)*110); camera.up.set(0,1,0); camera.lookAt(-30,10,-60);
@@ -2408,7 +2506,8 @@ function frame(t){
     for (const c of cars){ if (c.driver==='npc'&&c.ai) cruise(c,dt); else c.drive(dt,0,0,true); pushCircle(c,1.2); c.sync(); }
   } else if (state==='paused'||state==='map'||state==='shop'||state==='help'){ if (AC&&eng){ eng.g.gain.value=0; siren.g.gain.value=0; } }
   updateLighting();
-  renderer.render(scene,camera);
+  renderer.clear(); renderer.render(scene,camera);
+  if (vmRoot.visible && (state==='play'||state==='dead')){ renderer.clearDepth(); renderer.render(vmScene,vmCam); }
 }
 requestAnimationFrame(frame);
 </script>
