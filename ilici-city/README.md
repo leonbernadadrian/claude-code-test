@@ -95,6 +95,13 @@ Los controles aparecen en pantalla al empezar (tecla I) y en el menú de pausa. 
 - **Primera persona**: modo shooter con mira, arma en primer plano con retroceso, ratón con captura del puntero (o arrastrando en el móvil) y vista desde el asiento del conductor.
 - **Saltar y agacharse**: escalones y bordillos se suben solos. Saltando superas bancos, cajas y muretes y te subes al techo de los coches (si arranca, te lleva encima). Agachado vas más despacio, disparas con más precisión y la policía te acierta la mitad de veces.
 - **Personajes y coches modelados**: los peatones tienen cuerpo humano (cara, pelo, torso, codos y rodillas que se doblan) y variantes de hombre y mujer, ropa corta o larga y falda. Los coches tienen carrocería con silueta real, llantas, parachoques y retrovisores.
+- **Fase de mejora gráfica** (ver `AUDITORIA_GRAFICA.md`). Misma ciudad y mismo juego, visualmente más cuidados.
+  - **Personas** con más detalle y el mismo esqueleto de animación: manos, zapatillas, ropa variada y uniforme policial. El protagonista lleva la camiseta del Elche CF.
+  - **Coches** con reflejos del cielo, pasos de rueda, matrículas, rotulación de servicio, luces de freno e intermitentes.
+  - **Fachadas** con comercios, portales, balcones con barandilla y cornisa, y escaparates que se iluminan de noche.
+  - **Calles**: asfalto realista, bordillos, farolas con brazo y semáforos que muestran el estado real.
+  - **Palmeras** datileras con anillos, hojas arqueadas y LOD.
+  - **Luz** con más contraste y exposición según la hora.
 - **Gráficos**: cielo con sol y estrellas, corrección de color cinematográfica, asfalto y aceras con textura, fachadas con persianas y marcos, cornisas, coches con pintura brillante y halos de luz de farolas y faros por la noche. El menú de pausa permite elegir calidad alta, media o baja.
 - **Ciclo de día y noche**: amanece a las 7:00 y anochece hacia las 21:00. De noche se iluminan ventanas, farolas y faros.
 - **Interacción con E**: un único sistema muestra «[E] Verbo · Nombre» para lo que tengas delante (entrar, hablar, atracar, empezar misión, vender, robar, pilotar…) y nada se activa por pisar un círculo.

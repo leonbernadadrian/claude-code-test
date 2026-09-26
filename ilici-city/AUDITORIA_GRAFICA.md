@@ -38,12 +38,34 @@ Puntuación de 1 a 5 (en coste y rendimiento, 5 = barato y seguro).
 El orden propuesto se mantiene, con un cambio justificado por el código: las **fachadas del centro real** pasan al bloque de edificios y se adelantan a las calles. A pie de calle ocupan la mitad de la pantalla en la zona donde empieza el juego.
 
 1. Personaje principal y peatones ✅
-2. Vehículos
-3. Edificios (primero el centro real)
-4. Calles y mobiliario urbano
-5. Palmeras y vegetación
-6. Iluminación y atmósfera
-7. Materiales y detalles
+2. Vehículos ✅
+3. Edificios (primero el centro real) ✅
+4. Calles y mobiliario urbano ✅
+5. Palmeras y vegetación ✅
+6. Iluminación y atmósfera ✅
+7. Materiales y detalles: parcial. Pintura, cristal, metal y personas ya usan material físico con reflejo del cielo; quedan agua, plazas y monumentos
+
+## Resultado de esta primera pasada
+
+- **Coste medido**, en la misma vista de calle de la cuadrícula:
+  - antes: unas 1.000 llamadas de dibujo y 1,06 M de triángulos;
+  - después: unas 1.050–1.100 llamadas y 1,26 M de triángulos.
+
+  El personaje baja de unas 5.900 a unas 5.000 caras y el detalle de coches, farolas y semáforos va en mallas fusionadas o instanciadas. Las palmeras usan LOD.
+- **Artefactos corregidos** por el camino:
+  - acné de sombra bajo los toldos;
+  - ruido de precisión del hash con seno;
+  - parpadeo por `floor()` sobre la normal interpolada;
+  - moiré de lejos: el detalle fino se funde según la distancia.
+- **Semáforos**: ahora muestran el estado real que respeta el tráfico. Antes eran colores fijos.
+
+## Siguientes pasos propuestos
+
+- Comercios con interior intuido y rótulos con nombre en las calles del centro.
+- Agua del Vinalopó y fuentes con material de agua.
+- Monumentos (Basílica, Calahorra, Altamira) con más geometría propia.
+- Sombras de contacto baratas para peatones en móvil (allí no hay sombras en tiempo real).
+- Peatones y vehículos a distancia con modelos simplificados (LOD).
 
 ## Modelos externos: decisión
 
