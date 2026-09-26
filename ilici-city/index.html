@@ -173,6 +173,7 @@
   #bCancel.arm{background:#e0342c;border-color:#fff}
   #bCancel small{display:block;font-weight:400;opacity:.8;font-size:12px}
   #fade{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .35s}
+  #vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 58%,rgba(0,0,0,.28) 100%)}
   #fade.on{opacity:1}
   @media (max-width:560px){ #maplegend{display:none} #mapinfo{max-width:calc(100% - 100px);font-size:16px} #nav{font-size:15px} }
   @media (max-width:560px){
@@ -686,11 +687,11 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
 renderer.autoClear = false;
 renderer.domElement.className='gl';
-container.prepend(renderer.domElement);
+container.prepend(renderer.domElement); { const v=document.createElement('div'); v.id='vig'; renderer.domElement.after(v); }   // viñeta suave
 const scene=new THREE.Scene();
 const camera=new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.4, 1100);
 scene.background=null;
-scene.fog=new THREE.Fog(0x9cc3dc, 150, 560);
+scene.fog=new THREE.Fog(0x9cc3dc, 120, 620);
 const hemi=new THREE.HemisphereLight(0xcfe3f5, 0x6b5a40, 0.9); scene.add(hemi);
 const sun=new THREE.DirectionalLight(0xffffff, 1.8);
 sun.castShadow=true; sun.shadow.mapSize.set(2048,2048); sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.04;
@@ -1422,7 +1423,7 @@ const lampBulbMat=new THREE.MeshBasicMaterial({color:'#6b6555'}); let lampGlow=n
   lampGlow.material.toneMapped=false; lampGlow.visible=false; scene.add(lampGlow);
   const poolMat=new THREE.MeshBasicMaterial({map:glowTex,color:'#ffb866',transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0}); poolMat.toneMapped=false;
   const pgeo=new THREE.PlaneGeometry(1,1); pgeo.rotateX(-Math.PI/2);
-  lampPools=instanced(pgeo,poolMat,bulbs.map(b=>({x:b.x,y:0.3,z:b.z,sx:13,sy:1,sz:13})),false); lampPools.receiveShadow=false; lampPools.visible=false;
+  lampPools=instanced(pgeo,poolMat,bulbs.map(b=>({x:b.x,y:0.3,z:b.z,sx:17,sy:1,sz:17})),false); lampPools.receiveShadow=false; lampPools.visible=false;
 }
 
 /* ---- mobiliario urbano ---- */
@@ -4736,14 +4737,14 @@ function updateLighting(){
   skyU.sunDir.value.set(Math.cos(ang)*0.8,el,0.3); skyU.sunCol.value.setRGB(1,lerp(0.55,0.95,clamp(el*3,0,1)),lerp(0.3,0.85,clamp(el*3,0,1))).multiplyScalar(el>-0.05?1:0);
   sky.position.copy(camera.position);
   hemi.color.copy(hemiN).lerp(hemiD,day);
-  sun.intensity=0.4+1.5*day; hemi.intensity=0.8+0.2*day;
-  if (el>-0.05) sun.color.setRGB(1,lerp(0.62,1,clamp(el*3,0,1)),lerp(0.4,1,clamp(el*3,0,1))); else sun.color.set('#6f86b8');
+  sun.intensity=0.35+2.05*day; hemi.intensity=lerp(0.78,0.58,day); renderer.toneMappingExposure=lerp(1.28,1.02,day);   // más sol y menos luz plana de día; exposición según la hora
+  if (el>-0.05) sun.color.setRGB(1,lerp(0.62,0.96,clamp(el*3,0,1)),lerp(0.4,0.88,clamp(el*3,0,1))); else sun.color.set('#6f86b8');
   const P=player.inCar||player, sx=el>-0.05?Math.cos(ang)*0.8:-0.4, sy=el>-0.05?Math.max(0.25,el):0.7;
   sun.position.set(P.x+sx*160,sy*200,P.z+60); sun.target.position.set(P.x,0,P.z);
   const night=clamp(1-day*1.4,0,1); winU.uNight.value=night; skyU.night.value=night; refreshEnv(day);
   if (palmLOD) palmLOD.near.material.emissiveIntensity=0.1+0.9*day;   // la translucidez de las hojas solo con sol
   termGlass.emissive.setRGB(night*0.55,night*0.45,night*0.28);
-  if (lampGlow){ lampGlow.visible=lampPools.visible=night>0.05; lampGlow.material.opacity=night*0.9; lampPools.material.opacity=night*0.55; } headGlowMat.opacity=night*0.85;
+  if (lampGlow){ lampGlow.visible=lampPools.visible=night>0.05; lampGlow.material.opacity=night*0.9; lampPools.material.opacity=night*0.7; } headGlowMat.opacity=night*0.85;
   lampBulbMat.color.set(night>0.3?'#ffd88a':'#6b6555');
   if (player.inCar && night>0.3){ const c=player.inCar; headLight.intensity=60; headLight.position.set(c.x+Math.sin(c.h)*2,1.2,c.z+Math.cos(c.h)*2); headLight.target.position.set(c.x+Math.sin(c.h)*25,0,c.z+Math.cos(c.h)*25); }
   else headLight.intensity=0;
