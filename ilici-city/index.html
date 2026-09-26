@@ -1544,10 +1544,21 @@ class Ped{
     b.corners.forEach((c,i)=>{ const d=d2(c[0],c[1],this.x,this.z); if(d<bd){bd=d;best=i;} });
     this.k=best; [this.tx,this.tz]=b.corners[best]; this.cross=false;
   }
-  scare(fx,fz,t=6){ if (this.state==='dead' || this.state==='cop' || this.state==='stagger' || this.state==='dragged') return; if (this.state==='cower'||this.state==='backoff') this.resetPose(); this.lookT=0; if (this.state!=='hit'){ this.state='flee'; } this.fx=fx; this.fz=fz; this.t=t; }
+  scare(fx,fz,t=6){ if (this.state==='call') this.endCall(false); if (this.state==='dead' || this.state==='cop' || this.state==='stagger' || this.state==='dragged') return; if (this.state==='cower'||this.state==='backoff') this.resetPose(); this.lookT=0; if (this.state!=='hit'){ this.state='flee'; } this.fx=fx; this.fz=fz; this.t=t; }
+  startCall(){   // el testigo saca el móvil y llama a la policía
+    this.resetPose(); this.state='call'; this.ct=0; this.callDur=mrand(3.5,5.2); this.lookT=0; this.bumpT=0;
+    if (!this.phone){ this.phone=new THREE.Mesh(phoneGeo,phoneMat); this.phone.position.set(0,-0.33,0.03); this.mesh.userData.elbows[0].add(this.phone); }
+    this.phone.visible=true; this.h=Math.atan2(this.x-player.x,this.z-player.z)+mrand(-0.7,0.7);   // se da media vuelta para hablar
+    say(this,'📞 ¿Policía?',2);
+  }
+  endCall(done){   // cuelga: si ha terminado, la policía recibe el aviso; si le interrumpes, no
+    if (this.state!=='call') return; if (this.phone) this.phone.visible=false; this.resetPose();
+    const r=this.report; this.report=null; this.state='walk';
+    if (done && r){ policeCall(r,false); say(this,mpick(['Ya vienen...','Dense prisa, por favor','Sí, ha sido aquí']),1.6); this.home(); }
+  }
   look(t){ if (this.state==='walk'){ this.lookT=t; if (Math.random()<0.3) say(this,mpick(['¿Eh?','¿Qué...?','Uy...']),1.2); } }
-  cower(mode,t=2.5){ if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return; this.resetPose(); this.state='cower'; this.cmode=mode; this.t=t; this.lookT=0; this.bumpT=0; }
-  backoff(t,handsUp){ if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return; this.resetPose(); this.state='backoff'; this.t=t; this.handsUp=handsUp; this.lookT=0; this.bumpT=0; }
+  cower(mode,t=2.5){ if (this.state==='call') this.endCall(false); if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return; this.resetPose(); this.state='cower'; this.cmode=mode; this.t=t; this.lookT=0; this.bumpT=0; }
+  backoff(t,handsUp){ if (this.state==='call') this.endCall(false); if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return; this.resetPose(); this.state='backoff'; this.t=t; this.handsUp=handsUp; this.lookT=0; this.bumpT=0; }
   meleeHit(dmg,dx,dz,power,bat){
     if (this.state==='dead') return false;
     this.hp-=dmg;
@@ -1566,6 +1577,7 @@ class Ped{
     this.stagger(dx,dz,1.2); return false;
   }
   stagger(dx,dz,power){
+    if (this.state==='call') this.endCall(false);
     if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return;
     this.prevState=this.state==='stagger'?this.prevState:this.state; this.state='stagger'; this.t=0.45+0.3*power; this.stPow=power; this.bumpT=0;
     this.vx=dx*(1.6+power*1.2); this.vz=dz*(1.6+power*1.2); this.wob=Math.random()*6;
@@ -1578,6 +1590,7 @@ class Ped{
     return false;
   }
   knock(vx,vz,kill){
+    if (this.state==='call') this.endCall(false);
     if (this.state==='dead') return;
     this.vx=vx; this.vz=vz; this.vy=kill?5:3; this.y=Math.max(this.y,0.01);
     this.state = kill ? 'dead' : 'hit'; this.t = kill ? 25 : 2.2;
@@ -1606,6 +1619,19 @@ class Ped{
       else { u.arms[0].rotation.x=u.arms[1].rotation.x=-0.55; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-1.5; }   // manos delante, a la defensiva
       m.position.set(this.x,baseY(),this.z); m.rotation.y=this.h;
       if (this.t<=0){ this.resetPose(); this.state='flee'; this.t=4; this.fx=player.x; this.fz=player.z; }
+      return;
+    }
+    if (this.state==='call'){   // llamando: se lleva el móvil a la oreja y habla gesticulando
+      this.ct+=dt; const u=m.userData, k=Math.min(1,this.ct/0.6), P=player.inCar||player, dp=Math.hypot(P.x-this.x,P.z-this.z);
+      animPed(m,this.phase,0);
+      u.arms[0].rotation.x=-1.35*k; u.arms[0].rotation.z=-0.4*k; u.elbows[0].rotation.x=-0.2-2.35*k;
+      if (this.ct>0.8){ const w=Math.sin(this.ct*3.1); u.arms[1].rotation.x=-0.3+w*0.25; u.elbows[1].rotation.x=-0.9+w*0.3; m.rotation.z=Math.sin(this.ct*1.7)*0.03; }
+      m.position.set(this.x,baseY(),this.z); m.rotation.y=this.h;
+      // si te acercas, le amenazas o le atacas, cuelga y huye: ese aviso no llega a la policía
+      const vIn=((P.vx||0)*(this.x-P.x)+(P.vz||0)*(this.z-P.z))/Math.max(dp,0.1), W=curW();
+      if (dp<3.5 || (dp<8 && vIn>1.2) || (!player.inCar && THREAT[W.id] && !W.melee && playerAimsAt(this))){
+        this.endCall(false); say(this,mpick(['¡Aaah!','¡Déjame!','¡No, no!']),1.4); this.scare(P.x,P.z,7); return; }
+      if (this.ct>=this.callDur+0.6) this.endCall(true);
       return;
     }
     if (this.lookT>0 && this.state==='walk'){   // se para y te mira
@@ -1970,6 +1996,7 @@ function drawMini(yaw,spd){
   if (!mission.cur) MISSIONS.forEach(ms=>blip(ms.start[0],ms.start[1],save.done.includes(ms.id)?'#b99a4a':'#ffd23f',9,'sq',true));
   for (const sh of SHOPS) blip(sh.mx,sh.mz,sh.color,8,'sq',true);
   for (const c of clients) blip(c.x,c.z,'#c99bff',7,'c',true);
+  for (const p of peds) if (p.state==='call') blip(p.x,p.z,Math.floor(now*4)%2?'#ff4d4d':'#ffffff',6,'c',true);   // testigos llamando
   for (const p of peds) if (p.state==='cop') blip(p.x,p.z,'#6aa8ff',4,'c');
   for (const p of objectivePoints()) blip(p[0],p[1],'#ff4d4d',9,'c',true);
   DATES.forEach((p,i)=>{ if (!save.dates.includes(i)) blip(p[0],p[1],'#e8a93a',4,'c',false); });
@@ -2758,8 +2785,8 @@ function crime(type,x,z,stars,o={}){
   for (const cm of CAMS) if (d2(cm.x,cm.z,x,z)<900 && !losBlocked(cm.x,cm.z,x,z,2.2)){ reports.push({t:now+4,cam:true,id:true,stars,x,z,car,type,cid}); break; }
   for (const p of peds){ if (p.cop || p.state==='dead' || p.report) continue; const d=Math.hypot(p.x-x,p.z-z); if (d>60) continue;
     const sees=p===o.victim || (d<30 && !losBlocked(p.x,p.z,x,z,1.5));
-    if (sees && Math.random()<(o.care??1)){ p.report={t:now+mrand(5,10),id:true,stars,x,z,car,type,cid}; seen++; }
-    else if (!sees && o.loud && d<55 && heard<2 && Math.random()<0.5){ p.report={t:now+mrand(8,14),id:false,stars,x,z,car:null,type,cid}; heard++; }
+    if (sees && Math.random()<(o.care??1)){ p.report={t:now+mrand(1.5,3.5),id:true,stars,x,z,car,type,cid}; seen++; }
+    else if (!sees && o.loud && d<55 && heard<2 && Math.random()<0.5){ p.report={t:now+mrand(3,6),id:false,stars,x,z,car:null,type,cid}; heard++; }
     if (seen>=6) break; }
   if (seen && !o.quiet) toast(seen>1?`${seen} testigos te han visto: pueden llamar a la policía`:'Un testigo te ha visto: puede llamar a la policía',2.2);
   return false;
@@ -2780,10 +2807,18 @@ function updateIntel(dt){
   copSeeing = (player.stars>0||intel.inv) && state==='play' ? copCanSee(P.x,P.z,detectRange()) : false;
   if (copSeeing){ if (player.stars>0) markSeen(); else if (suspicious()){ const inv=intel.inv; intel.inv=null; addStars(inv.stars,'La policía que investigaba te ha reconocido'); } }
   if (intel.inv && now>intel.inv.until){ intel.inv=null; }
-  for (const p of peds) if (p.report){ if (p.state==='dead'){ p.report=null; continue; } if (now>=p.report.t && p.state!=='hit' && p.state!=='dragged'){ const r=p.report; p.report=null; policeCall(r,false); } }
+  for (const p of peds) if (p.report){
+    if (p.state==='dead'){ p.report=null; continue; }
+    if (p.state==='call' || now<p.report.t || p.state==='hit' || p.state==='stagger' || p.state==='cower' || p.state==='backoff' || p.state==='dragged') continue;
+    const P=player.inCar||player, dp=Math.hypot(P.x-p.x,P.z-p.z);
+    if (dp<12 && !losBlocked(p.x,p.z,P.x,P.z,1.4)){   // le estás persiguiendo: primero huye (y puede que no llegue a llamar)
+      p.report.t=now+2.5; if ((p.report.tries=(p.report.tries||0)+1)>4 && Math.random()<0.5){ p.report=null; continue; } p.scare(P.x,P.z,4); continue; }
+    p.startCall();
+  }
   for (let i=reports.length-1;i>=0;i--) if (now>=reports[i].t){ const r=reports[i]; reports.splice(i,1); policeCall(r,true); }
-  const n=peds.reduce((a,p)=>a+(p.report?1:0),0)+reports.length, el=$('wit');
-  const txt=n?`📱 ${n} ${n>1?'testigos llamando':'testigo llamando'} a la policía`:intel.inv&&!player.stars?'🔍 La policía investiga la zona':player.stars>0&&!copSeeing&&now-intel.seenT>2?'👁 Fuera de la vista de la policía':'';
+  let calling=0, pending=0; for (const p of peds) if (p.report){ if (p.state==='call') calling++; else pending++; }
+  const el=$('wit');
+  const txt=calling?`📱 ${calling} ${calling>1?'testigos llamando':'testigo llamando'} a la policía`:pending?`👁 ${pending} ${pending>1?'testigos te han visto':'testigo te ha visto'}`:reports.length?'📹 Una cámara te ha grabado':intel.inv&&!player.stars?'🔍 La policía investiga la zona':player.stars>0&&!copSeeing&&now-intel.seenT>2?'👁 Fuera de la vista de la policía':'';
   el.hidden=!txt; if (el.textContent!==txt) el.textContent=txt;
 }
 function policeTarget(){   // dónde busca la policía: lo que ve o lo último que sabe
@@ -2799,6 +2834,7 @@ function policeTarget(){   // dónde busca la policía: lo que ve o lo último q
 const THREAT={bat:{r:10,lvl:1,cry:'¡Cuidado!'},grenade:{r:12,lvl:1.5,cry:'¡Una granada!'},deagle:{r:18,lvl:2,cry:'¡Lleva una pistola!'},pistol:{r:16,lvl:2,cry:'¡Lleva una pistola!'},
   smg:{r:24,lvl:3,cry:'¡Un arma!'},shotgun:{r:24,lvl:3,cry:'¡Una escopeta!'}};
 let perceiveT=0;
+const phoneGeo=new THREE.BoxGeometry(0.045,0.095,0.014), phoneMat=new THREE.MeshLambertMaterial({color:'#15171a',emissive:'#1d3b55'});
 function playerAimsAt(p){   // en primera persona siempre llevas la mira; en tercera, al apuntar con el clic derecho
   if (!(fp || tpAim())) return false;
   const dx=p.x-player.x, dz=p.z-player.z, L=Math.hypot(dx,dz); if (L>30||L<0.3) return false;
@@ -2850,7 +2886,7 @@ function reactToWeapon(p,aimed,d,T){
 }
 function queueArmedReport(p,aimed){   // intentará llamar a la policía (si le amenazaste, te describe)
   if (p.report) return;
-  p.report={t:now+mrand(4,8),id:aimed,stars:1,x:player.x,z:player.z,car:null,type:aimed?'threat':'armed',cid:++crimeSeq};
+  p.report={t:now+mrand(1.5,4),id:aimed,stars:1,x:player.x,z:player.z,car:null,type:aimed?'threat':'armed',cid:++crimeSeq};
 }
 function scream(p,T){
   if (now<(p.screamCd||0)) return; p.screamCd=now+6;
