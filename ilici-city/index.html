@@ -1544,7 +1544,10 @@ class Ped{
     b.corners.forEach((c,i)=>{ const d=d2(c[0],c[1],this.x,this.z); if(d<bd){bd=d;best=i;} });
     this.k=best; [this.tx,this.tz]=b.corners[best]; this.cross=false;
   }
-  scare(fx,fz,t=6){ if (this.state==='dead' || this.state==='cop' || this.state==='stagger' || this.state==='dragged') return; if (this.state!=='hit'){ this.state='flee'; } this.fx=fx; this.fz=fz; this.t=t; }
+  scare(fx,fz,t=6){ if (this.state==='dead' || this.state==='cop' || this.state==='stagger' || this.state==='dragged') return; if (this.state==='cower'||this.state==='backoff') this.resetPose(); this.lookT=0; if (this.state!=='hit'){ this.state='flee'; } this.fx=fx; this.fz=fz; this.t=t; }
+  look(t){ if (this.state==='walk'){ this.lookT=t; if (Math.random()<0.3) say(this,mpick(['¿Eh?','¿Qué...?','Uy...']),1.2); } }
+  cower(mode,t=2.5){ if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return; this.resetPose(); this.state='cower'; this.cmode=mode; this.t=t; this.lookT=0; this.bumpT=0; }
+  backoff(t,handsUp){ if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return; this.resetPose(); this.state='backoff'; this.t=t; this.handsUp=handsUp; this.lookT=0; this.bumpT=0; }
   meleeHit(dmg,dx,dz,power,bat){
     if (this.state==='dead') return false;
     this.hp-=dmg;
@@ -1581,7 +1584,34 @@ class Ped{
   }
   update(dt){
     const m=this.mesh;
+    if (this.bubbleT>0){ this.bubbleT-=dt; if (this.bubbleT<=0) this.bubble.visible=false; }
     if (this.state==='dragged'){ if (!jack||jack.p!==this){ this.knock(0,0,false); } return; }   // lo mueve el robo del coche
+    const baseY=()=>this.y+(this.wgA!=null?0.06:this.block&&!this.cross?0.25:0.02);
+    if (this.state==='cower'){   // asustado: manos arriba o agachado cubriéndose mientras le apuntan
+      this.t-=dt; const u=m.userData, k=Math.min(1,(this.ct=(this.ct||0)+dt)*5);
+      this.h+=wrapA(Math.atan2(player.x-this.x,player.z-this.z)-this.h)*Math.min(1,dt*6);
+      animPed(m,this.phase,0);
+      if (this.cmode==='crouch'){ u.legs[0].rotation.x=u.legs[1].rotation.x=-1.3*k; u.knees[0].rotation.x=u.knees[1].rotation.x=2.2*k; u.arms[0].rotation.x=u.arms[1].rotation.x=-2.6*k; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-2.3*k; m.rotation.x=0.3*k; }
+      else { u.arms[0].rotation.x=u.arms[1].rotation.x=-2.95*k; u.arms[0].rotation.z=-0.3*k; u.arms[1].rotation.z=0.3*k; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-0.45*k; }
+      m.position.set(this.x,baseY()-(this.cmode==='crouch'?0.45*k:0),this.z); m.rotation.y=this.h;
+      if (this.t<=0){ this.resetPose(); this.state='flee'; this.t=7; this.fx=player.x; this.fz=player.z; }
+      return;
+    }
+    if (this.state==='backoff'){   // retrocede sin quitarte ojo y luego se va
+      this.t-=dt; const u=m.userData, ax=this.x-player.x, az=this.z-player.z, L=Math.hypot(ax,az)||1, ox=this.x, oz=this.z;
+      this.h+=wrapA(Math.atan2(-ax,-az)-this.h)*Math.min(1,dt*6);
+      this.x+=ax/L*1.3*dt; this.z+=az/L*1.3*dt; pushCircle(this,0.4); if (riverBlocked(this.x,this.z)){ this.x=ox; this.z=oz; }
+      this.phase-=dt*5.5; animPed(m,this.phase,0.35);
+      if (this.handsUp){ u.arms[0].rotation.x=u.arms[1].rotation.x=-2.6; u.arms[0].rotation.z=-0.3; u.arms[1].rotation.z=0.3; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-0.6; }
+      else { u.arms[0].rotation.x=u.arms[1].rotation.x=-0.55; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-1.5; }   // manos delante, a la defensiva
+      m.position.set(this.x,baseY(),this.z); m.rotation.y=this.h;
+      if (this.t<=0){ this.resetPose(); this.state='flee'; this.t=4; this.fx=player.x; this.fz=player.z; }
+      return;
+    }
+    if (this.lookT>0 && this.state==='walk'){   // se para y te mira
+      this.lookT-=dt; this.h+=wrapA(Math.atan2(player.x-this.x,player.z-this.z)-this.h)*Math.min(1,dt*5);
+      animPed(m,this.phase,0); m.position.set(this.x,baseY(),this.z); m.rotation.y=this.h; return;
+    }
     if (this.state==='stagger'){
       // tambaleo: retrocede, se cubre y recupera el equilibrio
       this.t-=dt; this.x+=this.vx*dt; this.z+=this.vz*dt; this.vx-=this.vx*Math.min(1,dt*5); this.vz-=this.vz*Math.min(1,dt*5); pushCircle(this,0.4);
@@ -1676,7 +1706,8 @@ class Ped{
     if (!nb || nb.noWalk){ this.k=(this.k+this.dir+4)%4; [this.tx,this.tz]=b.corners[this.k]; return; }
     this.block=nb; this.k=nk; [this.tx,this.tz]=nb.corners[nk]; this.cross=true;
   }
-  remove(){ scene.remove(this.mesh); disposePed(this.mesh); const i=peds.indexOf(this); if (i>=0) peds.splice(i,1); }
+  remove(){ scene.remove(this.mesh); disposePed(this.mesh); if (this.bubble) this.bubble.material.dispose(); const i=peds.indexOf(this); if (i>=0) peds.splice(i,1); }
+  resetPose(){ const u=this.mesh.userData; for (const a of u.arms) a.rotation.z=0; this.mesh.rotation.x=0; this.mesh.rotation.z=0; this.ct=0; }
 }
 
 buildAirport();
@@ -2004,6 +2035,28 @@ function noise(dur,vol,freq){
   g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); s.connect(f); f.connect(g); g.connect(master); s.start(t); s.stop(t+dur);
 }
 const sfxBoom = v => noise(1.4,0.6*v,500);
+// Audio posicional: el oyente es la cámara y cada sonido sale de su posición en el mundo
+function spatial(x,y,z,ref=5,max=180){
+  if (!AC||!soundOn) return null;
+  const p=AC.createPanner(); p.panningModel='equalpower'; p.distanceModel='inverse'; p.refDistance=ref; p.maxDistance=max; p.rolloffFactor=1.2;
+  if (p.positionX){ p.positionX.value=x; p.positionY.value=y; p.positionZ.value=z; } else p.setPosition(x,y,z);
+  p.connect(master); return p;
+}
+const _lf=new THREE.Vector3();
+function updateListener(){
+  const L=AC.listener, c=camera.position; camera.getWorldDirection(_lf);
+  if (L.positionX){ L.positionX.value=c.x; L.positionY.value=c.y; L.positionZ.value=c.z; L.forwardX.value=_lf.x; L.forwardY.value=_lf.y; L.forwardZ.value=_lf.z; L.upX.value=0; L.upY.value=1; L.upZ.value=0; }
+  else { L.setPosition(c.x,c.y,c.z); L.setOrientation(_lf.x,_lf.y,_lf.z,0,1,0); }
+}
+function screamSound(x,z){   // grito: voz aguda con vibrato, desde la posición del NPC
+  const out=spatial(x,1.6,z,4); if (!out) return;
+  const t=AC.currentTime, o=AC.createOscillator(), v=AC.createOscillator(), vg=AC.createGain(), f=AC.createBiquadFilter(), g=AC.createGain(), f0=mrand(620,980);
+  o.type='sawtooth'; o.frequency.setValueAtTime(f0,t); o.frequency.linearRampToValueAtTime(f0*1.3,t+0.12); o.frequency.linearRampToValueAtTime(f0*0.75,t+0.7);
+  v.frequency.value=mrand(6,9); vg.gain.value=f0*0.03; v.connect(vg); vg.connect(o.frequency);
+  f.type='bandpass'; f.frequency.value=f0*1.6; f.Q.value=1.2;
+  g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.5,t+0.05); g.gain.exponentialRampToValueAtTime(0.0001,t+0.75);
+  o.connect(f); f.connect(g); g.connect(out); o.start(t); v.start(t); o.stop(t+0.8); v.stop(t+0.8);
+}
 const sfxCrash = v => noise(0.35,Math.min(0.5,0.1+v*0.02),1400);
 const sfxPunch = () => noise(0.12,0.3,900);
 const sfxHorn = () => { tone(392,0.35,'square',0.06); tone(494,0.35,'square',0.05); };
@@ -2682,7 +2735,7 @@ const CAMS=[];
 const intel={x:0,z:0,t:-99,vx:0,vz:0,car:null,seenT:-99,inv:null};   // última información de la policía
 const reports=[];                                                     // grabaciones de cámaras pendientes
 let copSeeT=0, copSeeing=false, crimeSeq=0; const reportedCrimes=new Set();
-const CRIME_TXT={shots:'unos disparos',explosion:'una explosión',murder:'un cadáver',assault:'una pelea',carjack:'un robo de coche',runover:'un atropello',drugs:'un trapicheo',robbery:'un atraco'};
+const CRIME_TXT={shots:'unos disparos',explosion:'una explosión',murder:'un cadáver',assault:'una pelea',carjack:'un robo de coche',runover:'un atropello',drugs:'un trapicheo',robbery:'un atraco',armed:'una persona armada',threat:'una amenaza con un arma'};
 function copCanSee(x,z,r){
   for (const c of cars) if (c.driver==='police' && d2(c.x,c.z,x,z)<r*r && !losBlocked(c.x,c.z,x,z,1.3)) return true;
   const rf=r*0.75; for (const p of peds) if (p.cop && p.state!=='dead' && p.state!=='hit' && p.state!=='dragged' && d2(p.x,p.z,x,z)<rf*rf && !losBlocked(p.x,p.z,x,z,1.3)) return true;
@@ -2729,7 +2782,7 @@ function updateIntel(dt){
   if (intel.inv && now>intel.inv.until){ intel.inv=null; }
   for (const p of peds) if (p.report){ if (p.state==='dead'){ p.report=null; continue; } if (now>=p.report.t && p.state!=='hit' && p.state!=='dragged'){ const r=p.report; p.report=null; policeCall(r,false); } }
   for (let i=reports.length-1;i>=0;i--) if (now>=reports[i].t){ const r=reports[i]; reports.splice(i,1); policeCall(r,true); }
-  const n=peds.reduce((a,p)=>a+(p.report&&p.report.id?1:0),0)+reports.length, el=$('wit');
+  const n=peds.reduce((a,p)=>a+(p.report?1:0),0)+reports.length, el=$('wit');
   const txt=n?`📱 ${n} ${n>1?'testigos llamando':'testigo llamando'} a la policía`:intel.inv&&!player.stars?'🔍 La policía investiga la zona':player.stars>0&&!copSeeing&&now-intel.seenT>2?'👁 Fuera de la vista de la policía':'';
   el.hidden=!txt; if (el.textContent!==txt) el.textContent=txt;
 }
@@ -2738,6 +2791,88 @@ function policeTarget(){   // dónde busca la policía: lo que ve o lo último q
   if (player.stars===0 && intel.inv) return {x:intel.inv.x,z:intel.inv.z,live:false};
   if (now-intel.seenT<1.2) return {x:P.x,z:P.z,live:true};
   const k=Math.min(4,Math.max(0,now-intel.t)); return {x:intel.x+intel.vx*k,z:intel.z+intel.vz*k,live:false};
+}
+/* ---- los peatones ven las armas ----
+   Cada NPC comprueba cada 0,2 s si ve tu arma: distancia según el arma, campo de visión (~120º delante, o muy cerca),
+   línea de visión y luz. Si solo la ve, primero te mira y luego decide (según su carácter): mirar, retroceder, alejarse
+   o huir gritando. Si le apuntas, la reacción es inmediata: huye, levanta las manos o se agacha. Algunos avisan a la policía. */
+const THREAT={bat:{r:10,lvl:1,cry:'¡Cuidado!'},grenade:{r:12,lvl:1.5,cry:'¡Una granada!'},deagle:{r:18,lvl:2,cry:'¡Lleva una pistola!'},pistol:{r:16,lvl:2,cry:'¡Lleva una pistola!'},
+  smg:{r:24,lvl:3,cry:'¡Un arma!'},shotgun:{r:24,lvl:3,cry:'¡Una escopeta!'}};
+let perceiveT=0;
+function playerAimsAt(p){   // en primera persona siempre llevas la mira; en tercera, al apuntar con el clic derecho
+  if (!(fp || tpAim())) return false;
+  const dx=p.x-player.x, dz=p.z-player.z, L=Math.hypot(dx,dz); if (L>30||L<0.3) return false;
+  return Math.abs(wrapA(Math.atan2(dx,dz)-(fp?player.h:camYaw)))<Math.max(0.07,Math.atan2(0.5,L));
+}
+function perceiveWeapons(dt){
+  perceiveT-=dt; if (perceiveT>0) return; perceiveT=0.2;
+  if (player.inCar || jack || state!=='play' || player.health<=0) return;
+  const W=curW(), T=THREAT[W.id]; if (!T || (W.throw && !(player.ammo.grenade>0))) return;
+  const night=gameMin<7*60||gameMin>21*60;
+  for (const p of peds){
+    if (p.state==='dead'||p.state==='hit'||p.state==='dragged') continue;
+    const dx=player.x-p.x, dz=player.z-p.z, d=Math.hypot(dx,dz); if (d>30) continue;
+    const aimed=!W.melee && !W.throw && playerAimsAt(p);
+    if (d>(aimed?30:T.r)*(night?0.75:1)) continue;
+    if (Math.abs(wrapA(Math.atan2(dx,dz)-p.h))>1.05 && d>4) continue;   // fuera de su campo de visión
+    if (losBlocked(p.x,p.z,player.x,player.z,1.4)) continue;             // detrás de una pared
+    if (p.cop){ if (aimed && player.stars===0 && (p.aimedT=(p.aimedT||0)+0.2)>=1){ p.aimedT=0; say(p,'¡Suelta el arma!',1.8); addStars(1,'¡Has apuntado a un policía!'); } continue; }
+    reactToWeapon(p,aimed,d,T);
+  }
+}
+function reactToWeapon(p,aimed,d,T){
+  if (p.brave===undefined) p.brave=Math.random();
+  if (p.state==='flee'||p.state==='stagger'){ if (aimed){ p.fx=player.x; p.fz=player.z; p.t=Math.max(p.t,5); } return; }   // ya huye
+  if (p.state==='cower'){ if (aimed) p.t=Math.max(p.t,1.2); return; }   // sigue con las manos arriba mientras le apuntes
+  if (p.state==='backoff'||p.state==='call') return;
+  if (aimed){   // amenaza directa
+    if (now<(p.aimCd||0)) return; p.aimCd=now+8; p.alarm=0;
+    const r=Math.random()+p.brave*0.35;
+    if (r<0.45){ p.scare(player.x,player.z,8); scream(p,T); }
+    else if (r<0.8){ p.cower('hands'); if (Math.random()<0.4) say(p,mpick(['¡No dispare!','¡Vale, vale!','¡Por favor!']),1.6); }
+    else if (r<1.1) p.cower('crouch');
+    else { p.backoff(2.5,true); say(p,'¡Tranquilo...!',1.5); }
+    if (Math.random()<0.45) queueArmedReport(p,true);
+    return;
+  }
+  if (now<(p.wpnCd||0)) return;
+  // arma a la vista: se va dando cuenta, antes si estás cerca y si el arma es grande
+  if (now-(p.alarmT||-9)>3) p.alarm=0; p.alarmT=now;
+  p.alarm=(p.alarm||0)+0.2*(1+T.lvl*0.5)*(d<6?2:1);
+  if (p.alarm<0.6+p.brave*0.9){ if (!p.lookedT || now-p.lookedT>6){ p.lookedT=now; p.look(1.2); } return; }
+  p.alarm=0; p.wpnCd=now+12;
+  const r=Math.random()*(1-p.brave*0.5)+(T.lvl-1)*0.15+(d<8?0.2:0);
+  if (r<0.25) p.look(2.2);                                      // solo te mira (los más templados)
+  else if (r<0.55){ p.backoff(1.6,false); if (Math.random()<0.4) say(p,mpick(['Mejor me voy...','Ay, madre...']),1.4); }
+  else if (r<0.85) p.scare(player.x,player.z,4);               // se aleja deprisa
+  else { p.scare(player.x,player.z,7); scream(p,T); }           // huye gritando y avisa a los demás
+  if (Math.random()<0.12+T.lvl*0.06) queueArmedReport(p,false);
+}
+function queueArmedReport(p,aimed){   // intentará llamar a la policía (si le amenazaste, te describe)
+  if (p.report) return;
+  p.report={t:now+mrand(4,8),id:aimed,stars:1,x:player.x,z:player.z,car:null,type:aimed?'threat':'armed',cid:++crimeSeq};
+}
+function scream(p,T){
+  if (now<(p.screamCd||0)) return; p.screamCd=now+6;
+  say(p,T?T.cry:'¡Aaah!',1.6); screamSound(p.x,p.z);
+  for (const q of peds){ if (q===p||q.cop||q.state!=='walk') continue; const d=Math.hypot(q.x-p.x,q.z-p.z);
+    if (d>16||losBlocked(q.x,q.z,p.x,p.z,1.4)) continue;
+    if (Math.random()<0.55) q.scare(player.x,player.z,5); else q.look(1.5); }   // los que lo oyen se asustan o miran
+}
+// bocadillos sobre los NPC (gritos, frases, llamadas)
+const bubbleTex={};
+function bubbleTexture(txt){
+  if (bubbleTex[txt]) return bubbleTex[txt];
+  const c=document.createElement('canvas'), x=c.getContext('2d'); x.font='bold 40px Arial,sans-serif'; const w=Math.min(508,Math.ceil(x.measureText(txt).width)+44); c.width=512; c.height=88;
+  x.fillStyle='rgba(255,255,255,0.93)'; x.strokeStyle='rgba(0,0,0,0.55)'; x.lineWidth=4; const x0=(512-w)/2;
+  x.beginPath(); if (x.roundRect) x.roundRect(x0,6,w,70,22); else x.rect(x0,6,w,70); x.fill(); x.stroke();
+  x.fillStyle='#111'; x.font='bold 40px Arial,sans-serif'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(txt,256,42);
+  const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace; return bubbleTex[txt]=t;
+}
+function say(p,txt,t=1.4){
+  if (!p.bubble){ p.bubble=new THREE.Sprite(new THREE.SpriteMaterial({map:bubbleTexture(txt),transparent:true,toneMapped:false})); p.bubble.scale.set(2.9,0.5,1); p.bubble.position.y=2.35; p.mesh.add(p.bubble); }
+  else p.bubble.material.map=bubbleTexture(txt);
+  p.bubble.visible=true; p.bubbleT=t;
 }
 /* ---- choque jugador–peatón: el peatón cede y se aparta, el jugador nota resistencia pero no se queda bloqueado ---- */
 const bumpK=()=>now<(player.bumpSlow||0)?0.55:1;
@@ -3230,7 +3365,7 @@ function update(dt){
     g.position.set(x,y,470); takeoff.inner.rotation.x=pitch; g.visible=t<66; }
   manage(dt);
   updateGrenades(dt); updatePickups(dt); updateClients(dt);
-  if (state==='play'){ updateMissions(dt); updateShops(dt); updateActivities(dt); }
+  if (state==='play'){ updateMissions(dt); updateShops(dt); updateActivities(dt); perceiveWeapons(dt); }
   updatePool(glowP,dt); updatePool(smokeP,dt);
 }
 
@@ -3370,6 +3505,7 @@ function updateMarkers(){
 
 function updateAudio(){
   if (!AC) return;
+  updateListener();
   const t=AC.currentTime;
   if (eng){ const c=player.inCar, on=soundOn&&c&&!c.dead&&!c.T.bike&&state==='play'; eng.g.gain.setTargetAtTime(on?0.05:0,t,0.1); if (c){ const f=38+c.speed*3.2+Math.abs(axis().y)*12; eng.o.frequency.setTargetAtTime(f,t,0.05); eng.f.frequency.setTargetAtTime(300+c.speed*25,t,0.1); } }
   if (siren){ let dmin=1e9; const P=player.inCar||player; for (const c of cars) if (c.driver==='police'&&c.ai&&c.ai.mode==='chase'){ const d=Math.hypot(c.x-P.x,c.z-P.z); if (d<dmin) dmin=d; }
