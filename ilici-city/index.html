@@ -1475,6 +1475,8 @@ function setWeaponModel(mesh,id){ const wm=mesh.userData.wm; for (const k in wm)
 function weaponPose(){
   const m=player.mesh, W=curW(), A=m.userData.arms;
   m.children[0].rotation.y=0;
+  if (jack){ const E=m.userData.elbows, k=Math.sin(Math.min(1,jack.t/1.5)*Math.PI); setWeaponModel(m,null); A[0].rotation.z=A[1].rotation.z=0;
+    A[0].rotation.x=A[1].rotation.x=-1.3+k*0.5; E[0].rotation.x=E[1].rotation.x=-0.3-k*0.9; m.children[0].rotation.y=0.25*k; return; }
   setWeaponModel(m, W.throw ? (player.ammo.grenade>0?'grenade':null) : W.id);
   A[0].rotation.z=0; A[1].rotation.z=0;
   const E=m.userData.elbows, two=W.id==='smg'||W.id==='shotgun';
@@ -1526,7 +1528,7 @@ class Ped{
     b.corners.forEach((c,i)=>{ const d=d2(c[0],c[1],this.x,this.z); if(d<bd){bd=d;best=i;} });
     this.k=best; [this.tx,this.tz]=b.corners[best]; this.cross=false;
   }
-  scare(fx,fz,t=6){ if (this.state==='dead' || this.state==='cop' || this.state==='stagger') return; if (this.state!=='hit'){ this.state='flee'; } this.fx=fx; this.fz=fz; this.t=t; }
+  scare(fx,fz,t=6){ if (this.state==='dead' || this.state==='cop' || this.state==='stagger' || this.state==='dragged') return; if (this.state!=='hit'){ this.state='flee'; } this.fx=fx; this.fz=fz; this.t=t; }
   meleeHit(dmg,dx,dz,power,bat){
     if (this.state==='dead') return false;
     this.hp-=dmg;
@@ -1563,6 +1565,7 @@ class Ped{
   }
   update(dt){
     const m=this.mesh;
+    if (this.state==='dragged'){ if (!jack||jack.p!==this){ this.knock(0,0,false); } return; }   // lo mueve el robo del coche
     if (this.state==='stagger'){
       // tambaleo: retrocede, se cubre y recupera el equilibrio
       this.t-=dt; this.x+=this.vx*dt; this.z+=this.vz*dt; this.vx-=this.vx*Math.min(1,dt*5); this.vz-=this.vz*Math.min(1,dt*5); pushCircle(this,0.4);
@@ -2153,16 +2156,69 @@ function nearestCar(r){
 function enterExit(){
   if (player.health<=0) return;
   if (player.inCar){ exitCar(false); return; }
+  if (jack) return;
   const c=nearestCar(4.2); if (!c) return;
   if (c.driver==='npc' || c.driver==='police'){
-    const cop=c.driver==='police';
-    const p=new Ped(c.x+(-Math.cos(c.h))*2, c.z+Math.sin(c.h)*2, cop); p.scare(player.x,player.z,8); p.h=c.h;
-    if (cop) addStars(2,'¡Has robado un <em>coche patrulla</em>!');
-    else if (policeNear(70) || Math.random()<0.25) addStars(1,'Un testigo ha llamado a la policía');
-    else if (player.stars===0) toast('Coche robado',1.5);
+    if (c.speed>5){ toast('Va demasiado rápido para sacar al conductor',1.4); return; }
+    startJack(c); return;
   }
   c.driver='player'; c.ai=null; player.inCar=c; player.mesh.visible=false; setCrouch(false); player.y=0; player.vy=0;
   if (c.mission && mission.cur && mission.cur.steps[mission.step].type==='steal') advanceMission();
+}
+/* ---- robo con animación: abrir la puerta, sacar al conductor y subir ---- */
+let jack=null;
+const doorGeo=new THREE.BoxGeometry(0.07,0.6,1);
+function startJack(c){
+  const cop=c.driver==='police', bike=!!c.T.bike;
+  c.driver='jacked'; c.ai=null; setCrouch(false); player.vx=player.vz=0; aiming=false;
+  const p=new Ped(c.x,c.z,cop); p.state='dragged'; p.block=null; p.wgA=null; p.h=c.h; p.hp=cop?100:100;
+  const lat=(player.x-c.x)*Math.cos(c.h)-(player.z-c.z)*Math.sin(c.h), side=lat>=0?1:-1;   // puerta del lado del jugador
+  let door=null;
+  if (!bike){ door=new THREE.Group(); const dl=Math.min(1.3,c.T.len*0.28), m=new THREE.Mesh(doorGeo,c.painted[0]?.material||lambert('#555'));
+    m.scale.z=dl; m.position.set(0,0,-dl/2); door.add(m); door.position.set(side*(c.T.w/2+0.02),Math.min(1.1,c.T.h*0.48),c.T.len*0.12+dl*0.5); c.mesh.add(door); }
+  jack={c,p,door,t:0,cop,bike,side,sx:player.x,sz:player.z}; const G=jackGeo(c,side); jack.T0=clamp(Math.hypot(G.stand[0]-player.x,G.stand[1]-player.z)/3.2,0.2,0.7);
+}
+function jackGeo(c,s=1){   // puntos en coordenadas del mundo (conductor a la izquierda; s = lado por el que se saca)
+  const fx=Math.sin(c.h), fz=Math.cos(c.h), lx=Math.cos(c.h)*s, lz=-Math.sin(c.h)*s, w=c.T.w/2;
+  const at=(l,f)=>[c.x+lx*l+fx*f, c.z+lz*l+fz*f];
+  return { seat:at(c.T.bike?0:0.36*s,-0.15), stand:at(w+0.6,0.4), out:at(w+1.5,-1.4), lx, lz };
+}
+function endJack(ok){
+  const J=jack; jack=null; if (!J) return;
+  if (J.door) J.c.mesh.remove(J.door);
+  if (J.p.state==='dragged'){ const G=jackGeo(J.c,J.side); J.p.knock(G.lx*2,G.lz*2,false); }
+  if (!ok){ if (J.c.driver==='jacked') J.c.driver=null; player.mesh.visible=!fp; return; }
+  const c=J.c; c.driver='player'; c.ai=null; player.inCar=c; player.mesh.visible=false; player.y=0; player.vy=0;
+  if (J.cop) addStars(2,'¡Has robado un <em>coche patrulla</em>!');
+  else if (policeNear(70) || Math.random()<0.25) addStars(1,'Un testigo ha llamado a la policía');
+  else if (player.stars===0) toast('Coche robado',1.5);
+  if (c.mission && mission.cur && mission.cur.steps[mission.step].type==='steal') advanceMission();
+}
+function updateJack(dt){
+  const J=jack, c=J.c, p=J.p; J.t+=dt; const t=J.t, G=jackGeo(c,J.side), ease=k=>k*k*(3-2*k);
+  if (c.dead||c.exploded||player.health<=0||d2(c.x,c.z,player.x,player.z)>49){ endJack(false); return; }
+  const T0=J.T0, T1=J.bike?T0:T0+0.35, T2=T1+0.8, T3=T2+0.45;
+  // jugador: se acerca a la puerta, tira del conductor y se sube
+  if (t<T0){ const k=ease(t/T0); player.x=lerp(J.sx,G.stand[0],k); player.z=lerp(J.sz,G.stand[1],k); player.phase+=dt*12; }
+  else if (t<T2){ player.x=G.stand[0]; player.z=G.stand[1]; }
+  else { const k=ease(Math.min(1,(t-T2)/(T3-T2))); player.x=lerp(G.stand[0],G.seat[0],k); player.z=lerp(G.stand[1],G.seat[1],k); player.mesh.visible=!fp&&k<0.8; }
+  player.h=Math.atan2(G.seat[0]-player.x,G.seat[1]-player.z)||c.h+Math.PI/2; player.vx=player.vz=0;
+  if (J.door){ const k=t<T0?0:t<T1?ease((t-T0)/(T1-T0)):t<T2?1:1-ease(Math.min(1,(t-T2)/(T3-T2))); J.door.rotation.y=-1.15*k*J.side; }
+  // conductor: sentado, sacado a rastras y al suelo
+  if (p.state==='dragged'){
+    const m=p.mesh, u=m.userData;
+    if (t<T1){ p.x=G.seat[0]; p.z=G.seat[1]; p.y=J.bike?0.35:-0.25; p.h=c.h; u.legs[0].rotation.x=u.legs[1].rotation.x=-1.4; u.knees[0].rotation.x=u.knees[1].rotation.x=1.4; u.arms[0].rotation.x=u.arms[1].rotation.x=-0.9;
+      m.visible=J.bike||t>T0; }
+    else { const k=Math.min(1,(t-T1)/0.8), e=ease(k); m.visible=true;
+      p.x=lerp(G.seat[0],G.out[0],e); p.z=lerp(G.seat[1],G.out[1],e); p.y=lerp(J.bike?0.35:-0.25,0,e)+Math.sin(e*Math.PI)*0.35;
+      p.h=Math.atan2(G.seat[0]-G.out[0],G.seat[1]-G.out[1]); const fl=Math.sin(t*22);
+      u.arms[0].rotation.x=-2.2+fl*0.5; u.arms[1].rotation.x=-2.2-fl*0.5; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-0.6;
+      u.legs[0].rotation.x=lerp(-1.4,0.3,e)+fl*0.2; u.legs[1].rotation.x=lerp(-1.4,-0.2,e)-fl*0.2; u.knees[0].rotation.x=u.knees[1].rotation.x=lerp(1.4,0.3,e);
+      m.rotation.x=-0.35*Math.sin(e*Math.PI);
+      if (k>=1){ m.rotation.x=0; p.y=0; p.knock(G.lx*2.2,G.lz*2.2,false); p.t=1.4; if (!J.cop) tone(420,0.12,'sawtooth',0.04); } }
+    m.position.set(p.x,p.y+0.02,p.z); m.rotation.y=p.h;
+  }
+  if (t>=T3) endJack(true);
 }
 function exitCar(forced,silent){
   const c=player.inCar; if (!c) return;
@@ -2360,7 +2416,7 @@ function shoulderAim(ox,oz,oy){   // punto al que apunta la cruceta (centro de l
   return { yaw:Math.atan2(px-ox,pz-oz), pitch:Math.atan2(py-oy,d) };
 }
 function tryFire(){
-  if (state!=='play'||player.health<=0||fireCd>0) return;
+  if (state!=='play'||player.health<=0||fireCd>0||jack) return;
   const W=curW();
   if (player.inCar && (W.melee||W.throw)) return;
   if (W.melee) return; // los golpes se cargan y se sueltan en updateMelee()
@@ -2716,6 +2772,7 @@ function update(dt){
     const c=player.inCar;
     c.drive(dt, c.dead?0:ax.y, ax.x, handbrake());
     player.x=c.x; player.z=c.z; player.vx=c.vx; player.vz=c.vz;
+  } else if (jack){ updateJack(dt);
   } else if (state==='play' && fp){
     if (keys.has('ArrowLeft')) player.h+=2.2*dt; if (keys.has('ArrowRight')) player.h-=2.2*dt;
     const mag=Math.min(1,Math.hypot(ax.x,ax.y));
