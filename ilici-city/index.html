@@ -3234,12 +3234,35 @@ function update(dt){
   updatePool(glowP,dt); updatePool(smokeP,dt);
 }
 
+/* ---- colisión de la cámara ---- */
+let camDist=null;
+function camSolid(x,z,y){   // ¿hay algo sólido a esta altura? (se ignoran postes finos como farolas y señales)
+  for (const c of query(x,z,0.01)){
+    if (c.h<=y-0.3 || (c.x1-c.x0<0.7 && c.z1-c.z0<0.7)) continue;
+    if (x>c.x0 && x<c.x1 && z>c.z0 && z<c.z1 && (!c.poly || pointInPoly(x,z,c.poly))) return true;
+  }
+  return false;
+}
+function camFree(px,py,pz,yaw,D,H){   // distancia libre del brazo: rayo "grueso" (centro y ±25 cm) para no dar tirones en esquinas
+  const bx=-Math.sin(yaw), bz=-Math.cos(yaw), rx=-Math.cos(yaw), rz=Math.sin(yaw); let free=D;
+  for (const off of [0,-0.25,0.25])
+    for (let t=0.25;t<free+0.45;t+=0.2){ const f=Math.min(1,t/D), y=py+(H-py)*f;
+      if (camSolid(px+bx*t+rx*off,pz+bz*t+rz*off,y)){ free=Math.min(free,Math.max(0.45,t-0.45)); break; } }
+  return free;
+}
+function camNear(x,z,y,r){ return camSolid(x,z,y)||camSolid(x+r,z,y)||camSolid(x-r,z,y)||camSolid(x,z+r,y)||camSolid(x,z-r,y); }
+function camSegBlocked(px,py,pz,q){
+  const L=Math.hypot(q.x-px,q.z-pz), n=Math.ceil(L/0.25);
+  for (let i=1;i<=n;i++){ const t=i/n; if (camSolid(px+(q.x-px)*t,pz+(q.z-pz)*t,py+(q.y-py)*t)) return true; }
+  return false;
+}
 function updateCamera(dt){
   if (fp){
     let yaw, x, y, z;
     if (player.inCar){ const c=player.inCar, fx=Math.sin(c.h), fz=Math.cos(c.h), rx=-fz, rz=fx; fpCarLook*=Math.exp(-dt*0.8);
       const so=c.T.bike?0:0.36; x=c.x-rx*so-fx*0.15; z=c.z-rz*so-fz*0.15; y=c.T.eye||(c.k==='van'?1.9:c.k==='sports'?1.18:1.4); yaw=c.h+fpCarLook; }
-    else { yaw=player.h; x=player.x+Math.sin(yaw)*0.1; z=player.z+Math.cos(yaw)*0.1; y=0.25+(player.y||0)+(player.crouch?1.05:1.62)+Math.abs(Math.sin(vmBob))*0.03; }
+    else { yaw=player.h; y=0.25+(player.y||0)+(player.crouch?1.05:1.62)+Math.abs(Math.sin(vmBob))*0.03; x=player.x+Math.sin(yaw)*0.1; z=player.z+Math.cos(yaw)*0.1;
+      if (camSolid(x+Math.sin(yaw)*0.22,z+Math.cos(yaw)*0.22,y)){ x=player.x; z=player.z; } }   // pegado a una pared: la cámara no asoma dentro
     camera.position.set(x,y,z); camera.up.set(0,1,0);
     const cp=Math.cos(fpPitch); camLook.set(x+Math.sin(yaw)*cp,y+Math.sin(fpPitch),z+Math.cos(yaw)*cp); camera.lookAt(camLook);
     if (shakeA>0){ camera.rotation.x+=mrand(-1,1)*shakeA*0.02; shakeA=Math.max(0,shakeA-dt*2.5); }
@@ -3252,7 +3275,7 @@ function updateCamera(dt){
   const moving=player.inCar ? spd>1 : Math.hypot(player.vx,player.vz)>0.5;
   let tYaw=P.h;
   const aimOn=tpAim(); aimK+=((aimOn?1:0)-aimK)*Math.min(1,dt*(aimOn?11:8)); if (aimK<0.01) aimK=0;
-  const rate=player.inCar?(moving?3.5:0.8):(moving?1.6:0.25);
+  const rate=(player.inCar?(moving?3.5:0.8):(moving?1.6:0.25))*(moving&&camDist!==null&&camDist<2?2.5:1);   // encajonada: gira antes para salir
   if (!aimOn) camYaw+=wrapA(tYaw-camYaw)*(1-Math.exp(-dt*rate));
   const tx=P.x, tz=P.z;
   if (camMode===1){
@@ -3265,16 +3288,30 @@ function updateCamera(dt){
     let D=(onBike?5.8+spd*0.1:player.inCar?9+spd*0.13:5.5)*pf, H=(onBike?2.7:player.inCar?3.8+spd*0.04:2.5)*pf;
     const k=aimK, eye=(player.crouch?1.2:1.75)+(player.y||0);
     D+= (2.3-D)*k; H+=(eye-0.1*aimPitch*2-H)*k;   // sobre el hombro
-    const sh=0.75*k, ox=tx+Math.cos(camYaw)*-sh, oz=tz-Math.sin(camYaw)*-sh;   // desplazado al hombro derecho
-    for (let s=1;s<=6;s++){ const f=s/6, sx=ox-Math.sin(camYaw)*D*f, sz=oz-Math.cos(camYaw)*D*f; const c=pointBlocked(sx,sz); if (c && c.h>H*f+1){ D=Math.max(k>0.5?0.9:2.5,D*(f-0.17)); break; } }
-    camPos.lerp(_v.set(ox-Math.sin(camYaw)*D,H,oz-Math.cos(camYaw)*D),k>0.05?1-Math.exp(-dt*22):1-Math.exp(-dt*9));
+    // pivote: la cabeza del jugador (o el coche), desplazado al hombro derecho al apuntar si no hay pared al lado
+    const py=player.inCar?1.4:(player.crouch?1.1:1.55)+(player.y||0), rx=-Math.cos(camYaw), rz=Math.sin(camYaw);
+    const closeP=camDist===null||player.inCar?0:clamp((2.2-camDist)/1.7,0,1);   // pegada a una pared: pasa a ir sobre el hombro
+    let sh=0.75*k+0.35*closeP*(1-k); if (sh>0.02) for (let t=0.15;t<sh+0.35;t+=0.1) if (camSolid(tx+rx*t,tz+rz*t,py)){ sh=Math.max(0,t-0.4); break; }
+    const ox=tx+rx*sh, oz=tz+rz*sh;
+    // brazo de la cámara: se acorta al instante si algo se interpone y se alarga despacio cuando queda libre
+    const free=camFree(ox,py,oz,camYaw,D,H), bx=-Math.sin(camYaw), bz=-Math.cos(camYaw);
+    if (camDist===null) camDist=free;
+    else camDist+=(free-camDist)*(1-Math.exp(-dt*(free<camDist?18:3)));   // se acerca rápido y se aleja despacio, sin saltos
+    const lift=0;
+    const safe=[ox+bx*free,H+lift,oz+bz*free];   // punto del brazo que siempre queda fuera de la geometría
+    _v.set(ox+bx*camDist,H+lift,oz+bz*camDist);
+    if (camDist>free && camNear(_v.x,_v.z,_v.y,0.45)){ _v.set(...safe); camDist=free; }
+    camPos.lerp(_v,k>0.05?1-Math.exp(-dt*22):1-Math.exp(-dt*9));
+    { const o={x:camPos.x,z:camPos.z}; pushCircle(o,0.45,camPos.y-0.3); camPos.x=o.x; camPos.z=o.z; }   // se desliza por fuera de las fachadas
+    if (camSolid(camPos.x,camPos.z,camPos.y)) camPos.set(...safe);   // y nunca se queda dentro de un edificio
     camera.position.copy(camPos); camera.up.set(0,1,0);
     const cp=Math.cos(aimPitch), lx=camPos.x+Math.sin(camYaw)*cp*20, ly=camPos.y+Math.sin(aimPitch)*20, lz=camPos.z+Math.cos(camYaw)*cp*20;
     camLook.set(tx+Math.sin(camYaw)*3,1.4,tz+Math.cos(camYaw)*3);
     if (k>0){ camLook.x+=(lx-camLook.x)*k; camLook.y+=(ly-camLook.y)*k; camLook.z+=(lz-camLook.z)*k; }
     camera.lookAt(camLook);
   }
-  if (shakeA>0){ camera.position.x+=mrand(-1,1)*shakeA*0.4; camera.position.y+=mrand(-1,1)*shakeA*0.3; shakeA=Math.max(0,shakeA-dt*2.5); }
+  if (shakeA>0){ camera.position.x+=mrand(-1,1)*shakeA*0.4; camera.position.y+=mrand(-1,1)*shakeA*0.3; shakeA=Math.max(0,shakeA-dt*2.5);
+    if (camSolid(camera.position.x,camera.position.z,camera.position.y)) camera.position.copy(camPos); }
   const fovT=(camera.aspect<1?74:60)+clamp(spd-15,0,30)*0.35-12*aimK; camera.fov+=(fovT-camera.fov)*Math.min(1,dt*3); camera.updateProjectionMatrix();
 }
 
@@ -3345,7 +3382,7 @@ function startGame(){
   $('title').hidden=true; $('hud').hidden=false; if (isTouch) $('touch').hidden=false;
   state='play'; camYaw=player.h; camPos.set(player.x-Math.sin(camYaw)*6,3,player.z-Math.cos(camYaw)*6);
   if (!isTouch) toggleKeys(true);
-  if (player.owned.includes('deagle') && !save.deagleTip){ save.deagleTip=true; persist(); setTimeout(()=>{ if (state==='play') toast(`Llevas una <em>Desert Eagle</em> con ${player.ammo.deagle||0} balas. ${isTouch?'Pulsa DISPARAR':'Pulsa F o haz clic'} para disparar. En tercera persona apunta sola; en primera persona (tecla V o Pausa) usa la mira.`,6); },5500); }
+  if (player.owned.includes('deagle') && !save.deagleTip){ save.deagleTip=true; persist(); setTimeout(()=>{ if (state==='play') toast(`Llevas una <em>Desert Eagle</em> con ${player.ammo.deagle||0} balas. ${isTouch?'Pulsa DISPARAR':'Pulsa F o haz clic'} para disparar. ${isTouch?'Apunta solo al objetivo más cercano':'Mantén el clic derecho para apuntar por encima del hombro'}; en primera persona (tecla V o Pausa) usas la mira.`,6); },5500); }
   toast(save.done.length?`Bienvenido de nuevo a Elche. Llevas ${save.done.length}/5 misiones.`:'Estás en <em>La Glorieta</em>. Busca un marcador amarillo en el minimapa o roba el primer coche que veas.',5);
   try{ navigator.wakeLock?.request('screen').catch(()=>{}); }catch(e){}
 }
