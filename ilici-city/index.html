@@ -88,6 +88,8 @@
   #knob{position:absolute;left:40px;top:40px;width:60px;height:60px;border-radius:50%;background:rgba(245,239,226,.8);box-shadow:0 2px 8px rgba(0,0,0,.4)}
   .tb{position:absolute;pointer-events:auto;border-radius:50%;border:2px solid rgba(0,0,0,.6);background:rgba(15,21,28,.55);color:var(--paper);font:700 14px 'Barlow Condensed',sans-serif;letter-spacing:.06em;display:flex;align-items:center;justify-content:center;text-transform:uppercase}
   .tb:active,.tb.on{background:var(--gold);color:var(--ink)}
+  #bSkip{right:calc(env(safe-area-inset-right,0px) + 30px);bottom:calc(env(safe-area-inset-bottom,0px) + 200px);width:58px;height:58px;background:rgba(242,181,68,.85);color:var(--ink)}
+  #bTaxi{right:calc(env(safe-area-inset-right,0px) + 30px);bottom:calc(env(safe-area-inset-bottom,0px) + 200px);width:58px;height:58px;background:rgba(57,211,83,.85);color:var(--ink)}
   #bEnter{right:calc(env(safe-area-inset-right,0px) + 20px);bottom:calc(env(safe-area-inset-bottom,0px) + 110px);width:78px;height:78px;background:rgba(242,181,68,.85);color:var(--ink)}
   #bAct{right:calc(env(safe-area-inset-right,0px) + 108px);bottom:calc(env(safe-area-inset-bottom,0px) + 28px);width:78px;height:78px}
   #bWpn{right:calc(env(safe-area-inset-right,0px) + 22px);bottom:calc(env(safe-area-inset-bottom,0px) + 26px);width:62px;height:62px;font-size:13px}
@@ -145,7 +147,9 @@
   #maplegend i{display:inline-block;width:10px;height:10px;border:2px solid #000;margin-right:6px;vertical-align:-1px}
   #maphelp{position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);left:0;right:0;text-align:center;margin:0;font-size:15px;color:var(--mute);pointer-events:none}
   #nav{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 58px);font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px;white-space:nowrap;background:rgba(15,21,28,.55);padding:3px 12px;border-radius:14px}
-  #nav b{display:inline-block;color:#c77dff;font-size:20px;line-height:1}
+  #nav b{display:inline-block;color:#ff5ec4;font-size:20px;line-height:1}
+  #fade{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .35s}
+  #fade.on{opacity:1}
   @media (max-width:560px){ #maplegend{display:none} #mapinfo{max-width:calc(100% - 100px);font-size:16px} #nav{font-size:15px} }
   @media (max-width:560px){
     #mini{width:118px;height:118px}
@@ -182,6 +186,7 @@
     <div id="charge" hidden><i></i></div>
     <div id="hint" hidden></div>
     <div id="nav" class="outline" hidden><b id="navArrow">▲</b><span id="navTxt"></span></div>
+    <div id="fade"></div>
     <div id="obj" class="outline"></div>
     <div id="keys"><div class="ctr">
       <kbd>W A S D</kbd><span>Andar / conducir</span>
@@ -202,6 +207,8 @@
   <div id="touch" hidden>
     <div id="joy"><div id="knob"></div></div>
     <button class="tb" id="bEnter" type="button">Entrar</button>
+    <button class="tb" id="bTaxi" type="button" hidden>Taxi</button>
+    <button class="tb" id="bSkip" type="button" hidden>Saltar</button>
     <button class="tb" id="bAct" type="button">Golpe</button>
     <button class="tb" id="bWpn" type="button">Arma</button>
     <button class="tb" id="bJump" type="button">Saltar</button>
@@ -1044,6 +1051,18 @@ const inCorridor=(x,z,m=0)=>Math.abs(x-riverX(z))<RHz(z)+m;
   const SPECIAL_COL={'Basílica de Santa Maria':'#d8bd8f',"Palau d'Altamira":'#c7a06a','Torre de la Calaforra':'#c9a46e',"Ajuntament d'Elx":'#e4cfa6',"Gran Teatre d'Elx":'#efe2c8'};
   const SPECIAL_H={'Torre de la Calaforra':22,"Palau d'Altamira":13,'Basílica de Santa Maria':19};
   const pos=[], nor=[], col=[];
+  // edificios reales recortados en el borde del centro que invaden una calzada de la cuadrícula: se quitan (los coches se estrellaban contra ellos)
+  { const gridE=edges.filter(e=>!e.real).map(e=>{ const A=nodes[e.a],B=nodes[e.b]; return [A.x,A.z,B.x,B.z,Math.min(A.x,B.x)-8,Math.min(A.z,B.z)-8,Math.max(A.x,B.x)+8,Math.max(A.z,B.z)+8]; });
+    for (let k=RZ_BLD.length-1;k>=0;k--){ const b=RZ_BLD[k]; if (b.n) continue;
+      let x0=1e9,z0=1e9,x1=-1e9,z1=-1e9; for (const [x,z] of b.pts){ x0=Math.min(x0,x); x1=Math.max(x1,x); z0=Math.min(z0,z); z1=Math.max(z1,z); }
+      if (x0>RZ.x0+12 && x1<RZ.x1-12 && z0>RZ.z0+12 && z1<RZ.z1-12) continue;
+      const near=gridE.filter(q=>!(x1<q[4]||x0>q[6]||z1<q[5]||z0>q[7])); if (!near.length) continue;
+      let bad=false; const P=b.pts;
+      for (let i=0;i<P.length && !bad;i++){ const [ax,az]=P[i], [bx,bz]=P[(i+1)%P.length], n=Math.max(1,Math.ceil(Math.hypot(bx-ax,bz-az)/1.5));
+        for (let j=0;j<=n && !bad;j++){ const x=ax+(bx-ax)*j/n, z=az+(bz-az)*j/n; for (const q of near) if (segDist(x,z,q[0],q[1],q[2],q[3])<5.5){ bad=true; break; } } }
+      for (const q of near){ if (bad) break; const L=Math.hypot(q[2]-q[0],q[3]-q[1]), n=Math.ceil(L/3); for (let j=0;j<=n;j++){ const x=q[0]+(q[2]-q[0])*j/n, z=q[1]+(q[3]-q[1])*j/n; if (pointInPoly(x,z,P)){ bad=true; break; } } }
+      if (bad) RZ_BLD.splice(k,1);
+    } }
   RZ_BLD.forEach((b,k)=>{
     if (inCorridor(b.cx,b.cz,-2)) return;
     b.h=SPECIAL_H[b.n]||b.h;
@@ -2032,9 +2051,9 @@ function drawMini(yaw,spd){
   mctx.restore();
   mctx.save(); mctx.beginPath(); mctx.arc(cx,cx,cx,0,7); mctx.clip(); mctx.translate(cx,cx);
   const lim=cx-12, blip=(x,z,col,r,shape,edge)=>{ let [u,v]=toMini(x,z,e.x,e.z,rot,scale); const L=Math.hypot(u,v); if (L>lim){ if(!edge) return; u*=lim/L; v*=lim/L; } drawBlip(mctx,u,v,col,r,shape); };
-  if (dest && dest.route){ mctx.strokeStyle='#c77dff'; mctx.lineWidth=6; mctx.lineCap='round'; mctx.lineJoin='round'; mctx.beginPath();
+  if (dest && dest.route){ mctx.strokeStyle='#ff5ec4'; mctx.lineWidth=6; mctx.lineCap='round'; mctx.lineJoin='round'; mctx.beginPath();
     dest.route.forEach(([x,z],i)=>{ const [u,v]=toMini(x,z,e.x,e.z,rot,scale); i?mctx.lineTo(u,v):mctx.moveTo(u,v); }); mctx.stroke(); }
-  if (dest) blip(dest.x,dest.z,'#c77dff',8,'c',true);
+  if (dest) blip(dest.x,dest.z,'#ff5ec4',8,'c',true);
   for (const c of cars) if (c.driver==='police') blip(c.x,c.z,Math.floor(now*4)%2?'#ff3b3b':'#3b6bff',6,'sq');
   if (!mission.cur) MISSIONS.forEach(ms=>blip(ms.start[0],ms.start[1],save.done.includes(ms.id)?'#b99a4a':'#ffd23f',9,'sq',true));
   for (const sh of SHOPS) blip(sh.mx,sh.mz,sh.color,8,'sq',true);
@@ -2056,7 +2075,7 @@ const MV={cx:0,cz:0,z:0.6,zt:0.6,anchor:null,ptr:new Map(),pinch:null,wasPinch:f
 // tipos de destino: se pueden añadir más (gasolineras, negocios...) sin tocar el resto del sistema
 const POI_TYPES={mision:{col:'#ffd23f',label:'Misiones',shape:'sq'},trabajo:{col:'#35c6e8',label:'Trabajos',shape:'sq'},actividad:{col:'#35c6e8',label:'Actividades',shape:'sq'},
   negocio:{col:'#35c6e8',label:'Negocios',shape:'sq'},tienda:{col:'#e8464b',label:'Tiendas',shape:'sq'},gasolinera:{col:'#ff8a3d',label:'Gasolineras',shape:'sq'},
-  atraco:{col:'#ff8a3d',label:'Comercios',shape:'sq'},objetivo:{col:'#ff4d4d',label:'Objetivo',shape:'c'},poi:{col:'#f5efe2',label:'Lugares',shape:'c'},waypoint:{col:'#c77dff',label:'Destino',shape:'c'}};
+  atraco:{col:'#ff8a3d',label:'Comercios',shape:'sq'},objetivo:{col:'#ff4d4d',label:'Objetivo',shape:'c'},poi:{col:'#f5efe2',label:'Lugares',shape:'c'},waypoint:{col:'#ff5ec4',label:'Destino',shape:'c'}};
 function mapPOIs(){
   const L=[], add=(x,z,name,type,col)=>L.push({x,z,name,type,col});
   if (!mission.cur) MISSIONS.forEach(ms=>add(ms.start[0],ms.start[1],'Misión: '+ms.name,'mision',save.done.includes(ms.id)?'#b99a4a':null));
@@ -2079,7 +2098,8 @@ function openMap(opts={}){
   try{ document.exitPointerLock?.(); }catch(e){}
   state='map'; $('bigmap').hidden=false; MV.mode=opts.mode||null; MV.onPick=opts.onPick||null; MV.ptr.clear(); MV.hover=null;
   mapResize(); if (!MV.init){ MV.init=true; MV.z=MV.zt=clamp(Math.min(MV.W,MV.H)/1500,MV.zmin,MV.zmax); }
-  mapCenter(); MV.pois=mapPOIs(); buildLegend(); updateMapInfo(); drawMapView();
+  mapCenter(); MV.pois=mapPOIs(); buildLegend(); updateMapInfo(); drawMapView(); $('mClear').hidden=MV.mode==='taxi';
+  $('maphelp').textContent=MV.mode==='taxi'?'Rueda o +/−: zoom · Arrastra: mover · Clic en un icono o en cualquier sitio: destino del taxi · Enter: pagar y subir · Esc: cancelar':'Rueda o +/−: zoom · Arrastra: mover · Clic en un icono o en cualquier sitio: destino · Clic derecho: quitarlo · M: cerrar';
 }
 function closeMap(){ $('bigmap').hidden=true; state='play'; MV.mode=null; MV.onPick=null; MV.ptr.clear(); }
 function buildLegend(){
@@ -2140,7 +2160,7 @@ function drawMapView(){
   if (MV.z>=1.4) for (const b of RZ_BLD) if (b.n){ const X=Ux(b.cx), Y=Uz(b.cz); if (inV(X,Y)) txt(b.n,X,Y+13*d,14,'#ffd9a0'); }
   { const X=Ux(-300),Y=Uz(-760); if (inV(X,Y)){ c.save(); c.translate(X,Y); c.rotate(-Math.PI/2); txt('Río Vinalopó',0,0,20,'#8fd0e6','italic 600'); c.restore(); } }
   // ruta hacia el destino
-  if (dest && dest.route){ c.strokeStyle='#c77dff'; c.lineWidth=Math.max(4,Math.min(10,5*z)); c.lineCap='round'; c.lineJoin='round'; c.globalAlpha=0.9; c.beginPath(); dest.route.forEach(([x,y],i)=>i?c.lineTo(Ux(x),Uz(y)):c.moveTo(Ux(x),Uz(y))); c.stroke(); c.globalAlpha=1; }
+  if (dest && dest.route){ c.strokeStyle='#ff5ec4'; c.lineWidth=Math.max(4,Math.min(10,5*z)); c.lineCap='round'; c.lineJoin='round'; c.globalAlpha=0.9; c.beginPath(); dest.route.forEach(([x,y],i)=>i?c.lineTo(Ux(x),Uz(y)):c.moveTo(Ux(x),Uz(y))); c.stroke(); c.globalAlpha=1; }
   // puntos de interés
   for (const cl of clients){ const X=Ux(cl.x),Y=Uz(cl.z); if (inV(X,Y)) drawBlip(c,X,Y,'#c99bff',7*d,'c'); }
   DATES.forEach((p,i)=>{ if (!save.dates.includes(i)){ const X=Ux(p[0]),Y=Uz(p[1]); if (inV(X,Y)) drawBlip(c,X,Y,'#e8a93a',4*d,'c'); } });
@@ -2149,9 +2169,9 @@ function drawMapView(){
     if (p.type!=='poi' && (MV.z>=0.9 || p===MV.hover)) txt(p.name,X,Y-19*d,15,'#f5efe2'); else if (p===MV.hover) txt(p.name,X,Y-16*d,15,'#fff'); }
   // destino
   if (dest){ const X=Ux(dest.x), Y=Uz(dest.z), pul=0.5+0.5*Math.sin(performance.now()/180);
-    c.strokeStyle='rgba(199,125,255,'+(0.35+0.4*pul)+')'; c.lineWidth=3*d; c.beginPath(); c.arc(X,Y,(14+8*pul)*d,0,7); c.stroke();
-    c.fillStyle='#c77dff'; c.strokeStyle='#000'; c.lineWidth=2*d; c.beginPath(); c.moveTo(X,Y); c.lineTo(X-8*d,Y-15*d); c.arc(X,Y-19*d,9*d,Math.PI*0.8,Math.PI*0.2); c.closePath(); c.fill(); c.stroke();
-    c.fillStyle='#fff'; c.beginPath(); c.arc(X,Y-19*d,3.5*d,0,7); c.fill(); txt(dest.name,X,Y-38*d,16,'#e7c8ff'); }
+    c.strokeStyle='rgba(255,94,196,'+(0.35+0.4*pul)+')'; c.lineWidth=3*d; c.beginPath(); c.arc(X,Y,(14+8*pul)*d,0,7); c.stroke();
+    c.fillStyle='#ff5ec4'; c.strokeStyle='#000'; c.lineWidth=2*d; c.beginPath(); c.moveTo(X,Y); c.lineTo(X-8*d,Y-15*d); c.arc(X,Y-19*d,9*d,Math.PI*0.8,Math.PI*0.2); c.closePath(); c.fill(); c.stroke();
+    c.fillStyle='#fff'; c.beginPath(); c.arc(X,Y-19*d,3.5*d,0,7); c.fill(); txt(dest.name,X,Y-38*d,16,'#ffd0ee'); }
   // jugador (si está fuera de la vista, una flecha en el borde indica dónde)
   const e=player.inCar||player, PX=Ux(e.x), PY=Uz(e.z);
   if (inV(PX,PY,-8)){ c.save(); c.translate(PX,PY); c.rotate(Math.PI-e.h); c.fillStyle='#fff'; c.strokeStyle='#000'; c.lineWidth=3*d; c.beginPath(); c.moveTo(0,-15*d); c.lineTo(11*d,11*d); c.lineTo(0,5*d); c.lineTo(-11*d,11*d); c.closePath(); c.fill(); c.stroke(); c.restore(); }
@@ -2162,12 +2182,97 @@ function drawMapView(){
     c.strokeStyle='#f5efe2'; c.lineWidth=3*d; c.beginPath(); c.moveTo(x0,y0-6*d); c.lineTo(x0,y0); c.lineTo(x0+w,y0); c.lineTo(x0+w,y0-6*d); c.stroke(); txt(m>=1000?`${m/1000} km`:`${m} m`,x0+w/2,y0-12*d,15,'#f5efe2'); }
   c.save(); c.textAlign='left'; c.font=`600 ${13*d}px "Barlow Condensed",sans-serif`; c.fillStyle='rgba(245,239,226,.65)'; c.fillText('Centro real: © colaboradores de OpenStreetMap',12*d,16*d); c.restore();
 }
-let taxiRide=null;
-function taxiMapInfo(){ return ''; }
-function taxiCancel(){ closeMap(); }
+/* ================= taxis ================= */
+// Pides un taxi libre que pase cerca (T), eliges el destino en el mapa, ves el precio, pagas y el taxista te lleva conduciendo
+// con la IA de tráfico normal (semáforos, sentidos, coches delante) siguiendo una ruta. Tarifas, ruta y modos del taxista
+// ('wait' esperando, 'ride' llevando a alguien, 'arrive' parando) quedan listos para un futuro trabajo de taxista con pasajeros NPC.
+const TAXI={flag:3.5,perKm:1.2,min:5,hail:16,wait:60};
+let taxiRide=null, taxiCall=null;
+const taxiFare=m=>Math.max(TAXI.min,Math.ceil(TAXI.flag+TAXI.perKm*m/1000));
+function freeTaxiNear(r){ let best=null,bd=r*r; for (const c of cars){ if (c.k!=='taxi'||c.driver!=='npc'||c.mission||c.dead||!c.ai) continue; const d=d2(c.x,c.z,player.x,player.z); if (d<bd){ bd=d; best=c; } } return best; }
+function hailTaxi(){
+  if (player.inCar||jack||taxiRide||state!=='play'||player.health<=0) return;
+  if (player.stars>0){ toast('Ningún taxista te lleva con la policía detrás',2); return; }
+  const c=freeTaxiNear(TAXI.hail); if (!c){ toast('No hay ningún taxi libre cerca. Son blancos, con franja roja y luz verde en el techo',2.8); return; }
+  c.driver='taxi'; c.ai.mode='wait'; c.ai.waitT=TAXI.wait; taxiCall={car:c,quote:null}; horn2(c);
+  toast('🚕 El taxi se para. Elige tu destino en el mapa',2.2);
+  openMap({mode:'taxi',onPick:taxiQuote});
+}
+function horn2(c){ hornAt(c,0.25); }
+function taxiPlan(c,d){   // ruta del taxista respetando los sentidos únicos: desde el cruce al que va hasta el más cercano al destino
+  const g=nearestNode(d.x,d.z), a=nodes[c.ai.b]||nearestNode(c.x,c.z), route=pathTo(a,g,true)||pathTo(a,g)||[];
+  const pts=[[c.x,c.z],...route.map(i=>[nodes[i].x,nodes[i].z]),[d.x,d.z]]; let L=0; for (let i=1;i<pts.length;i++) L+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);
+  return {route,pts,dist:L};
+}
+function taxiQuote(d){
+  if (!taxiCall) return; const c=taxiCall.car, p=taxiPlan(c,d);
+  taxiCall.quote={dest:d,dist:p.dist,price:taxiFare(p.dist),route:p.route}; setDest(d); dest.route=p.pts; dest.routeT=1e9; updateMapInfo();
+}
+function taxiMapInfo(){
+  if (!taxiCall) return '';
+  const q=taxiCall.quote;
+  if (!q) return `🚕 Elige el destino del taxi: pulsa un icono o cualquier punto del mapa<br><small style="color:var(--mute)">Bajada de bandera ${TAXI.flag.toFixed(2).replace('.',',')} € + ${TAXI.perKm.toFixed(2).replace('.',',')} €/km</small><br><button class="btn" type="button" data-act="cancel">Cancelar</button>`;
+  const can=player.money>=q.price;
+  return `🚕 ${q.dest.name} · ${fmtDist(q.dist)} · <b style="color:var(--gold)">${q.price} €</b>${can?'':'<br><small style="color:var(--red)">No tienes suficiente dinero</small>'}<br><button class="btn" type="button" data-act="board" ${can?'':'disabled'}>Pagar y subir</button><button class="btn" type="button" data-act="cancel">Cancelar</button><br><small style="color:var(--mute)">Pulsa otro punto para cambiar de destino</small>`;
+}
+function taxiBoard(){
+  const q=taxiCall&&taxiCall.quote, c=taxiCall&&taxiCall.car; if (!q||!c) return;
+  if (c.dead||c.exploded||!cars.includes(c)){ taxiCancel(); toast('El taxi se ha ido',1.6); return; }
+  if (player.money<q.price) return;
+  player.money-=q.price; shownMoney=player.money; closeMap(); taxiCall=null;
+  c.driver='taxi'; c.ai.mode='ride'; c.ai.goal={x:q.dest.x,z:q.dest.z}; c.ai.route=taxiPlan(c,q.dest).route; c.ai.slowT=0; if (dest) dest.routeT=0;
+  taxiRide={car:c,dest:q.dest,price:q.price};
+  player.inCar=c; player.mesh.visible=false; setCrouch(false); aiming=false; player.y=0; player.vy=0; player.vx=player.vz=0;
+  toast(`Pagas ${q.price} €. Pulsa ${isTouch?'ENTRAR':'E'} para bajarte cuando quieras`,2.6); sfxPick(); persist();
+}
+function taxiCancel(){
+  closeMap(); const c=taxiCall&&taxiCall.car; taxiCall=null;
+  if (c && c.driver==='taxi' && !taxiRide){ c.driver='npc'; c.ai.mode='cruise'; }
+}
+function taxiAI(c,dt){
+  const ai=c.ai, R=taxiRide&&taxiRide.car===c?taxiRide:null;
+  if (ai.mode==='wait'){   // parado esperando a que elijas destino
+    c.drive(dt,0,0,true); ai.waitT-=dt;
+    if (!taxiCall || taxiCall.car!==c || ai.waitT<=0 || (state==='play' && d2(c.x,c.z,player.x,player.z)>40*40)){ if (taxiCall&&taxiCall.car===c) taxiCall=null; c.driver='npc'; ai.mode='cruise'; }
+    return;
+  }
+  if (ai.mode==='ride'){
+    if (!R){ c.driver='npc'; ai.mode='cruise'; ai.goal=null; ai.route=null; return; }
+    if (player.stars>0){ ai.mode='arrive'; R.kicked=true; }
+    else {
+      const d=Math.hypot(ai.goal.x-c.x,ai.goal.z-c.z), last=ai.route&&ai.route.length?nodes[ai.route[ai.route.length-1]]:null;
+      if (d<20 || (last && (ai.a===last.id || (ai.b===last.id && d2(c.x,c.z,last.x,last.z)<14*14)))) ai.mode='arrive';   // en el cruce más cercano al destino
+      else { ai.slowT=c.speed<1?(ai.slowT||0)+dt:0; if (ai.slowT>15){ ai.slowT=0; taxiSkip('El taxista coge un atajo'); return; } cruise(c,dt); return; }
+    }
+  }
+  if (ai.mode==='arrive'){ c.drive(dt,0,0,true); if (c.speed<0.8) taxiArrive(c); }
+}
+function taxiSkip(msg){   // saltar el trayecto: fundido a negro y el taxi aparece en el cruce más cercano al destino
+  const R=taxiRide; if (!R || R.skipping) return; const c=R.car, r=c.ai.route;
+  if (!r || r.length<2){ c.ai.mode='arrive'; return; }
+  R.skipping=true; $('fade').classList.add('on');
+  setTimeout(()=>{
+    if (taxiRide!==R){ $('fade').classList.remove('on'); return; }
+    const g=nodes[r[r.length-1]], p=nodes[r[r.length-2]], L=Math.hypot(g.x-p.x,g.z-p.z)||1, ux=(g.x-p.x)/L, uz=(g.z-p.z)/L, lo=laneOff(p.id,g.id);
+    c.x=g.x-ux*Math.min(8,L*0.4)-uz*lo; c.z=g.z-uz*Math.min(8,L*0.4)+ux*lo; c.h=Math.atan2(ux,uz); c.vx=c.vz=0; c.px=c.x; c.pz=c.z; c.sync();
+    for (const o of cars.slice()) if (o!==c && !o.mission && o.driver!=='police' && d2(o.x,o.z,c.x,c.z)<64) o.remove();
+    c.ai.a=p.id; c.ai.b=g.id; c.ai.mode='arrive'; player.x=c.x; player.z=c.z; camYaw=c.h; camPos.set(c.x-Math.sin(c.h)*9,4,c.z-Math.cos(c.h)*9); camDist=null;
+    R.skipping=false; if (msg) toast(msg,1.8); setTimeout(()=>$('fade').classList.remove('on'),120);
+  },380);
+}
+function taxiArrive(c){
+  const R=taxiRide; c.driver='npc'; c.ai.mode='cruise'; c.ai.goal=null; c.ai.route=null;
+  if (!R || R.car!==c) return;
+  taxiRide=null; exitCar(true,true); c.driver='npc';
+  if (R.kicked) toast('«¡Bájese! No quiero líos con la policía»',2.5);
+  else if (R.stuck){ const back=Math.floor(R.price/2); player.money+=back; toast(`El taxista no puede seguir: te devuelve ${back} €`,2.5); }
+  else if (R.early) toast('Te bajas aquí',1.5);
+  else { toast(`Has llegado: <em>${R.dest.name}</em>. ¡Buen viaje!`,2.5); sfxPick(); }
+  if (dest && Math.hypot(dest.x-R.dest.x,dest.z-R.dest.z)<1 && !R.early && !R.kicked && !R.stuck) clearDest();
+}
 // navegación: destino activo, ruta por la red de calles, flecha en el HUD, marca en el minimapa y columna de luz en el mundo
 let dest=null;
-const navBeam=new THREE.Mesh(new THREE.CylinderGeometry(1.3,1.3,80,16,1,true),new THREE.MeshBasicMaterial({color:'#c77dff',transparent:true,opacity:0.3,depthWrite:false,side:THREE.DoubleSide}));
+const navBeam=new THREE.Mesh(new THREE.CylinderGeometry(1.3,1.3,80,16,1,true),new THREE.MeshBasicMaterial({color:'#ff5ec4',transparent:true,opacity:0.3,depthWrite:false,side:THREE.DoubleSide}));
 navBeam.visible=false; scene.add(navBeam);
 function setDest(d){ dest=Object.assign({},d,{route:null,routeT:0}); navBeam.position.set(dest.x,40,dest.z); navBeam.visible=true; routeNow(); MV.dirty=true; tone(880,0.08,'sine',0.04); tone(1320,0.1,'sine',0.035,0.08); updateMapInfo(); }
 function clearDest(){ dest=null; navBeam.visible=false; MV.dirty=true; if ($('nav')) $('nav').hidden=true; updateMapInfo(); }
@@ -2176,7 +2281,11 @@ function navRoute(x0,z0,x1,z1){
   if (p) for (const i of p) pts.push([nodes[i].x,nodes[i].z]);
   pts.push([x1,z1]); return pts;
 }
-function routeNow(){ if (!dest) return; const P=player.inCar||player; dest.route=navRoute(P.x,P.z,dest.x,dest.z); dest.routeT=1.5; }
+function routeNow(){
+  if (!dest) return; const P=player.inCar||player; dest.routeT=1.5;
+  if (taxiRide && taxiRide.car.ai.route){ const c=taxiRide.car, r=c.ai.route, i=Math.max(0,r.indexOf(c.ai.b)); dest.route=[[c.x,c.z],...r.slice(i).map(n=>[nodes[n].x,nodes[n].z]),[dest.x,dest.z]]; return; }
+  dest.route=navRoute(P.x,P.z,dest.x,dest.z);
+}
 function updateNav(dt){
   const el=$('nav');
   if (!dest){ if (!el.hidden) el.hidden=true; return; }
@@ -2202,6 +2311,7 @@ function updateNav(dt){
   bc.addEventListener('pointerup',up); bc.addEventListener('pointercancel',e=>{ MV.ptr.delete(e.pointerId); if (!MV.ptr.size){ MV.wasPinch=false; $('bigmap').classList.remove('drag'); } });
   bc.addEventListener('wheel',e=>{ if (state!=='map') return; e.preventDefault(); const [x,y]=rel(e); zoomAt(x,y,MV.zt*Math.pow(1.0017,-e.deltaY)); },{passive:false});
   bc.addEventListener('contextmenu',e=>{ e.preventDefault(); if (state==='map' && !MV.mode) clearDest(); });
+  $('mapinfo').addEventListener('click',e=>{ const b=e.target.closest('button'); if (!b) return; if (b.dataset.act==='board') taxiBoard(); else if (b.dataset.act==='cancel') taxiCancel(); });
   $('mZin').addEventListener('click',()=>zoomAt(MV.W/2,MV.H/2,MV.zt*1.7)); $('mZout').addEventListener('click',()=>zoomAt(MV.W/2,MV.H/2,MV.zt/1.7));
   $('mCenter').addEventListener('click',mapCenter); $('mClear').addEventListener('click',()=>{ if (MV.mode==='taxi') return; clearDest(); }); $('mClose').addEventListener('click',()=>{ if (MV.mode==='taxi') taxiCancel(); else closeMap(); });
 }
@@ -2256,6 +2366,7 @@ function screamSound(x,z){   // grito: voz aguda con vibrato, desde la posición
 const sfxCrash = v => noise(0.35,Math.min(0.5,0.1+v*0.02),1400);
 const sfxPunch = () => noise(0.12,0.3,900);
 const sfxHorn = () => { tone(392,0.35,'square',0.06); tone(494,0.35,'square',0.05); };
+function hornAt(c,dur){ sfxHorn(); }
 const sfxPick = () => { tone(880,0.1,'square',0.06); tone(1320,0.15,'square',0.06,0.08); };
 const sfxWin = () => { [523,659,784,1046].forEach((f,i)=>tone(f,0.25,'square',0.07,i*0.13)); };
 const sfxFail = () => { [392,330,262].forEach((f,i)=>tone(f,0.3,'sawtooth',0.07,i*0.18)); };
@@ -2274,6 +2385,7 @@ addEventListener('keydown',e=>{
     else if (e.code==='Minus'||e.code==='NumpadSubtract'||e.code==='KeyQ') zoomAt(MV.W/2,MV.H/2,MV.zt/1.7);
     else if (e.code==='KeyC'||e.code==='Space') mapCenter();
     else if ((e.code==='Backspace'||e.code==='Delete'||e.code==='KeyX') && !MV.mode) clearDest();
+    else if ((e.code==='Enter'||e.code==='NumpadEnter') && MV.mode==='taxi') taxiBoard();
     return; }
   if (e.code==='Escape' && performance.now()-unlockT<400) return;   // el Esc que suelta el ratón ya ha abierto la pausa
   if (state==='paused' && (e.code==='KeyP'||e.code==='Escape')) { resume(); return; }
@@ -2282,12 +2394,14 @@ addEventListener('keydown',e=>{
   if (state!=='play') return;
   if (e.code==='KeyE'||e.code==='Enter') enterExit();
   if (e.code==='Space' && !player.inCar) jump();
+  if (e.code==='Space' && taxiRide) taxiSkip();
   if (e.code==='KeyZ' && !player.inCar) setCrouch(!player.crouch);
   if (e.code==='KeyF') fireEdge=true;
   if (e.code==='KeyQ') selectWeapon(player.w+1);
   if (e.code==='KeyI') toggleKeys();
   if (/^Digit[1-7]$/.test(e.code)){ const id=WEAPONS[+e.code.slice(5)-1].id, i=player.owned.indexOf(id); if (i>=0) selectWeapon(i); else toast(`No tienes ${W_BY[id].name.toLowerCase()}`,1.2); }
   if (e.code==='KeyH') horn();
+  if (e.code==='KeyT') hailTaxi();
   if (e.code==='KeyC' && !fp) camMode=(camMode+1)%2;
   if (e.code==='KeyV') setFP(!fp);
   if (e.code==='KeyM') openMap();
@@ -2308,7 +2422,7 @@ let wheelT=0; renderer.domElement.addEventListener('wheel',e=>{ if (state!=='pla
   const end=e=>{ for (const t of e.changedTouches) if (t.identifier===joy.id){ joy.active=false; joy.x=joy.y=0; knob.style.transform=''; } };
   jz.addEventListener('touchend',end); jz.addEventListener('touchcancel',end);
   const tap=(id,fn)=>$(id).addEventListener('touchstart',e=>{ e.preventDefault(); initAudio(); if (state==='play') fn(); },{passive:false});
-  tap('bEnter',enterExit); tap('bHorn',horn); tap('bMap',openMap); tap('bCam',()=>camMode=(camMode+1)%2); tap('bPause',pause); tap('bWpn',()=>selectWeapon(player.w+1)); tap('bJump',jump); tap('bCrouch',()=>{ if (!player.inCar) setCrouch(!player.crouch); }); tap('bHelp',openHelp);
+  tap('bEnter',enterExit); tap('bTaxi',hailTaxi); tap('bSkip',()=>taxiSkip()); tap('bHorn',horn); tap('bMap',openMap); tap('bCam',()=>camMode=(camMode+1)%2); tap('bPause',pause); tap('bWpn',()=>selectWeapon(player.w+1)); tap('bJump',jump); tap('bCrouch',()=>{ if (!player.inCar) setCrouch(!player.crouch); }); tap('bHelp',openHelp);
   const bf=$('bFire'); bf.addEventListener('touchstart',e=>{ e.preventDefault(); fireEdge=true; fireHeld=true; bf.classList.add('on'); },{passive:false});
   const fend=()=>{ fireHeld=false; bf.classList.remove('on'); }; bf.addEventListener('touchend',fend); bf.addEventListener('touchcancel',fend);
   const ba=$('bAct');
@@ -2454,6 +2568,7 @@ function nearestCar(r){
 }
 function enterExit(){
   if (player.health<=0) return;
+  if (taxiRide){ if (taxiRide.car.ai.mode!=='arrive'){ taxiRide.car.ai.mode='arrive'; taxiRide.early=true; toast('El taxista para en cuanto puede',1.5); } return; }
   if (player.inCar){ exitCar(false); return; }
   if (jack || player.downT>0) return;
   const c=nearestCar(4.2); if (!c) return;
@@ -2711,7 +2826,7 @@ function shoulderAim(ox,oz,oy){   // punto al que apunta la cruceta (centro de l
   return { yaw:Math.atan2(px-ox,pz-oz), pitch:Math.atan2(py-oy,d) };
 }
 function tryFire(){
-  if (state!=='play'||player.health<=0||fireCd>0||jack||player.downT>0) return;
+  if (state!=='play'||player.health<=0||fireCd>0||jack||player.downT>0||taxiRide) return;
   const W=curW();
   if (player.inCar && (W.melee||W.throw)) return;
   if (W.melee) return; // los golpes se cargan y se sueltan en updateMelee()
@@ -2786,7 +2901,7 @@ function onPedKilled(p){
 
 /* ---- IA de conducción ---- */
 function nearestNode(x,z){ let best=null,bd=1e12; for (const n of mainNodes){ const d=d2(n.x,n.z,x,z); if (d<bd){bd=d;best=n;} } return best; }
-function pathTo(a,b){
+function pathTo(a,b,directed){
   if (a===b) return [a.id];
   const g=new Map([[a.id,0]]), prev=new Map(), closed=new Set(), heap=[[Math.hypot(a.x-b.x,a.z-b.z),a.id]];
   const push=it=>{ heap.push(it); let i=heap.length-1; while (i>0){ const p=(i-1)>>1; if (heap[p][0]<=heap[i][0]) break; [heap[p],heap[i]]=[heap[i],heap[p]]; i=p; } };
@@ -2795,7 +2910,7 @@ function pathTo(a,b){
   while (heap.length && steps++<6000){
     const [,cur]=pop(); if (closed.has(cur)) continue; if (cur===b.id) break; closed.add(cur);
     const N=nodes[cur], gc=g.get(cur);
-    for (const nb of N.nb){ if (closed.has(nb)) continue; const M=nodes[nb], nd=gc+Math.hypot(M.x-N.x,M.z-N.z); if (nd<(g.get(nb)??1e12)){ g.set(nb,nd); prev.set(nb,cur); push([nd+Math.hypot(M.x-b.x,M.z-b.z),nb]); } }
+    for (const nb of N.nb){ if (closed.has(nb) || (directed && !canGo(cur,nb))) continue; const M=nodes[nb], nd=gc+Math.hypot(M.x-N.x,M.z-N.z); if (nd<(g.get(nb)??1e12)){ g.set(nb,nd); prev.set(nb,cur); push([nd+Math.hypot(M.x-b.x,M.z-b.z),nb]); } }
   }
   const path=[]; let c=b.id; if (!prev.has(c)) return null;
   while (c!==undefined){ path.unshift(c); c=prev.get(c); }
@@ -2821,10 +2936,15 @@ function aiControl(c,tx,tz,desired,dt){
 function blockedAhead(c,range){
   const fx=Math.sin(c.h), fz=Math.cos(c.h);
   const hl=c.T.len/2; const chk=(x,z,w)=>{ const dx=x-c.x, dz=z-c.z, f=dx*fx+dz*fz; if (f<=hl*0.4||f>range+hl) return false; const l=dx*(-fz)+dz*fx; return Math.abs(l)<w; };
-  for (const o of cars) if (o!==c && chk(o.x,o.z,2.0)) return true;
-  if (!player.inCar && chk(player.x,player.z,1.8)) return true;
-  for (const p of peds) if (p.state!=='dead' && chk(p.x,p.z,1.6)) return true;
-  return false;
+  for (const o of cars) if (o!==c && chk(o.x,o.z,2.0)) return o;   // devuelve quién estorba
+  if (!player.inCar && chk(player.x,player.z,1.8)) return player;
+  for (const p of peds) if (p.state!=='dead' && chk(p.x,p.z,1.6)) return p;
+  return null;
+}
+function shooPeds(c){   // el que pita aparta a los peatones que tiene delante (si no, coche y peatón se esperaban para siempre)
+  const fx=Math.sin(c.h), fz=Math.cos(c.h), hl=c.T.len/2;
+  for (const p of peds){ if (p.state==='dead'||p.cop) continue; const dx=p.x-c.x, dz=p.z-c.z, f=dx*fx+dz*fz, l=dx*(-fz)+dz*fx;
+    if (f>hl*0.3 && f<hl+13 && Math.abs(l)<2.2){ if (p.state==='call') continue; const s=l>=0?1:-1; p.scare(p.x+fz*s*-6,p.z-fx*s*-6,1.6); } }
 }
 function cruise(c,dt){
   const ai=c.ai; let A=nodes[ai.a], B=nodes[ai.b];
@@ -2836,6 +2956,11 @@ function cruise(c,dt){
     let nx=opts[Math.floor(Math.random()*opts.length)];
     const straight=opts.find(n=>{ const m=nodes[n]; return Math.abs(((m.x-B.x)*ux+(m.z-B.z)*uz)/Math.hypot(m.x-B.x,m.z-B.z)-1)<0.05; });
     if (straight!==undefined && Math.random()<0.5) nx=straight;
+    if (ai.goal){   // con una ruta planificada (taxis) elige el siguiente cruce de la ruta en vez de girar al azar
+      let i=ai.route?ai.route.indexOf(B.id):-1;
+      if (i<0){ const g=nearestNode(ai.goal.x,ai.goal.z); ai.route=pathTo(B,g,true)||pathTo(B,g)||null; i=0; }
+      const want=ai.route&&ai.route[i+1]; if (want!==undefined && B.nb.includes(want)) nx=want;
+    }
     ai.a=B.id; ai.b=nx; A=nodes[ai.a]; B=nodes[ai.b];
     L=Math.hypot(B.x-A.x,B.z-A.z); ux=(B.x-A.x)/L; uz=(B.z-A.z)/L;
     lo=laneOff(ai.a,ai.b); ox=-uz*lo; oz=ux*lo; t=Math.max(0,(c.x-A.x-ox)*ux+(c.z-A.z-oz)*uz);
@@ -2848,7 +2973,9 @@ function cruise(c,dt){
   if (c.k==='bus'){ const key=ai.a+'_'+ai.b, st=busStopMap.get(key); if (st!==undefined && c.lastStop!==key && t>st-18 && t<st-4){ desired=0; if (c.speed<0.6){ c.busWait=(c.busWait||0)+dt; if (c.busWait>4){ c.lastStop=key; c.busWait=0; } } } }
   if (L-t<16+c.T.len*0.5) desired=Math.min(desired,c.T.len>7?5:7);
   if (B.light && L-t>9 && L-t<26 && lightState(Math.abs(ux)>Math.abs(uz)?'H':'V')!=='green') desired=0;
-  if (blockedAhead(c,11)){ desired=0; ai.wait+=dt; if (ai.wait>2.5 && c.hornT<=0 && d2(c.x,c.z,player.x,player.z)<900){ sfxHorn(); c.hornT=4; } } else ai.wait=0;
+  const blk=blockedAhead(c,11);
+  if (blk){ ai.wait+=dt; desired=(ai.wait>6 && blk.ai && blk.ai.wait>3)?2.5:0;   // dos coches esperándose el uno al otro: este avanza despacio y se deshace el atasco
+    if (ai.wait>2.5 && c.hornT<=0){ c.hornT=4; if (d2(c.x,c.z,player.x,player.z)<900) hornAt(c); shooPeds(c); } } else ai.wait=0;
   aiControl(c,tx,tz,desired,dt);
 }
 function chase(c,dt){
@@ -2914,6 +3041,16 @@ function spawnCarNear(mode){
   return null;
 }
 // Grafo peatonal del centro real: calles peatonales (por el centro) y aceras de las calzadas
+// tramos de calle con un edificio real encima (pasajes cubiertos en los datos de OSM): fuera de la red de tráfico para que nadie se estrelle
+{ let cut=0;
+  for (const e of edges){ const A=nodes[e.a], B=nodes[e.b], L=Math.hypot(B.x-A.x,B.z-A.z); let hit=0;
+    for (let t=4;t<L-4;t+=2){ const c=pointBlocked(A.x+(B.x-A.x)*t/L,A.z+(B.z-A.z)*t/L); if (c && c.h>2 && (c.x1-c.x0>1||c.z1-c.z0>1)) hit++; }
+    if (hit){ e.blocked=true; cut++; A.nb=A.nb.filter(n=>n!==B.id); B.nb=B.nb.filter(n=>n!==A.id); edgeMap.delete(A.id+'_'+B.id); edgeMap.delete(B.id+'_'+A.id); } }
+  if (cut){ const seen=new Set(); let best=[];   // recalcula la red conectada principal
+    for (const n of mainNodes){ if (seen.has(n.id)) continue; const list=[n.id], st=[n.id]; seen.add(n.id);
+      while (st.length){ const c=st.pop(); for (const m of nodes[c].nb) if (!seen.has(m)){ seen.add(m); list.push(m); st.push(m); } }
+      if (list.length>best.length) best=list; }
+    mainNodes.length=0; mainNodes.push(...best.map(i=>nodes[i])); } }
 const WG={nodes:[],adj:[],edges:[]};
 { const idOf=new Map(), key=(x,z)=>Math.round(x)+','+Math.round(z);
   const nid=(x,z)=>{ const k=key(x,z); let id=idOf.get(k); if (id===undefined){ id=WG.nodes.length; WG.nodes.push([x,z]); WG.adj.push([]); idOf.set(k,id); } return id; };
@@ -3440,7 +3577,8 @@ function update(dt){
   // jugador
   if (player.inCar){
     const c=player.inCar;
-    c.drive(dt, c.dead?0:ax.y, ax.x, handbrake());
+    if (taxiRide) showHint(isTouch?'ENTRAR: bajarte · SALTAR: saltar trayecto':`🚕 Hacia ${taxiRide.dest.name} · E: bajarte · Espacio: saltar el trayecto`);   // de pasajero: conduce el taxista
+    else c.drive(dt, c.dead?0:ax.y, ax.x, handbrake());
     player.x=c.x; player.z=c.z; player.vx=c.vx; player.vz=c.vz;
   } else if (jack){ updateJack(dt);
   } else if (player.downT>0){ player.downT-=dt; player.vx=player.vz=0; pushCircle(player,0.42,player.y);
@@ -3459,7 +3597,8 @@ function update(dt){
     pushCircle(player,0.42,player.y);
     player.x=clamp(player.x,-LIM,XMAX); player.z=clamp(player.z,-LIM,ZMAX);
     const near=nearestCar(4.2);
-    if (near) showHint(isTouch?`Pulsa ENTRAR para ${near.driver==='npc'||near.driver==='police'?'robar':'subir a'} este coche`:`E: ${near.driver==='npc'||near.driver==='police'?'Robar':'Subir a'} este coche`);
+    if (near) showHint(isTouch?`Pulsa ENTRAR para ${near.driver==='npc'||near.driver==='police'?'robar':'subir a'} este coche${near.k==='taxi'&&near.driver==='npc'?' · TAXI para pedirlo':''}`:`E: ${near.driver==='npc'||near.driver==='police'?'Robar':'Subir a'} este coche${near.k==='taxi'&&near.driver==='npc'?' · T: Pedir taxi':''}`);
+    else if (!isTouch && freeTaxiNear(TAXI.hail)) showHint('T: Pedir el taxi que pasa');
   } else if (state==='play'){
     const mag=Math.min(1,Math.hypot(ax.x,ax.y));
     if (tpAim()){   // apuntando: mira hacia la cámara y se mueve de lado
@@ -3483,14 +3622,16 @@ function update(dt){
     pushCircle(player,0.42,player.y);
     player.x=clamp(player.x,-LIM,XMAX); player.z=clamp(player.z,-LIM,ZMAX);
     const near=nearestCar(4.2);
-    if (near) showHint(isTouch?`Pulsa ENTRAR para ${near.driver==='npc'||near.driver==='police'?'robar':'subir a'} este coche`:`E: ${near.driver==='npc'||near.driver==='police'?'Robar':'Subir a'} este coche`);
+    if (near) showHint(isTouch?`Pulsa ENTRAR para ${near.driver==='npc'||near.driver==='police'?'robar':'subir a'} este coche${near.k==='taxi'&&near.driver==='npc'?' · TAXI para pedirlo':''}`:`E: ${near.driver==='npc'||near.driver==='police'?'Robar':'Subir a'} este coche${near.k==='taxi'&&near.driver==='npc'?' · T: Pedir taxi':''}`);
+    else if (!isTouch && freeTaxiNear(TAXI.hail)) showHint('T: Pedir el taxi que pasa');
   }
   if (player.punchT>0) player.punchT-=dt;
   if (state==='play') bumpPeds(dt);
 
   // coches
   for (const c of cars){
-    if (c===player.inCar){}
+    if (c===player.inCar && !taxiRide){}
+    else if (c.driver==='taxi' && c.ai) taxiAI(c,dt);
     else if (c.driver==='npc' && c.ai) cruise(c,dt);
     else if (c.driver==='police' && c.ai){ if (c.ai.mode==='chase') chase(c,dt); else cruise(c,dt); }
     else c.drive(dt,0,0,true);
@@ -3520,7 +3661,7 @@ function update(dt){
       const vn=(a.vx-b.vx)*nx+(a.vz-b.vz)*nz;
       if (vn>0){ a.vx-=nx*vn*0.8; a.vz-=nz*vn*0.8; b.vx+=nx*vn*0.8; b.vz+=nz*vn*0.8;
         if (vn>5){ damageCar(a,(vn-5)*1.6,vn); damageCar(b,(vn-5)*1.6,vn); }
-        const pc=a===player.inCar?b:b===player.inCar?a:null; if (pc) pc.hitByPlayer=now;
+        const pc=taxiRide?null:a===player.inCar?b:b===player.inCar?a:null; if (pc) pc.hitByPlayer=now;
         if (pc && pc.driver==='police' && vn>4 && now-lastPoliceHit>4){ lastPoliceHit=now; addStars(1,'¡Has embestido a la policía!'); }
       }
     }
@@ -3535,7 +3676,7 @@ function update(dt){
       const I=impact(c,p.x,p.z), s=h.lat>=0?1:-1;
       if (I.sev<1.6 || (now-(p.hitCarT||-9)<0.6)){ p.x+=(-fz)*s*0.12; p.z+=fx*s*0.12; if (I.sev>0.6 && p.state==='walk') p.scare(c.x,c.z,2); continue; }
       p.hitCarT=now; const dmg=I.sev<3.5?4:I.sev<7?I.sev*4:I.sev*9, dx=I.nx, dz=I.nz;
-      p.hp-=dmg; const kill=p.hp<=0, byP=c===player.inCar;
+      p.hp-=dmg; const kill=p.hp<=0, byP=c===player.inCar && !taxiRide;
       if (kill) p.knock(c.vx*0.9+dx*2,c.vz*0.9+dz*2,true);
       else if (I.sev<3.5) p.stagger(dx+(-fz)*s*0.8,dz+fx*s*0.8,1);   // a poca velocidad: empujón y tambaleo
       else p.knock(c.vx*0.6+dx*2,c.vz*0.6+dz*2,false);                // se cae, pero sobrevive
@@ -3610,7 +3751,7 @@ function updateCamera(dt){
   if (fp){
     let yaw, x, y, z;
     if (player.inCar){ const c=player.inCar, fx=Math.sin(c.h), fz=Math.cos(c.h), rx=-fz, rz=fx; fpCarLook*=Math.exp(-dt*0.8);
-      const so=c.T.bike?0:0.36; x=c.x-rx*so-fx*0.15; z=c.z-rz*so-fz*0.15; y=c.T.eye||(c.k==='van'?1.9:c.k==='sports'?1.18:1.4); yaw=c.h+fpCarLook; }
+      const so=c.T.bike?0:taxiRide?-0.4:0.36, back=taxiRide?0.95:0.15; x=c.x-rx*so-fx*back; z=c.z-rz*so-fz*back; y=c.T.eye||(c.k==='van'?1.9:c.k==='sports'?1.18:1.4); yaw=c.h+fpCarLook; }
     else { yaw=player.h; y=0.25+(player.y||0)+(player.crouch?1.05:1.62)+Math.abs(Math.sin(vmBob))*0.03; x=player.x+Math.sin(yaw)*0.1; z=player.z+Math.cos(yaw)*0.1;
       if (camSolid(x+Math.sin(yaw)*0.22,z+Math.cos(yaw)*0.22,y)){ x=player.x; z=player.z; } }   // pegado a una pared: la cámara no asoma dentro
     camera.position.set(x,y,z); camera.up.set(0,1,0);
@@ -3691,6 +3832,7 @@ function updateLighting(){
 
 function updateHUD(dt){
   updateNav(dt);
+  if (isTouch){ const tv=!player.inCar && !jack && !!freeTaxiNear(TAXI.hail); if ($('bTaxi').hidden===tv) $('bTaxi').hidden=!tv; if ($('bSkip').hidden===!!taxiRide) $('bSkip').hidden=!taxiRide; }
   shownMoney+=(player.money-shownMoney)*Math.min(1,dt*6); if (Math.abs(player.money-shownMoney)<1) shownMoney=player.money;
   hud.money.textContent='€'+String(Math.round(shownMoney)).padStart(8,'0');
   { const T=starDecay(), fading=player.stars>0 && state==='play' && starCool>T-STAR_FADE;
