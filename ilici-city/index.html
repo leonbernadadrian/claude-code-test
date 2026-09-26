@@ -81,6 +81,8 @@
   #bEnter{right:calc(env(safe-area-inset-right,0px) + 20px);bottom:calc(env(safe-area-inset-bottom,0px) + 110px);width:78px;height:78px;background:rgba(242,181,68,.85);color:var(--ink)}
   #bAct{right:calc(env(safe-area-inset-right,0px) + 108px);bottom:calc(env(safe-area-inset-bottom,0px) + 28px);width:78px;height:78px}
   #bWpn{right:calc(env(safe-area-inset-right,0px) + 22px);bottom:calc(env(safe-area-inset-bottom,0px) + 26px);width:62px;height:62px;font-size:13px}
+  #bJump{right:calc(env(safe-area-inset-right,0px) + 20px);bottom:calc(env(safe-area-inset-bottom,0px) + 200px);width:62px;height:62px;font-size:12px}
+  #bCrouch{right:calc(env(safe-area-inset-right,0px) + 92px);bottom:calc(env(safe-area-inset-bottom,0px) + 200px);width:62px;height:62px;font-size:12px}
   #bFire{right:calc(env(safe-area-inset-right,0px) + 110px);bottom:calc(env(safe-area-inset-bottom,0px) + 118px);width:70px;height:70px;background:rgba(232,70,75,.8)}
   .topb{position:absolute;pointer-events:auto;top:calc(env(safe-area-inset-top,0px) + 186px);width:46px;height:36px;border-radius:6px;font-size:13px}
   #bMap{left:calc(env(safe-area-inset-left,0px) + 16px)}
@@ -88,8 +90,8 @@
   #bPause{left:calc(env(safe-area-inset-left,0px) + 120px)}
   #bHorn{left:calc(env(safe-area-inset-left,0px) + 172px);font-size:11px}
   #bHelp{left:calc(env(safe-area-inset-left,0px) + 224px)}
-  body.touch #obj{bottom:calc(env(safe-area-inset-bottom,0px) + 180px);font-size:19px}
-  body.touch #hint{bottom:calc(env(safe-area-inset-bottom,0px) + 236px)}
+  body.touch #obj{bottom:calc(env(safe-area-inset-bottom,0px) + 272px);font-size:19px}
+  body.touch #hint{bottom:calc(env(safe-area-inset-bottom,0px) + 322px)}
   body.touch #zone{bottom:auto;right:auto;left:calc(env(safe-area-inset-left,0px) + 16px);text-align:left;top:calc(env(safe-area-inset-top,0px) + 234px);font-size:22px}
   body.touch #feed div{font-size:13px}
   body.touch #banner small{font-size:18px}
@@ -159,7 +161,9 @@
     <div id="obj" class="outline"></div>
     <div id="keys"><div class="ctr">
       <kbd>W A S D</kbd><span>Andar / conducir</span>
-      <kbd>Shift · Espacio</kbd><span>Correr · freno de mano</span>
+      <kbd>Shift</kbd><span>Correr</span>
+      <kbd>Espacio</kbd><span>Saltar · freno de mano</span>
+      <kbd>Z</kbd><span>Agacharse</span>
       <kbd>E</kbd><span>Entrar, robar coche, salir</span>
       <kbd>F · clic</kbd><span>Disparar o golpear</span>
       <kbd>Q · rueda · 1-7</kbd><span>Cambiar de arma</span>
@@ -175,6 +179,8 @@
     <button class="tb" id="bEnter" type="button">Entrar</button>
     <button class="tb" id="bAct" type="button">Golpe</button>
     <button class="tb" id="bWpn" type="button">Arma</button>
+    <button class="tb" id="bJump" type="button">Saltar</button>
+    <button class="tb" id="bCrouch" type="button">Agachar</button>
     <button class="tb" id="bFire" type="button" hidden>Disparar</button>
     <button class="tb topb" id="bHorn" type="button">Claxon</button>
     <button class="tb topb" id="bHelp" type="button">?</button>
@@ -210,7 +216,8 @@
       <div class="ctr only-desk">
         <kbd>W A S D</kbd><span>Andar / conducir</span>
         <kbd>Shift</kbd><span>Correr</span>
-        <kbd>Espacio</kbd><span>Freno de mano (en coche) / correr</span>
+        <kbd>Espacio</kbd><span>Saltar (a pie) / freno de mano (en coche)</span>
+        <kbd>Z</kbd><span>Agacharse o levantarse: más precisión y la policía te acierta menos</span>
         <kbd>E</kbd><span>Entrar, robar un coche o salir</span>
         <kbd>F · clic</kbd><span>Disparar, golpear o lanzar granada (mantén para ráfaga)</span>
         <kbd>Q · rueda</kbd><span>Siguiente arma</span>
@@ -228,6 +235,8 @@
         <kbd>Disparar</kbd><span>A pie: dispara, golpea o lanza. Mantén para ráfaga</span>
         <kbd>Freno</kbd><span>En coche, el mismo botón es el freno de mano</span>
         <kbd>Arma</kbd><span>Cambiar de arma</span>
+        <kbd>Saltar</kbd><span>Salta por encima de bancos y cajas</span>
+        <kbd>Agachar</kbd><span>Agacharse o levantarse</span>
         <kbd>Rojo</kbd><span>En coche, disparar desde la ventanilla</span>
         <kbd>Arrastrar</kbd><span>En primera persona, arrastra en la pantalla para mirar</span>
       </div>
@@ -256,7 +265,8 @@
       <div class="ctr only-desk">
         <kbd>W A S D</kbd><span>Andar / conducir</span>
         <kbd>E</kbd><span>Entrar o robar un coche, salir</span>
-        <kbd>Espacio</kbd><span>Freno de mano / correr</span>
+        <kbd>Espacio</kbd><span>Saltar / freno de mano</span>
+        <kbd>Shift · Z</kbd><span>Correr · agacharse</span>
         <kbd>F · clic</kbd><span>Disparar o golpear</span>
         <kbd>Q · 1-7</kbd><span>Cambiar de arma</span>
         <kbd>H</kbd><span>Claxon</span>
@@ -543,9 +553,10 @@ function query(x,z,r){
     }
   return qOut;
 }
-function pushCircle(o, r){
+function pushCircle(o, r, minY=0){
   const list=query(o.x,o.z,r); let nx=0,nz=0,hit=false;
   for (const c of list){
+    if (minY>0 && c.h<minY+0.35) continue;
     const px=clamp(o.x,c.x0,c.x1), pz=clamp(o.z,c.z0,c.z1);
     const dx=o.x-px, dz=o.z-pz, dd=dx*dx+dz*dz;
     if (dd>=r*r) continue;
@@ -914,7 +925,7 @@ const lampBulbMat=new THREE.MeshBasicMaterial({color:'#6b6555'}); let lampGlow=n
 /* ---- mobiliario urbano ---- */
 {
   const seats=[], backs=[], bins=[], trunks=[], crowns=[];
-  const bench=(x,z,ry)=>{ seats.push({x,y:0.72,z,sx:1.9,sy:0.12,sz:0.6,ry,c:'#8a5a34'}); const bx=x-Math.sin(ry)*0.28, bz=z-Math.cos(ry)*0.28; backs.push({x:bx,y:1.05,z:bz,sx:1.9,sy:0.5,sz:0.1,ry,c:'#8a5a34'}); addCollider(x-0.8,z-0.8,x+0.8,z+0.8,1); };
+  const bench=(x,z,ry)=>{ seats.push({x,y:0.72,z,sx:1.9,sy:0.12,sz:0.6,ry,c:'#8a5a34'}); const bx=x-Math.sin(ry)*0.28, bz=z-Math.cos(ry)*0.28; backs.push({x:bx,y:1.05,z:bz,sx:1.9,sy:0.5,sz:0.1,ry,c:'#8a5a34'}); addCollider(x-0.8,z-0.8,x+0.8,z+0.8,0.8); };
   const ficus=(x,z,r=4)=>{ trunks.push({x,y:1.8,z,sx:0.7,sy:3.6,sz:0.7}); crowns.push({x,y:4.6+r*0.4,z,sx:r,sy:r*0.75,sz:r,c:pick(['#3f6b2e','#35602a','#4a7534'])}); addCollider(x-0.5,z-0.5,x+0.5,z+0.5,4); };
   for (const sp of SPECIAL){
     if (sp.type!=='plaza' && sp.type!=='park') continue;
@@ -1318,7 +1329,7 @@ class Ped{
 
 /* ================= jugador ================= */
 const SPAWN={x:14,z:-80}, POLICE_SPAWN={x:-55,z:112}, HOSPITAL_SPAWN={x:-385,z:-462};
-const player={x:SPAWN.x,z:SPAWN.z,h:Math.PI,inCar:null,health:100,money:150,stars:0,phase:0,punchT:0,lastHurt:0,vx:0,vz:0};
+const player={x:SPAWN.x,z:SPAWN.z,y:0,vy:0,crouch:false,h:Math.PI,inCar:null,health:100,money:150,stars:0,phase:0,punchT:0,lastHurt:0,vx:0,vz:0};
 player.mesh=makePedMesh('#1f8a4c','#26313d','#e0ac85','#2b1d14','elche'); scene.add(player.mesh);
 
 /* ================= partículas ================= */
@@ -1618,6 +1629,8 @@ addEventListener('keydown',e=>{
   if (state==='help' && (e.code==='Escape'||e.code==='KeyI')) { closeHelp(); return; }
   if (state!=='play') return;
   if (e.code==='KeyE'||e.code==='Enter') enterExit();
+  if (e.code==='Space' && !player.inCar) jump();
+  if (e.code==='KeyZ' && !player.inCar) setCrouch(!player.crouch);
   if (e.code==='KeyF') fireEdge=true;
   if (e.code==='KeyQ') selectWeapon(player.w+1);
   if (e.code==='KeyI') toggleKeys();
@@ -1641,7 +1654,7 @@ let wheelT=0; renderer.domElement.addEventListener('wheel',e=>{ if (state!=='pla
   const end=e=>{ for (const t of e.changedTouches) if (t.identifier===joy.id){ joy.active=false; joy.x=joy.y=0; knob.style.transform=''; } };
   jz.addEventListener('touchend',end); jz.addEventListener('touchcancel',end);
   const tap=(id,fn)=>$(id).addEventListener('touchstart',e=>{ e.preventDefault(); initAudio(); if (state==='play') fn(); },{passive:false});
-  tap('bEnter',enterExit); tap('bHorn',horn); tap('bMap',openMap); tap('bCam',()=>camMode=(camMode+1)%2); tap('bPause',pause); tap('bWpn',()=>selectWeapon(player.w+1)); tap('bHelp',openHelp);
+  tap('bEnter',enterExit); tap('bHorn',horn); tap('bMap',openMap); tap('bCam',()=>camMode=(camMode+1)%2); tap('bPause',pause); tap('bWpn',()=>selectWeapon(player.w+1)); tap('bJump',jump); tap('bCrouch',()=>{ if (!player.inCar) setCrouch(!player.crouch); }); tap('bHelp',openHelp);
   const bf=$('bFire'); bf.addEventListener('touchstart',e=>{ e.preventDefault(); fireEdge=true; fireHeld=true; bf.classList.add('on'); },{passive:false});
   const fend=()=>{ fireHeld=false; bf.classList.remove('on'); }; bf.addEventListener('touchend',fend); bf.addEventListener('touchcancel',fend);
   const ba=$('bAct');
@@ -1660,7 +1673,14 @@ function axis(){
   return {x,y};
 }
 const handbrake = () => keys.has('Space') || actHeld;
-const running = () => keys.has('ShiftLeft')||keys.has('ShiftRight')||keys.has('Space')||(joy.active&&Math.hypot(joy.x,joy.y)>0.9);
+const running = () => !player.crouch && (keys.has('ShiftLeft')||keys.has('ShiftRight')||(joy.active&&Math.hypot(joy.x,joy.y)>0.9));
+function jump(){
+  if (player.inCar || state!=='play' || player.health<=0) return;
+  if (player.crouch){ setCrouch(false); return; }
+  if (player.y>0.02) return;
+  player.vy=6.8; player.y=0.01; noise(0.08,0.06,600);
+}
+function setCrouch(v){ player.crouch=v; $('bCrouch').classList.toggle('on',v); }
 let keysT=0;
 function toggleKeys(force){ const k=$('keys'); const on=force??!k.classList.contains('show'); k.classList.toggle('show',on); keysT=on&&force?25:0; }
 function openHelp(){ state='help'; $('help').hidden=false; $('pause').hidden=true; }
@@ -1764,7 +1784,7 @@ function enterExit(){
     else if (policeNear(70) || Math.random()<0.25) addStars(1,'Un testigo ha llamado a la policía');
     else if (player.stars===0) toast('Coche robado',1.5);
   }
-  c.driver='player'; c.ai=null; player.inCar=c; player.mesh.visible=false;
+  c.driver='player'; c.ai=null; player.inCar=c; player.mesh.visible=false; setCrouch(false); player.y=0; player.vy=0;
   if (c.mission && mission.cur && mission.cur.steps[mission.step].type==='steal') advanceMission();
 }
 function exitCar(forced,silent){
@@ -1891,7 +1911,7 @@ const COP_GUN={pistol:{range:28,rate:[1.1,1.8],dmg:7},smg:{range:26,rate:[0.28,0
 function copWeapon(){ const s=player.stars, r=Math.random(); return s>=5&&r<0.35?'shotgun':s>=3&&r<0.45?'smg':'pistol'; }
 function copShot(ox,oz,P,d,dmg=7,range=40){
   tracer(ox,oz,P.x+mrand(-1,1),P.z+mrand(-1,1),'#bfe0ff'); noise(0.08,0.16,2000);
-  if (Math.random()<(player.inCar?0.55:0.42)*(1-d/(range+12))){ if (player.inCar) damageCar(player.inCar,dmg*0.6,0); else { hurt(dmg); shake(0.25); } }
+  if (Math.random()<(player.inCar?0.55:0.42)*(1-d/(range+12))*(!player.inCar&&player.crouch?0.5:1)){ if (player.inCar) damageCar(player.inCar,dmg*0.6,0); else { hurt(dmg); shake(0.25); } }
 }
 const grenades=[], grenGeo=new THREE.SphereGeometry(0.2,8,6);
 function throwGrenade(){
@@ -2216,6 +2236,7 @@ function update(dt){
   const ax=axis();
   if (fireCd>0) fireCd-=dt; if (aimT>0) aimT-=dt;
   if (player.hitT>0){ player.hitT-=dt; if (player.hitT<=0) meleeHit(player.hitW); }
+  if (!player.inCar && (player.y>0 || player.vy>0)){ player.vy-=20*dt; player.y+=player.vy*dt; if (player.y<=0){ player.y=0; player.vy=0; } }
   if (fireEdge){ fireEdge=false; tryFire(); } else if ((fireHeld||mouseHeld||keys.has('KeyF')) && curW().auto) tryFire();
 
   // jugador
@@ -2229,13 +2250,13 @@ function update(dt){
     if (mag>0.12){
       const fx=Math.sin(player.h), fz=Math.cos(player.h), rx=-fz, rz=fx;
       let dx=fx*ax.y+rx*ax.x, dz=fz*ax.y+rz*ax.x; const L=Math.hypot(dx,dz)||1; dx/=L; dz/=L;
-      const spd=(running()&&ax.y>0.3?8.2:4)*mag;
+      const spd=(running()&&ax.y>0.3?8.2:4)*mag*(player.crouch?0.45:1);
       player.vx=dx*spd; player.vz=dz*spd;
       const ox=player.x, oz=player.z; player.x+=player.vx*dt; player.z+=player.vz*dt;
       if (riverBlocked(player.x,player.z)){ player.x=ox; player.z=oz; }
       player.phase+=dt*spd*4.2;
     } else { player.vx=player.vz=0; }
-    pushCircle(player,0.42);
+    pushCircle(player,0.42,player.y);
     player.x=clamp(player.x,-LIM,LIM); player.z=clamp(player.z,-LIM,LIM);
     const near=nearestCar(4.2);
     if (near) showHint(isTouch?`Pulsa ENTRAR para ${near.driver==='npc'||near.driver==='police'?'robar':'subir a'} este coche`:`E: ${near.driver==='npc'||near.driver==='police'?'Robar':'Subir a'} este coche`);
@@ -2245,14 +2266,14 @@ function update(dt){
       const fx=Math.sin(camYaw), fz=Math.cos(camYaw), rx=-fz, rz=fx;
       const dx=fx*ax.y+rx*ax.x, dz=fz*ax.y+rz*ax.x, L=Math.hypot(dx,dz)||1;
       const want=Math.atan2(dx/L,dz/L); player.h+=wrapA(want-player.h)*Math.min(1,dt*10);
-      const spd=(running()?8.2:4)*mag;
+      const spd=(running()?8.2:4)*mag*(player.crouch?0.45:1);
       player.vx=Math.sin(player.h)*spd; player.vz=Math.cos(player.h)*spd;
       const ox=player.x, oz=player.z;
       player.x+=player.vx*dt; player.z+=player.vz*dt;
       if (riverBlocked(player.x,player.z)){ player.x=ox; player.z=oz; }
       player.phase+=dt*spd*4.2;
     } else { player.vx=player.vz=0; }
-    pushCircle(player,0.42);
+    pushCircle(player,0.42,player.y);
     player.x=clamp(player.x,-LIM,LIM); player.z=clamp(player.z,-LIM,LIM);
     const near=nearestCar(4.2);
     if (near) showHint(isTouch?`Pulsa ENTRAR para ${near.driver==='npc'||near.driver==='police'?'robar':'subir a'} este coche`:`E: ${near.driver==='npc'||near.driver==='police'?'Robar':'Subir a'} este coche`);
@@ -2417,7 +2438,7 @@ function updateHUD(dt){
   streetT-=dt; if (streetT<=0){ streetT=0.25; const P=player.inCar||player; hud.street.textContent=streetAt(P.x,P.z)||''; }
   if (hintMsg){ hud.hint.hidden=false; hud.hint.textContent=hintMsg; } else hud.hint.hidden=true;
   $('bEnter').textContent=player.inCar?'Salir':'Entrar';
-  { const W=curW(); $('bAct').textContent=player.inCar?'Freno':W.melee?'Golpe':W.throw?'Lanzar':'Disparar'; $('bFire').hidden=!(player.inCar&&!W.melee&&!W.throw); }
+  { const W=curW(); $('bAct').textContent=player.inCar?'Freno':W.melee?'Golpe':W.throw?'Lanzar':'Disparar'; $('bFire').hidden=!(player.inCar&&!W.melee&&!W.throw); $('bJump').hidden=$('bCrouch').hidden=!!player.inCar; }
   const P=player.inCar||player, zn=zoneName(P.x,P.z);
   if (zn!==zoneNow){ zoneNow=zn; hud.zone.lastElementChild.textContent=zn; hud.zone.classList.add('show'); zoneT=3; }
   if (zoneT>0){ zoneT-=dt; if (zoneT<=0) hud.zone.classList.remove('show'); }
@@ -2495,8 +2516,12 @@ function frame(t){
   const dt=Math.min(0.05,(t-last)/1000); last=t;
   if (state==='play'||state==='dead'){
     now+=dt; update(dt);
-    player.mesh.position.set(player.x,0.25,player.z); player.mesh.rotation.y=player.h; player.mesh.visible=!player.inCar && !fp;
-    if (!player.inCar){ const sp=Math.hypot(player.vx,player.vz); animPed(player.mesh,player.phase,sp>0.3?Math.min(0.9,sp*0.14):0); weaponPose(); }
+    player.mesh.position.set(player.x,0.25+player.y-(player.crouch&&!player.inCar?0.42:0),player.z); player.mesh.rotation.y=player.h; player.mesh.visible=!player.inCar && !fp;
+    if (!player.inCar){ const sp=Math.hypot(player.vx,player.vz); animPed(player.mesh,player.phase,sp>0.3?Math.min(0.9,sp*0.14):0);
+      const u=player.mesh.userData;
+      if (player.crouch){ const w=Math.sin(player.phase)*(sp>0.3?0.25:0); u.legs[0].rotation.x=-1.2+w; u.legs[1].rotation.x=-1.2-w; u.knees[0].rotation.x=u.knees[1].rotation.x=2.0; }
+      else if (player.y>0.05){ u.legs[0].rotation.x=-0.5; u.legs[1].rotation.x=0.1; u.knees[0].rotation.x=0.9; u.knees[1].rotation.x=0.6; }
+      weaponPose(); }
     if (keysT>0){ keysT-=dt; if (keysT<=0) $('keys').classList.remove('show'); }
     updateCamera(dt); updateViewmodel(dt); updateHUD(dt); updateMarkers(); updateAudio();
   } else if (state==='title'){

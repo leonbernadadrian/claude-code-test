@@ -14,17 +14,20 @@ cd ilici-city && python3 -m http.server 8000
 | Tecla | Acción |
 |---|---|
 | W A S D / flechas | Andar o conducir |
-| Shift / Espacio | Correr (a pie) / freno de mano (en coche) |
+| Shift | Correr |
+| Espacio | Saltar (a pie) / freno de mano (en coche) |
+| Z | Agacharse o levantarse |
 | E / Enter | Entrar, robar un coche o salir |
 | F / clic | Disparar, golpear o lanzar granada (mantén para ráfaga) |
 | Q / rueda / 1-7 | Cambiar de arma |
 | H | Claxon |
 | C | Cámara normal / cenital |
+| V | Primera o tercera persona (también en Pausa → Vista) |
 | M | Mapa con nombres de calles |
 | I | Mostrar u ocultar los controles en pantalla |
 | P / Esc | Pausa, misiones y controles |
 
-Los controles aparecen en pantalla al empezar (tecla I) y en el menú de pausa. En móvil hay joystick, botones táctiles y un botón «?» con la ayuda. Apuntar es automático.
+Los controles aparecen en pantalla al empezar (tecla I) y en el menú de pausa. En móvil hay joystick, botones táctiles (Saltar y Agachar incluidos) y un botón «?» con la ayuda. En tercera persona apuntar es automático; en primera persona se apunta con la mira. Los avisos salen en una columna pequeña arriba a la derecha para no tapar el juego.
 
 ## Qué incluye
 
@@ -41,6 +44,8 @@ Los controles aparecen en pantalla al empezar (tecla I) y en el menú de pausa. 
 - **Daños**: los coches echan humo, se incendian y explotan.
 - **5 misiones**: Dátiles para la abuela, Taxi al Martínez Valero, Carrera del Palmeral, El deportivo del míster y La Nit de l'Albà (termina con fuegos artificiales).
 - **12 dátiles de oro** escondidos, a 100 € cada uno.
+- **Primera persona**: modo shooter con mira, arma en primer plano con retroceso, ratón con captura del puntero (o arrastrando en el móvil) y vista desde el asiento del conductor.
+- **Saltar y agacharse**: saltas por encima de bancos y cajas. Agachado vas más despacio, disparas con más precisión y la policía te acierta la mitad de veces.
 - **Personajes y coches modelados**: los peatones tienen cuerpo humano (cara, pelo, torso, codos y rodillas que se doblan) y variantes de hombre y mujer, ropa corta o larga y falda. Los coches tienen carrocería con silueta real, llantas, parachoques y retrovisores.
 - **Gráficos**: cielo con sol y estrellas, corrección de color cinematográfica, asfalto y aceras con textura, fachadas con persianas y marcos, cornisas, coches con pintura brillante y halos de luz de farolas y faros por la noche. El menú de pausa permite elegir calidad alta, media o baja.
 - **Ciclo de día y noche**: amanece a las 7:00 y anochece hacia las 21:00. De noche se iluminan ventanas, farolas y faros.
