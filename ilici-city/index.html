@@ -61,8 +61,10 @@
   #banner{position:absolute;left:0;right:0;top:34%;text-align:center;font-size:clamp(34px,7vw,64px);line-height:1;opacity:0;transition:opacity .4s;padding-inline:16px}
   #banner.show{opacity:1}
   #banner small{display:block;font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;margin-top:10px;color:var(--paper)}
-  #toast{position:absolute;left:50%;transform:translateX(-50%);top:22%;max-width:min(560px,calc(100% - 40px));font-size:21px;font-weight:600;line-height:1.25;text-align:center;background:rgba(15,21,28,.8);padding:10px 16px;border-top:3px solid var(--gold);opacity:0;transition:opacity .35s}
-  #toast.show{opacity:1}
+  #feed{display:flex;flex-direction:column;align-items:flex-end;gap:4px;margin-top:6px;max-width:min(300px,52vw)}
+  #feed div{background:rgba(15,21,28,.74);border-right:3px solid var(--gold);padding:4px 10px;font-size:15px;font-weight:600;line-height:1.22;text-align:right;transition:opacity .4s}
+  #feed div em{font-style:normal;color:var(--gold)}
+  #feed div.out{opacity:0}
 
   /* Touch */
   #touch{position:absolute;inset:0;pointer-events:none}
@@ -83,8 +85,8 @@
   #bHelp{left:calc(env(safe-area-inset-left,0px) + 224px)}
   body.touch #obj{bottom:calc(env(safe-area-inset-bottom,0px) + 180px);font-size:19px}
   body.touch #hint{bottom:calc(env(safe-area-inset-bottom,0px) + 236px)}
-  body.touch #zone{bottom:auto;top:calc(env(safe-area-inset-top,0px) + 200px);font-size:22px}
-  body.touch #toast{top:calc(env(safe-area-inset-top,0px) + 272px);font-size:16px;max-width:min(360px,calc(100% - 32px))}
+  body.touch #zone{bottom:auto;right:auto;left:calc(env(safe-area-inset-left,0px) + 16px);text-align:left;top:calc(env(safe-area-inset-top,0px) + 234px);font-size:22px}
+  body.touch #feed div{font-size:13px}
   body.touch #banner small{font-size:18px}
 
   /* Overlays */
@@ -121,6 +123,7 @@
     #mini{width:118px;height:118px}
     .topb{top:calc(env(safe-area-inset-top,0px) + 144px)}
     body.touch #zone{top:calc(env(safe-area-inset-top,0px) + 190px)}
+    #feed{max-width:min(230px,56vw)}
     #money{font-size:24px} #stars{font-size:21px} #hp{width:110px}
   }
   @media (prefers-reduced-motion:reduce){#stars.flash span.on{animation:none}}
@@ -141,10 +144,10 @@
       <div id="drugs" class="outline" hidden>Paquetes: 0</div>
       <div id="dates" class="outline">Dátiles de oro 0/12</div>
       <div id="street" class="outline"></div>
+      <div id="feed"></div>
     </div>
     <div id="timer" class="disp outline" hidden>1:40</div>
     <div id="zone" class="disp outline"><small>Elche</small><span>Centro Histórico</span></div>
-    <div id="toast"></div>
     <div id="banner" class="disp outline"></div>
     <div id="hint" hidden></div>
     <div id="obj" class="outline"></div>
@@ -1464,9 +1467,14 @@ function updateClients(dt){
 }
 
 /* ================= HUD ================= */
-const hud={weapon:$('weapon'),armor:$('armor').firstElementChild,drugs:$('drugs'),street:$('street'),money:$('money'),stars:$('stars'),hp:$('hp').firstElementChild,clock:$('clock'),speed:$('speed'),timer:$('timer'),obj:$('obj'),hint:$('hint'),zone:$('zone'),banner:$('banner'),toast:$('toast'),dates:$('dates')};
+const hud={weapon:$('weapon'),armor:$('armor').firstElementChild,drugs:$('drugs'),street:$('street'),money:$('money'),stars:$('stars'),hp:$('hp').firstElementChild,clock:$('clock'),speed:$('speed'),timer:$('timer'),obj:$('obj'),hint:$('hint'),zone:$('zone'),banner:$('banner'),dates:$('dates')};
 let streetT=0, shownMoney=player.money, zoneNow='', zoneT=0, toastT=0, bannerT=0;
-function toast(t,s=4){ hud.toast.innerHTML=t; hud.toast.classList.add('show'); toastT=s; }
+function toast(t,s=4){
+  const f=$('feed'); if (f.lastElementChild && f.lastElementChild.innerHTML===t && !f.lastElementChild.classList.contains('out')) return;
+  const d=document.createElement('div'); d.innerHTML=t; f.appendChild(d);
+  while (f.children.length>4) f.firstElementChild.remove();
+  setTimeout(()=>{ d.classList.add('out'); setTimeout(()=>d.remove(),450); },s*1000);
+}
 function banner(t,sub,color,s=3){ hud.banner.innerHTML=t+(sub?`<small>${sub}</small>`:''); hud.banner.style.color=color||'var(--gold)'; hud.banner.classList.add('show'); bannerT=s; }
 function setObj(t){ hud.obj.innerHTML=t||''; }
 
@@ -2317,7 +2325,6 @@ function updateHUD(dt){
   const P=player.inCar||player, zn=zoneName(P.x,P.z);
   if (zn!==zoneNow){ zoneNow=zn; hud.zone.lastElementChild.textContent=zn; hud.zone.classList.add('show'); zoneT=3; }
   if (zoneT>0){ zoneT-=dt; if (zoneT<=0) hud.zone.classList.remove('show'); }
-  if (toastT>0){ toastT-=dt; if (toastT<=0) hud.toast.classList.remove('show'); }
   if (bannerT>0){ bannerT-=dt; if (bannerT<=0) hud.banner.classList.remove('show'); }
   drawMini(camYaw, player.inCar?player.inCar.speed:0);
 }
