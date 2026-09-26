@@ -102,6 +102,7 @@
   #bPause{left:calc(env(safe-area-inset-left,0px) + 120px)}
   #bHorn{left:calc(env(safe-area-inset-left,0px) + 172px);font-size:11px}
   #bHelp{left:calc(env(safe-area-inset-left,0px) + 224px)}
+  #bPhone{left:calc(env(safe-area-inset-left,0px) + 276px)}
   body.touch #obj{bottom:calc(env(safe-area-inset-bottom,0px) + 272px);font-size:19px}
   body.touch #hint{bottom:calc(env(safe-area-inset-bottom,0px) + 322px)}
   body.touch #zone{bottom:auto;right:auto;left:calc(env(safe-area-inset-left,0px) + 16px);text-align:left;top:calc(env(safe-area-inset-top,0px) + 234px);font-size:22px}
@@ -149,6 +150,24 @@
   #nav{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 58px);font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px;white-space:nowrap;background:rgba(15,21,28,.55);padding:3px 12px;border-radius:14px}
   #nav b{display:inline-block;color:#ff5ec4;font-size:20px;line-height:1}
   #nav.mis b{color:#ff4d4d}
+  #phone{position:absolute;right:calc(env(safe-area-inset-right,0px) + 24px);bottom:calc(env(safe-area-inset-bottom,0px) + 24px);width:300px;height:min(580px,calc(100% - 48px));background:#0d1117;border:3px solid #2b2f36;border-radius:34px;box-shadow:0 0 0 2px #000,10px 10px 0 #000;display:flex;flex-direction:column;overflow:hidden;pointer-events:auto;z-index:30;font-family:'Barlow Condensed',sans-serif}
+  #phone .ph-top{display:flex;justify-content:space-between;align-items:center;padding:10px 18px 4px;color:#e8e2d4;font-size:14px;font-weight:700}
+  #phone .ph-bar{display:flex;align-items:center;gap:8px;padding:4px 14px 8px;color:#fff;font-size:20px;font-weight:700;border-bottom:1px solid #222a33}
+  #phone .ph-bar button{background:none;border:0;color:#ffcf3f;font-size:22px;cursor:pointer;padding:0 6px}
+  #phone .ph-body{flex:1;overflow-y:auto;padding:12px;color:#e8e2d4}
+  #phone .ph-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px 8px}
+  #phone .ph-app{display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:0;color:#e8e2d4;font:600 14px 'Barlow Condensed',sans-serif;cursor:pointer}
+  #phone .ph-app i{font-style:normal;display:grid;place-items:center;width:58px;height:58px;border-radius:16px;font-size:28px;box-shadow:inset 0 -3px 0 #0004}
+  #phone .ph-app b{font-weight:600}
+  #phone .ph-app .dot{position:absolute;margin:-4px 0 0 44px;background:#e0342c;color:#fff;border-radius:9px;font-size:11px;padding:0 5px}
+  #phone .ph-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+  #phone .ph-list li{background:#161c24;border-radius:10px;padding:9px 11px;display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:16px}
+  #phone .ph-list li small{display:block;color:#9aa3ad;font-size:13px}
+  #phone .ph-list button{background:#ffcf3f;color:#111;border:0;border-radius:8px;padding:6px 10px;font:700 14px 'Barlow Condensed',sans-serif;cursor:pointer;white-space:nowrap}
+  #phone .ph-list button.red{background:#e0342c;color:#fff}
+  #phone .ph-big{font-size:34px;font-weight:700;color:#7ee08a}
+  #phone .ph-home{height:5px;width:110px;background:#c9c3b6;border-radius:3px;margin:8px auto 10px;cursor:pointer;border:0}
+  @media (max-width:560px){ #phone{right:50%;transform:translateX(50%);width:min(320px,calc(100% - 24px));bottom:calc(env(safe-area-inset-bottom,0px) + 12px)} }
   #bCancel{position:absolute;left:calc(env(safe-area-inset-left,0px) + 16px);top:calc(env(safe-area-inset-top,0px) + 184px);pointer-events:auto;font:700 15px 'Barlow Condensed',sans-serif;letter-spacing:.04em;background:rgba(160,30,30,.85);color:#fff;border:2px solid #fff3;border-radius:8px;padding:6px 12px;cursor:pointer}
   body.touch #bCancel{top:calc(env(safe-area-inset-top,0px) + 230px)}
   #bCancel.arm{background:#e0342c;border-color:#fff}
@@ -225,6 +244,7 @@
     <button class="tb" id="bFire" type="button" hidden>Disparar</button>
     <button class="tb topb" id="bHorn" type="button">Claxon</button>
     <button class="tb topb" id="bHelp" type="button">?</button>
+    <button class="tb topb" id="bPhone" type="button">📱</button>
     <button class="tb topb" id="bMap" type="button">Mapa</button>
     <button class="tb topb" id="bCam" type="button">Cám</button>
     <button class="tb topb" id="bPause" type="button">II</button>
@@ -261,6 +281,13 @@
         <button class="btn sec" id="bReset" type="button">Borrar progreso</button>
       </div>
     </div>
+  </div>
+
+  <div id="phone" hidden>
+    <div class="ph-top"><span id="phClock">17:30</span><span>📶 ILICI 🔋</span></div>
+    <div class="ph-bar"><button id="phBack" type="button" aria-label="Atrás">‹</button><span id="phTitle">Inicio</span></div>
+    <div class="ph-body" id="phBody"></div>
+    <button class="ph-home" id="phHome" type="button" aria-label="Guardar el móvil"></button>
   </div>
 
   <div class="ov" id="slots" hidden>
@@ -2011,7 +2038,7 @@ function openSlots(mode,back){
     li.appendChild(b); ul.appendChild(li); }
   $('slots').hidden=false;
 }
-function closeSlots(toGame){ $('slots').hidden=true; if (toGame){ $('pause').hidden=true; if (state==='paused'||state==='phone') resume?.(); return; } if (slotsBack) slotsBack(); }
+function closeSlots(toGame){ $('slots').hidden=true; if (toGame){ $('pause').hidden=true; if (state==='phone'){ $('phone').hidden=true; state='play'; } else if (state==='paused') resume(); return; } if (slotsBack) slotsBack(); }
 function autoSave(dt){   // cada 3 minutos de juego real, si se puede
   autoT+=dt; if (autoT<180) return; if (canSave()) return; autoT=0; saveSlot('auto',true);
 }
@@ -2417,7 +2444,7 @@ function taxiAI(c,dt){
   const ai=c.ai, R=taxiRide&&taxiRide.car===c?taxiRide:null;
   if (ai.mode==='wait'){   // parado esperando a que elijas destino
     c.drive(dt,0,0,true); ai.waitT-=dt;
-    if (!taxiCall || taxiCall.car!==c || ai.waitT<=0 || (state==='play' && d2(c.x,c.z,player.x,player.z)>40*40)){ if (taxiCall&&taxiCall.car===c) taxiCall=null; c.driver='npc'; ai.mode='cruise'; }
+    if (!taxiCall || taxiCall.car!==c || ai.waitT<=0 || (state==='play' && d2(c.x,c.z,player.x,player.z)>(c.pickup?160:40)**2)){ if (taxiCall&&taxiCall.car===c) taxiCall=null; if (phoneTaxi&&phoneTaxi.car===c) phoneTaxi=null; c.pickup=false; c.driver='npc'; ai.mode='cruise'; }
     return;
   }
   if (ai.mode==='ride'){
@@ -2684,6 +2711,7 @@ addEventListener('keydown',e=>{
   if (e.code==='Escape' && performance.now()-unlockT<400) return;   // el Esc que suelta el ratón ya ha abierto la pausa
   if (state==='paused' && (e.code==='KeyP'||e.code==='Escape')) { resume(); return; }
   if (state==='shop' && (e.code==='Escape'||e.code==='KeyE')) { closeShop(); return; }
+  if (state==='phone'){ if (e.code==='Escape'||e.code==='Tab'||e.code==='ArrowUp'){ e.preventDefault(); closePhone(); } else if (e.code==='Backspace') phoneBack(); return; }
   if (state==='help' && (e.code==='Escape'||e.code==='KeyI')) { closeHelp(); return; }
   if (state!=='play') return;
   if (e.code==='KeyE') enterExit(false); else if (e.code==='Enter') enterExit(true);   // en coche: E usa lo que haya al lado, Intro siempre baja
@@ -2700,6 +2728,7 @@ addEventListener('keydown',e=>{
   if (e.code==='KeyV') setFP(!fp);
   if (e.code==='KeyM') openMap();
   if (e.code==='Backspace') askCancelMission();
+  if (e.code==='Tab'||e.code==='ArrowUp'){ e.preventDefault(); openPhone(); }
   if (e.code==='KeyP'||e.code==='Escape') pause();
 });
 addEventListener('keyup',e=>{ keys.delete(e.code); if (e.code==='KeyH') hornUp(); });
@@ -2717,7 +2746,7 @@ let wheelT=0; renderer.domElement.addEventListener('wheel',e=>{ if (state!=='pla
   const end=e=>{ for (const t of e.changedTouches) if (t.identifier===joy.id){ joy.active=false; joy.x=joy.y=0; knob.style.transform=''; } };
   jz.addEventListener('touchend',end); jz.addEventListener('touchcancel',end);
   const tap=(id,fn)=>$(id).addEventListener('touchstart',e=>{ e.preventDefault(); initAudio(); if (state==='play') fn(); },{passive:false});
-  tap('bEnter',()=>enterExit(false)); tap('bTaxi',hailTaxi); tap('bSkip',()=>taxiSkip()); tap('bHorn',()=>{ horn(); if (player.inCar) hornAt(player.inCar,0.45); else whistle(); }); tap('bMap',openMap); tap('bCam',()=>camMode=(camMode+1)%2); tap('bPause',pause); tap('bWpn',()=>selectWeapon(player.w+1)); tap('bJump',jump); tap('bCrouch',()=>{ if (!player.inCar) setCrouch(!player.crouch); }); tap('bHelp',openHelp);
+  tap('bEnter',()=>enterExit(false)); tap('bTaxi',hailTaxi); tap('bSkip',()=>taxiSkip()); tap('bHorn',()=>{ horn(); if (player.inCar) hornAt(player.inCar,0.45); else whistle(); }); tap('bMap',openMap); tap('bPhone',()=>state==='phone'?closePhone():openPhone()); tap('bCam',()=>camMode=(camMode+1)%2); tap('bPause',pause); tap('bWpn',()=>selectWeapon(player.w+1)); tap('bJump',jump); tap('bCrouch',()=>{ if (!player.inCar) setCrouch(!player.crouch); }); tap('bHelp',openHelp);
   const bf=$('bFire'); bf.addEventListener('touchstart',e=>{ e.preventDefault(); fireEdge=true; fireHeld=true; bf.classList.add('on'); },{passive:false});
   const fend=()=>{ fireHeld=false; bf.classList.remove('on'); }; bf.addEventListener('touchend',fend); bf.addEventListener('touchcancel',fend);
   const ba=$('bAct');
@@ -3294,9 +3323,11 @@ function deadEnds(){ if (DEAD) return DEAD; DEAD=new Set(); for (const n of node
   return DEAD; }
 function pickNext(c,from,at){
   const ai=c.ai, A=nodes[from], B=nodes[at];
-  if (ai.goal){ let i=ai.route?ai.route.indexOf(at):-1;
-    if (i<0){ const g=nearestNode(ai.goal.x,ai.goal.z); ai.route=pathTo(B,g,true)||pathTo(B,g)||null; i=0; }
-    const want=ai.route&&ai.route[i+1]; if (want!==undefined && B.nb.includes(want) && (want===from || turnOk(from,at,want))) return want; ai.route=null; }   // giro que no cabe: sigue por otra y recalcula
+  if (ai.goal){ let i=ai.route?ai.route.indexOf(at):-1; const gk=ai.goal.x+','+ai.goal.z;
+    if (i<0 && ai.routeDone===gk) i=-2;   // ya llegó al final de la ruta hacia este mismo destino: no recalcular desde más allá
+    else if (i<0){ ai.routeDone=null; ai.route=navPath(from,at,ai.goal.x,ai.goal.z,ai.goal.r||20); if (!ai.route){ const g=nearestNode(ai.goal.x,ai.goal.z); ai.route=pathTo(B,g,true)||null; } i=0; }
+    if (i>=0 && ai.route && i===ai.route.length-1) ai.routeDone=gk;
+    const want=i>=0&&ai.route&&ai.route[i+1]; if (want!==undefined && want!==false && B.nb.includes(want) && (want===from || turnOk(from,at,want))) return want; if (i>=0 && ai.route && i<ai.route.length-1) ai.route=null; }   // giro que no cabe: sigue por otra y recalcula
   const D=deadEnds();
   let opts=B.nb.filter(n=>n!==from && inNav(at,n) && turnOk(from,at,n));   // dentro de la red navegable
   if (!opts.length) opts=B.nb.filter(n=>n!==from && canGo(at,n) && !D.has(n) && turnOk(from,at,n)); if (!opts.length) opts=B.nb.filter(n=>n!==from && canGo(at,n) && turnOk(from,at,n)); if (!opts.length) opts=B.nb.filter(n=>n!==from && canGo(at,n)); if (!opts.length) opts=B.nb.filter(n=>n!==from); if (!opts.length) return from;
@@ -3323,6 +3354,24 @@ function navSet(){
   return NAVSET;
 }
 const inNav=(a,b)=>navSet().has(a+'_'+b);
+// ruta de un vehículo: Dijkstra sobre tramos con sentido (respeta direcciones prohibidas y giros que no caben), desde el tramo from→at
+// hasta cualquier cruce a menos de r metros de (gx,gz). Devuelve los nodos [at, ..., destino] o null.
+function navPath(from,at,gx,gz,r=30){
+  let goal=new Set(mainNodes.filter(n=>d2(n.x,n.z,gx,gz)<r*r).map(n=>n.id));
+  if (!goal.size){ let m=1e18; for (const n of mainNodes) m=Math.min(m,d2(n.x,n.z,gx,gz)); const R=Math.sqrt(m)+40; goal=new Set(mainNodes.filter(n=>d2(n.x,n.z,gx,gz)<R*R).map(n=>n.id)); }   // sin cruces cerca (plaza peatonal): los más cercanos
+  if (goal.has(at)) return [at];
+  const start=from+'_'+at, dist=new Map([[start,0]]), prev=new Map(), heap=[[0,from,at]];
+  const push=it=>{ heap.push(it); let i=heap.length-1; while (i>0){ const q=(i-1)>>1; if (heap[q][0]<=heap[i][0]) break; [heap[q],heap[i]]=[heap[i],heap[q]]; i=q; } };
+  const pop=()=>{ const top=heap[0], last=heap.pop(); if (heap.length){ heap[0]=last; let i=0; for(;;){ const l=2*i+1, rr=l+1; let m=i; if (l<heap.length&&heap[l][0]<heap[m][0]) m=l; if (rr<heap.length&&heap[rr][0]<heap[m][0]) m=rr; if (m===i) break; [heap[m],heap[i]]=[heap[i],heap[m]]; i=m; } } return top; };
+  let found=null, it=0;
+  while (heap.length && it++<20000){ const [d,a,b]=pop(), k=a+'_'+b; if (d>(dist.get(k)??1e18)) continue;
+    if (goal.has(b)){ found=k; break; }
+    const B=nodes[b]; for (const c of B.nb){ if (c===a || !canGo(b,c) || !turnOk(a,b,c)) continue; const C=nodes[c], nk=b+'_'+c, nd=d+Math.hypot(C.x-B.x,C.z-B.z);
+      if (nd<(dist.get(nk)??1e18)){ dist.set(nk,nd); prev.set(nk,k); push([nd,b,c]); } } }
+  if (!found) return null;
+  const out=[]; let k=found; while (k){ out.push(+k.split('_')[1]); if (k===start) break; k=prev.get(k); }
+  return out.reverse();
+}
 // ¿cabe un coche por la trayectoria real de este giro (carril, esquina y el recorte de la curva) sin tocar edificios?
 const TURNOK=new Map();
 function turnOk(p,n,q){
@@ -3492,7 +3541,7 @@ function chase(c,dt){
 
 /* ---- gestión de tráfico, peatones y policía ---- */
 const MAX_PEDS=isTouch?32:52, MAX_CARS=isTouch?18:28;
-function spawnCarNear(mode){
+function spawnCarNear(mode,kind){
   const D=deadEnds(), near=edges.filter(e=>{ if (e.blocked) return false; const A=nodes[e.a], B=nodes[e.b]; return segDist(player.x,player.z,A.x,A.z,B.x,B.z)<230; });
   if (!near.length) return null;
   for (let tries=0;tries<30;tries++){
@@ -3507,7 +3556,7 @@ function spawnCarNear(mode){
     if (cars.some(c=>d2(c.x,c.z,x,z)<196)) continue;
     if (Math.abs(x-riverX(z))<RHz(z)+4 && !onBridge(x,z)) continue;
     if (pointBlocked(x,z) || circleBlocked(x+ux*1.5,z+uz*1.5,1.1) || circleBlocked(x-ux*1.5,z-uz*1.5,1.1)) continue;   // la carrocería entera, no solo el centro
-    const k = mode==='police' ? 'police' : parked ? mpick(['compact','sedan','sedan','van','pickup','sports']) : e.real&&e.w<8 ? mpick(['compact','compact','sedan','taxi','sports']) : mpick(['compact','compact','sedan','sedan','sedan','van','taxi','sports','bus','boxvan','boxvan','truck','pickup','pickup']);
+    const k = kind && !parked ? kind : mode==='police' ? 'police' : parked ? mpick(['compact','sedan','sedan','van','pickup','sports']) : e.real&&e.w<8 ? mpick(['compact','compact','sedan','taxi','sports']) : mpick(['compact','compact','sedan','sedan','sedan','van','taxi','sports','bus','boxvan','boxvan','truck','pickup','pickup']);
     const c=new Car(k); c.x=x; c.z=z; c.h=Math.atan2(ux,uz);
     if (parked){ c.driver=null; }
     else { c.driver = mode==='police'?'police':'npc'; c.ai={mode:mode==='police'?'chase':'cruise',a:a.id,b:b.id,stuck:0,rev:0,repath:0,path:null,pi:0,wait:0}; c.pass=k==='bus'?Math.floor(mrand(1,6)):k==='police'?(Math.random()<0.5?1:0):Math.random()<0.25?1:0; const v=mode==='police'?14:9; c.vx=ux*v; c.vz=uz*v; }
@@ -3777,7 +3826,7 @@ function manage(dt){
   spawnT-=dt;
   if (spawnT<=0){
     spawnT=0.4;
-    for (const c of cars.slice()){ if (c===player.inCar||c.mission) continue; if (d2(c.x,c.z,player.x,player.z)>270*270) c.remove();
+    for (const c of cars.slice()){ if (c===player.inCar||c.mission||(phoneTaxi&&phoneTaxi.car===c)) continue; if (d2(c.x,c.z,player.x,player.z)>270*270) c.remove();
       else if (c.exploded && c.wreckT!==undefined){ const age=now-c.wreckT, d=Math.hypot(c.x-player.x,c.z-player.z), P=player.inCar||player, ahead=(c.x-P.x)*Math.sin(camYaw)+(c.z-P.z)*Math.cos(camYaw);
         if (age>240 || (age>75 && (d>60 || (d>25 && ahead<0)))) c.remove(); } }   // los restos se retiran con el tiempo, cuando no se ven; el tráfico vuelve a salir
     for (const p of peds.slice()){ if (d2(p.x,p.z,player.x,player.z)>210*210 || (p.state==='dead'&&p.t<=0)) p.remove(); }
@@ -3980,7 +4029,7 @@ function updateActivities(dt){
   if (errandT<=0){ errandT=mrand(140,240);
     if (!mission.cur && !SHOPS.some(s=>s.errand) && player.stars===0){ const P=player.inCar||player, p=spotAround(P.x,P.z,35,90,false);
       const sh={id:'encargo',errand:true,name:'Encargo',title:'Un encargo',pos:p,color:'#35c6e8',shirt:mpick(['#7a2d2d','#2d5a7a','#4a4a4a']),who:mpick(['Toni «el Gafas»','la señora Remedios','Paco el del bar','Vicentet','una tal Mari Carmen']),until:now+90};
-      buildPlace(sh); SHOPS.push(sh); toast(`📞 ${sh.who} te busca para un encargo: marcador azul cercano`,3); } }
+      buildPlace(sh); SHOPS.push(sh); toast(`📞 ${sh.who} te busca para un encargo: marcador azul cercano`,3); phoneMsg(sh.who,'Tengo un encargo para ti. Te espero cerca, te he mandado la ubicación (marcador azul).'); } }
 }
 function updateMissions(dt){
   const P=player.inCar||player;
@@ -4200,7 +4249,7 @@ function update(dt){
     g.position.set(x,y,470); takeoff.inner.rotation.x=pitch; g.visible=t<66; }
   manage(dt);
   updateGrenades(dt); updatePickups(dt); updateClients(dt);
-  if (state==='play'){ autoSave(dt); updateMissions(dt); updateShops(dt); updateActivities(dt); perceiveWeapons(dt); }
+  if (state==='play'){ autoSave(dt); updatePhoneTaxi(); updateMissions(dt); updateShops(dt); updateActivities(dt); perceiveWeapons(dt); }
   updatePool(glowP,dt); updatePool(smokeP,dt);
 }
 
@@ -4361,6 +4410,80 @@ function startGame(){
   toast(save.done.length?`Bienvenido de nuevo a Elche. Llevas ${save.done.length}/5 misiones.`:'Estás en <em>La Glorieta</em>. Busca un marcador amarillo en el minimapa o roba el primer coche que veas.',5);
   try{ navigator.wakeLock?.request('screen').catch(()=>{}); }catch(e){}
 }
+/* ================= teléfono móvil =================
+   Herramienta del personaje, no un menú: apps registradas en PHONE_APPS ({id,icon,name,color,badge?,open(ui)}).
+   Para añadir mensajes, llamadas, contactos o apps nuevas (negocios, actividades...) basta con registrar otra entrada. */
+const phoneMsgs=[]; let phoneUnread=0, phoneStack=[], phoneTaxi=null;
+function phoneMsg(from,text){ phoneMsgs.unshift({from,text,t:gameMin}); if (phoneMsgs.length>30) phoneMsgs.pop(); phoneUnread++; }
+const PHONE_CONTACTS=[
+  {name:'Radio Taxi Elx',sub:'Te recoge donde estés',act:()=>phoneCallTaxi()},
+  {name:'Taller de Carrús',sub:'Reparaciones y compraventa',place:'taller'},
+  {name:'Reparto Exprés Elx',sub:'Trabajo por horas',place:'reparto'},
+  {name:'Inmobiliaria Glorieta',sub:'Negocios en venta',place:'inmo'},
+  {name:'«El Rata»',sub:'Ya sabes para qué',place:'droga'},
+  {name:'Armería (sin nombre)',sub:'Solo en persona',place:'armas'},
+];
+function phoneList(items){ return '<ul class="ph-list">'+items.map((it,i)=>`<li><span>${it.t}${it.s?`<small>${it.s}</small>`:''}</span>${it.b?`<button type="button" data-i="${i}" class="${it.red?'red':''}">${it.b}</button>`:''}</li>`).join('')+'</ul>'; }
+function phoneBind(items){ $('phBody').querySelectorAll('button[data-i]').forEach(b=>b.addEventListener('click',()=>{ const it=items[+b.dataset.i]; it.fn&&it.fn(); })); }
+function routeTo(x,z,name){ setDest({x,z,name}); toast(`Ruta marcada: <em>${name}</em>`,1.8); }
+const PHONE_APPS=[
+  {id:'mapa',icon:'🗺️',name:'Mapa',color:'#2d6cdf',open:()=>{ closePhone(); openMap(); }},
+  {id:'misiones',icon:'⭐',name:'Misiones',color:'#d9a21c',open:()=>{
+    const items=[]; if (mission.cur) items.push({t:'En curso: '+mission.cur.name,s:mission.cur.steps[mission.step]?.text?.replace(/<[^>]+>/g,''),b:'Cancelar',red:true,fn:()=>{ cancelMission(); phoneOpen('misiones',true); }});
+    for (const ms of MISSIONS){ const done=save.done.includes(ms.id); items.push({t:ms.name,s:done?'Superada':`${ms.reward} €`,b:mission.cur?null:'Ruta',fn:()=>{ routeTo(ms.start[0],ms.start[1],'Misión: '+ms.name); closePhone(); }}); }
+    phoneShow('Misiones',phoneList(items)); phoneBind(items); }},
+  {id:'cartera',icon:'💶',name:'Cartera',color:'#1f8a4c',open:()=>{
+    const biz=(save.biz||[]).map(id=>BIZ.find(b=>b.id===id)).filter(Boolean), inc=biz.reduce((a,b)=>a+b.inc,0);
+    phoneShow('Cartera',`<div class="ph-big">${player.money.toLocaleString('es-ES')} €</div><p>Negocios: ${biz.length?biz.map(b=>b.name).join(', '):'ninguno'}<br>Ingresos: ${inc} € al día · pendiente de cobrar ${Math.floor(save.bizAcc||0)} €</p><p>Paquetes encima: ${player.drugs||0}</p>`); }},
+  {id:'contactos',icon:'👥',name:'Contactos',color:'#6b4bd6',open:()=>{
+    const items=PHONE_CONTACTS.map(c=>({t:c.name,s:c.sub,b:c.act?'Llamar':'Ruta',fn:()=>{ if (c.act) c.act(); else { const sh=SHOPS.find(q=>q.id===c.place); if (sh){ routeTo(sh.mx,sh.mz,sh.title); closePhone(); } } }}));
+    phoneShow('Contactos',phoneList(items)); phoneBind(items); }},
+  {id:'mensajes',icon:'💬',name:'Mensajes',color:'#1aa39a',badge:()=>phoneUnread,open:()=>{ phoneUnread=0;
+    phoneShow('Mensajes',phoneMsgs.length?phoneList(phoneMsgs.map(m=>({t:m.from,s:m.text}))):'<p>No tienes mensajes.</p>'); }},
+  {id:'taxi',icon:'🚕',name:'Taxi',color:'#e8b21c',open:()=>{ phoneCallTaxi(); }},
+  {id:'guardar',icon:'💾',name:'Guardar',color:'#3d4d5c',open:()=>{ $('phone').hidden=true; openSlots('save',()=>{ $('phone').hidden=false; }); }},
+  {id:'cargar',icon:'📂',name:'Cargar',color:'#3d4d5c',open:()=>{ $('phone').hidden=true; openSlots('load',()=>{ $('phone').hidden=false; }); }},
+  {id:'perfil',icon:'🧍',name:'Yo',color:'#8a3d3d',open:()=>{
+    const W=player.owned.map(id=>W_BY[id]?.name).filter(Boolean).join(', ');
+    phoneShow('Yo',`<p><b>Salud</b> ${Math.round(player.health)} · <b>Blindaje</b> ${Math.round(player.armor||0)}<br><b>Búsqueda</b> ${'★'.repeat(player.stars)||'ninguna'}<br><b>Estás en</b> ${zoneName((player.inCar||player).x,(player.inCar||player).z)}</p><p><b>Armas</b> ${W}</p><p><b>Misiones</b> ${save.done.length}/${MISSIONS.length} · <b>Dátiles de oro</b> ${save.dates.length}/12</p>`); }},
+];
+function phoneShow(title,html){ $('phTitle').textContent=title; $('phBody').innerHTML=html; }
+function phoneHome(){ phoneStack=[]; $('phTitle').textContent='Inicio';
+  $('phBody').innerHTML='<div class="ph-grid">'+PHONE_APPS.map(a=>{ const n=a.badge?a.badge():0; return `<button class="ph-app" type="button" data-app="${a.id}"><i style="background:${a.color}">${a.icon}</i>${n?`<span class="dot">${n}</span>`:''}<b>${a.name}</b></button>`; }).join('')+'</div>';
+  $('phBody').querySelectorAll('[data-app]').forEach(b=>b.addEventListener('click',()=>phoneOpen(b.dataset.app))); }
+function phoneOpen(id,replace){ const a=PHONE_APPS.find(q=>q.id===id); if (!a) return; if (!replace) phoneStack.push(id); a.open(); }
+function openPhone(){
+  if (state!=='play' || player.health<=0) return;
+  try{ document.exitPointerLock?.(); }catch(e){}
+  state='phone'; $('phone').hidden=false; const h=Math.floor(gameMin/60)%24, m=Math.floor(gameMin%60); $('phClock').textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+  phoneHome(); tone(1200,0.05,'sine',0.03);
+}
+function closePhone(){ if (state!=='phone') return; $('phone').hidden=true; state='play'; }
+function phoneBack(){ if (phoneStack.length){ phoneHome(); } else closePhone(); }
+// taxi por teléfono: el taxi libre más cercano (o uno nuevo) viene a buscarte y se para a tu lado
+function taxiPickup(c,P){   // punto de recogida: de los cruces a menos de 45 m, el de ruta más corta para el taxi (con los sentidos únicos)
+  const r=navPath(c.ai.a,c.ai.b,P.x,P.z,45), n=r&&nodes[r[r.length-1]];
+  return n?{x:n.x,z:n.z,r:6}:{x:P.x,z:P.z,r:45};
+}
+function phoneCallTaxi(){
+  if (player.stars>0){ toast('«Con la policía detrás no vamos, lo siento»',2); return; }
+  if (player.inCar || taxiRide || taxiCall || phoneTaxi){ toast(phoneTaxi?'El taxi ya está en camino':'Ahora no puedes pedir un taxi',1.8); return; }
+  const P=player; let c=cars.filter(q=>q.k==='taxi'&&q.driver==='npc'&&q.ai&&!q.dead&&d2(q.x,q.z,P.x,P.z)<250*250).sort((a,b)=>d2(a.x,a.z,P.x,P.z)-d2(b.x,b.z,P.x,P.z))[0];
+  if (!c) c=spawnCarNear('cruise','taxi');
+  if (!c){ toast('«Ahora mismo no tenemos coches libres»',2); return; }
+  phoneTaxi={car:c,t:now+150,px:P.x,pz:P.z}; c.ai.goal=taxiPickup(c,P); c.ai.route=null; closePhone();
+  toast(`🚕 Radio Taxi: «Un coche va para allá, ${Math.max(1,Math.round(Math.hypot(c.x-P.x,c.z-P.z)/250))} min»`,2.6); phoneMsg('Radio Taxi Elx','Un coche va a recogerte.');
+}
+function updatePhoneTaxi(){
+  const T=phoneTaxi; if (!T) return; const c=T.car, P=player;
+  if (!cars.includes(c) || c.dead || (c.driver!=='npc'&&!T.waiting) || (now>T.t&&!T.waiting) || player.stars>0 || player.inCar){ if (cars.includes(c)&&c.ai){ c.ai.goal=null; c.ai.route=null; } phoneTaxi=null; if (now>T.t) toast('El taxi no ha podido llegar',1.8); return; }
+  if (!c.ai.goal || d2(T.px,T.pz,P.x,P.z)>25*25){ T.px=P.x; T.pz=P.z; c.ai.goal=taxiPickup(c,P); c.ai.route=null; }   // te has movido: nuevo punto de recogida
+  if (T.waiting){   // parado en el punto de recogida: cuando llegas a su lado, eliges destino
+    if (d2(c.x,c.z,P.x,P.z)<12*12){ phoneTaxi=null; c.pickup=false; if (dest&&dest.taxi) clearDest(); toast('🚕 «¿A dónde vamos?» Elige el destino en el mapa',2.2); openMap({mode:'taxi',onPick:taxiQuote}); }
+    return; }
+  if (d2(c.x,c.z,P.x,P.z)<22*22 || d2(c.x,c.z,c.ai.goal.x,c.ai.goal.z)<12*12){ c.ai.goal=null; c.ai.route=null; c.driver='taxi'; c.ai.mode='wait'; c.ai.waitT=90; c.pickup=true; taxiCall={car:c,quote:null}; horn2(c); T.waiting=true;
+    const d=Math.hypot(c.x-P.x,c.z-P.z); if (d<12) return; setDest({x:c.x,z:c.z,name:'Tu taxi'}); dest.taxi=true; toast(`🚕 Tu taxi te espera a ${fmtDist(d)}: acércate`,2.6); }
+}
 function pause(){
   state='paused'; $('pause').hidden=false; $('bPCancel').hidden=!mission.cur;
   $('plist').innerHTML=MISSIONS.map(ms=>`<li><span>${ms.name}</span>${save.done.includes(ms.id)?'<b>Superada</b>':`<i>${ms.reward} €</i>`}</li>`).join('');
@@ -4370,6 +4493,7 @@ function pause(){
 function resume(){ $('pause').hidden=true; state='play'; }
 $('bPlay').addEventListener('click',startGame);
 $('bResume').addEventListener('click',resume);
+$('phBack').addEventListener('click',phoneBack); $('phHome').addEventListener('click',closePhone);
 $('bPCancel').addEventListener('click',()=>{ cancelMission(); resume(); });
 $('bCancel').addEventListener('click',e=>{ e.stopPropagation(); askCancelMission(); });
 $('bCancel').addEventListener('pointerdown',e=>e.stopPropagation());
@@ -4433,7 +4557,7 @@ function frame(t){
     camera.position.set(-55+Math.sin(titleA)*110,55,-55+Math.cos(titleA)*110); camera.up.set(0,1,0); camera.lookAt(-30,10,-60);
     for (const p of peds) p.update(dt);
     for (const c of cars){ if (c.driver==='npc'&&c.ai) cruise(c,dt); else c.drive(dt,0,0,true); pushCircle(c,1.2); c.sync(); }
-  } else if (state==='paused'||state==='map'||state==='shop'||state==='help'){ if (AC&&eng){ eng.g.gain.value=0; } stopSirens(); if (state==='map') updateMapView(dt); }
+  } else if (state==='paused'||state==='map'||state==='shop'||state==='help'||state==='phone'){ if (AC&&eng){ eng.g.gain.value=0; } stopSirens(); if (state==='map') updateMapView(dt); }
   updateLighting();
   renderer.clear(); renderer.render(scene,camera);
   if (vmRoot.visible && (state==='play'||state==='dead')){ renderer.clearDepth(); renderer.render(vmScene,vmCam); }
