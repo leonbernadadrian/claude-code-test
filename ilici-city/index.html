@@ -1973,6 +1973,7 @@ function renderShop(){
     $('shopWho').textContent='«El Rata» te pasa la mercancía. Véndela a los clientes que verás en morado en el mapa: pagan entre 110 y 190 € por paquete. Si la policía te ve vendiendo, caen 2 estrellas y si te detienen te lo requisan todo.';
   }
   $('shopTitle').textContent=sh.title; $('shopMoney').textContent=`Tienes ${player.money} €`;
+  if (player.inCar && !taxiRide) items.push({label:'Bajarse del coche',sub:'Cierra y te bajas aquí',price:0,btn:'Bajar',buy:()=>{ closeShop(); exitCar(false); }});
   const ul=$('shopList'); ul.innerHTML='';
   for (const it of items){
     const li=document.createElement('li'); li.innerHTML=`<div><b>${it.label}</b><small>${it.sub}</small></div>`;
@@ -1988,8 +1989,6 @@ function updateShops(dt){
     if (sh.until && now>sh.until){ removePlace(sh); continue; }
     sh.marker.scale.y=1+Math.sin(now*3)*0.08;
     if (d2(player.x,player.z,sh.pos[0],sh.pos[1])<400) sh.dealer.rotation.y=Math.atan2(player.x-sh.pos[0],player.z-sh.pos[1]+1.5);
-    const carOk=(sh.job||sh.errand) && !mission.cur && player.inCar && player.inCar.speed<2;   // a las actividades se puede llegar en coche
-    if ((!player.inCar||carOk) && sh!==shopState.leave && d2(player.x,player.z,sh.mx,sh.mz)<(carOk?30:6.25)){ openShop(sh); return; }
   }
   barrelT-=dt;
   if (barrelT<=0){ barrelT=0.08; for (const [x,z] of barrels) if (d2(x,z,player.x,player.z)<22500) emit(glowP,x+mrand(-.3,.3),1.5,z+mrand(-.3,.3),mrand(-.3,.3),mrand(1.5,3),mrand(-.3,.3),0.5,0.4,mpick(['#ff9a2a','#ffcf4a','#ff5a1a']),0,-0.5); }
@@ -2012,15 +2011,48 @@ function updateClients(dt){
   const P=player.inCar||player;
   for (const c of clients.slice()){
     c.ph+=dt; c.m.rotation.y=Math.atan2(P.x-c.x,P.z-c.z); c.m.userData.arms[1].rotation.x=-0.7+Math.sin(c.ph*3)*0.35;
-    if (d2(P.x,P.z,c.x,c.z)>(player.inCar?36:9)) continue;
-    if (player.inCar && player.inCar.speed>3){ showHint('Frena para vender'); continue; }
-    const n=Math.min(player.drugs,1+Math.floor(Math.random()*3)); player.drugs-=n; player.money+=n*c.pay;
+  }
+}
+function sellTo(c){   // venta a un cliente, con E
+  { const n=Math.min(player.drugs,1+Math.floor(Math.random()*3)); player.drugs-=n; player.money+=n*c.pay;
     sfxPick(); toast(`Venta: ${n} paquete${n>1?'s':''} · +${n*c.pay} €`,2);
     scene.remove(c.m); disposePed(c.m); clients.splice(clients.indexOf(c),1); clientT=10;
     crime('drugs',c.x,c.z,2,{copMsg:'¡Te han pillado trapicheando!',care:0.3});
     persist();
   }
 }
+/* ---- interacción general con E: los círculos solo marcan, nada se activa solo ----
+   Cada fuente aporta candidatos {verb,name,x,z,r,act}; gana el más cercano que esté delante del jugador. */
+const INTERACT_SOURCES=[];
+function interactCandidates(){
+  const out=[], P=player.inCar||player, inCar=!!player.inCar, slow=!inCar || player.inCar.speed<2;
+  if (state!=='play' || jack || player.downT>0 || taxiRide) return out;
+  for (const sh of SHOPS){ const carOk=(sh.job||sh.errand) && !mission.cur; if (inCar && !(carOk && slow)) continue;
+    out.push({verb:sh.rob?'Atracar':sh.job||sh.errand?'Hablar':'Entrar',name:sh.title||sh.name,x:sh.mx,z:sh.mz,r:inCar?6:2.6,act:()=>openShop(sh)}); }
+  if (!mission.cur) for (const ms of MISSIONS){ if (inCar && !slow) continue; out.push({verb:'Empezar misión',name:ms.name,x:ms.start[0],z:ms.start[1],r:inCar?7:3,act:()=>startMission(ms)}); }
+  for (const c of clients){ if (inCar && !slow) continue; out.push({verb:'Vender',name:'Cliente',x:c.x,z:c.z,r:inCar?6:2.4,act:()=>sellTo(c)}); }
+  if (!inCar){
+    const c=nearestCar(4.2); if (c) out.push({verb:c.driver==='npc'||c.driver==='police'?'Robar':'Subir',name:c.k==='taxi'?'Taxi':c.T.bike?'Bici':'Coche',x:c.x,z:c.z,r:99,car:true,act:()=>enterCar(c)});
+    for (const p of peds){ if (p.state!=='walk' || p.cop) continue; const d=d2(p.x,p.z,player.x,player.z); if (d>2.4*2.4) continue; out.push({verb:'Hablar',name:'Vecino',x:p.x,z:p.z,r:2.4,act:()=>talkTo(p)}); }
+  }
+  for (const f of INTERACT_SOURCES) f(out);   // ampliable: puertas, máquinas, objetos...
+  return out;
+}
+function bestInteraction(){
+  const P=player.inCar||player, h=player.inCar?player.inCar.h:player.h, fx=Math.sin(h), fz=Math.cos(h); let best=null, bs=1e9;
+  for (const o of interactCandidates()){ const dx=o.x-P.x, dz=o.z-P.z, d=Math.hypot(dx,dz); if (!o.car && d>o.r) continue;
+    const front=d<0.8?1:(dx*fx+dz*fz)/d, sc=(o.car?0.6:d)+(1-front)*1.6+(o.verb==='Hablar'&&o.name==='Vecino'?1.2:0);   // delante y cerca; charlar pesa menos que usar
+    if (sc<bs){ bs=sc; best=o; } }
+  return best;
+}
+function interactHint(){
+  const o=bestInteraction();
+  if (o){ const key=isTouch?'ENTRAR':'[E]'; showHint(`${key} ${o.verb} · ${o.name}${o.car&&o.name==='Taxi'&&!isTouch?' · T: pedirlo':''}`); }
+  else if (!isTouch && freeTaxiNear(TAXI.hail)) showHint('T: Pedir el taxi que pasa');
+}
+function interact(){ const o=bestInteraction(); if (!o) return false; o.act(); return true; }
+const TALK=['Buenas.','¿Qué pasa, nano?','Hace una calor...','Vaya tráfico hoy.','¿Has visto el Elche este domingo?','No tengo suelto, lo siento.','¿Tú no eres el de la tele?','Ten cuidado por el Palmeral de noche.','Bon dia!','Estoy buscando la Glorieta, ¿sabes?'];
+function talkTo(p){ p.look(3.5); p.lookT=3.5; p.h=Math.atan2(player.x-p.x,player.z-p.z); say(p,mpick(TALK),2.2); }
 
 /* ================= HUD ================= */
 const hud={weapon:$('weapon'),armor:$('armor').firstElementChild,drugs:$('drugs'),street:$('street'),money:$('money'),stars:$('stars'),hp:$('hp').firstElementChild,clock:$('clock'),speed:$('speed'),timer:$('timer'),obj:$('obj'),hint:$('hint'),zone:$('zone'),banner:$('banner'),dates:$('dates')};
@@ -2529,7 +2561,7 @@ addEventListener('keydown',e=>{
   if (state==='shop' && (e.code==='Escape'||e.code==='KeyE')) { closeShop(); return; }
   if (state==='help' && (e.code==='Escape'||e.code==='KeyI')) { closeHelp(); return; }
   if (state!=='play') return;
-  if (e.code==='KeyE'||e.code==='Enter') enterExit();
+  if (e.code==='KeyE') enterExit(false); else if (e.code==='Enter') enterExit(true);   // en coche: E usa lo que haya al lado, Intro siempre baja
   if (e.code==='Space' && !player.inCar) jump();
   if (e.code==='Space' && taxiRide) taxiSkip();
   if (e.code==='KeyZ' && !player.inCar) setCrouch(!player.crouch);
@@ -2559,7 +2591,7 @@ let wheelT=0; renderer.domElement.addEventListener('wheel',e=>{ if (state!=='pla
   const end=e=>{ for (const t of e.changedTouches) if (t.identifier===joy.id){ joy.active=false; joy.x=joy.y=0; knob.style.transform=''; } };
   jz.addEventListener('touchend',end); jz.addEventListener('touchcancel',end);
   const tap=(id,fn)=>$(id).addEventListener('touchstart',e=>{ e.preventDefault(); initAudio(); if (state==='play') fn(); },{passive:false});
-  tap('bEnter',enterExit); tap('bTaxi',hailTaxi); tap('bSkip',()=>taxiSkip()); tap('bHorn',()=>{ horn(); if (player.inCar) hornAt(player.inCar,0.45); else whistle(); }); tap('bMap',openMap); tap('bCam',()=>camMode=(camMode+1)%2); tap('bPause',pause); tap('bWpn',()=>selectWeapon(player.w+1)); tap('bJump',jump); tap('bCrouch',()=>{ if (!player.inCar) setCrouch(!player.crouch); }); tap('bHelp',openHelp);
+  tap('bEnter',()=>enterExit(false)); tap('bTaxi',hailTaxi); tap('bSkip',()=>taxiSkip()); tap('bHorn',()=>{ horn(); if (player.inCar) hornAt(player.inCar,0.45); else whistle(); }); tap('bMap',openMap); tap('bCam',()=>camMode=(camMode+1)%2); tap('bPause',pause); tap('bWpn',()=>selectWeapon(player.w+1)); tap('bJump',jump); tap('bCrouch',()=>{ if (!player.inCar) setCrouch(!player.crouch); }); tap('bHelp',openHelp);
   const bf=$('bFire'); bf.addEventListener('touchstart',e=>{ e.preventDefault(); fireEdge=true; fireHeld=true; bf.classList.add('on'); },{passive:false});
   const fend=()=>{ fireHeld=false; bf.classList.remove('on'); }; bf.addEventListener('touchend',fend); bf.addEventListener('touchcancel',fend);
   const ba=$('bAct');
@@ -2724,12 +2756,15 @@ function nearestCar(r){
     if (d<bd){bd=d;best=c;} }
   return best;
 }
-function enterExit(){
+function enterExit(exitOnly=true){
   if (player.health<=0) return;
   if (taxiRide){ if (taxiRide.car.ai.mode!=='arrive'){ taxiRide.car.ai.mode='arrive'; taxiRide.early=true; toast('El taxista para en cuanto puede',1.5); } return; }
-  if (player.inCar){ exitCar(false); return; }
+  if (player.inCar){ if (!exitOnly && player.inCar.speed<2 && interact()) return; exitCar(false); return; }   // parado junto a una actividad: E la usa; si no, bajarse
   if (jack || player.downT>0) return;
-  const c=nearestCar(4.2); if (!c) return;
+  interact();
+}
+function enterCar(c){
+  if (!c || player.inCar || jack) return;
   if (c.driver==='npc' || c.driver==='police'){
     if (c.speed>5){ toast('Va demasiado rápido para sacar al conductor',1.4); return; }
     startJack(c); return;
@@ -3821,7 +3856,6 @@ function updateMissions(dt){
   const P=player.inCar||player;
   if (!mission.cur){
     if (mission.leaveReq){ const s=mission.leaveReq.start; if (d2(P.x,P.z,s[0],s[1])>100) mission.leaveReq=null; }
-    for (const ms of MISSIONS){ if (ms===mission.leaveReq) continue; if (d2(P.x,P.z,ms.start[0],ms.start[1])<(player.inCar?16:7)){ startMission(ms); break; } }
     return;
   }
   const ms=mission.cur, st=ms.steps[mission.step];
@@ -3895,6 +3929,7 @@ function update(dt){
     const c=player.inCar;
     if (taxiRide) showHint(isTouch?'ENTRAR: bajarte · SALTAR: saltar trayecto':`🚕 Hacia ${taxiRide.dest.name} · E: bajarte · Espacio: saltar el trayecto`);   // de pasajero: conduce el taxista
     else c.drive(dt, c.dead?0:ax.y, ax.x, handbrake());
+    if (!taxiRide && c.speed<2){ const o=bestInteraction(); if (o) showHint(isTouch?`ENTRAR: ${o.verb} · ${o.name}`:`[E] ${o.verb} · ${o.name}  ·  Intro: bajarse`); }   // parado junto a una actividad
     player.x=c.x; player.z=c.z; player.vx=c.vx; player.vz=c.vz;
   } else if (jack){ updateJack(dt);
   } else if (player.downT>0){ player.downT-=dt; player.vx=player.vz=0; pushCircle(player,0.42,player.y);
@@ -3912,9 +3947,7 @@ function update(dt){
     } else { player.vx=player.vz=0; }
     pushCircle(player,0.42,player.y);
     player.x=clamp(player.x,-LIM,XMAX); player.z=clamp(player.z,-LIM,ZMAX);
-    const near=nearestCar(4.2);
-    if (near) showHint(isTouch?`Pulsa ENTRAR para ${near.driver==='npc'||near.driver==='police'?'robar':'subir a'} este coche${near.k==='taxi'&&near.driver==='npc'?' · TAXI para pedirlo':''}`:`E: ${near.driver==='npc'||near.driver==='police'?'Robar':'Subir a'} este coche${near.k==='taxi'&&near.driver==='npc'?' · T: Pedir taxi':''}`);
-    else if (!isTouch && freeTaxiNear(TAXI.hail)) showHint('T: Pedir el taxi que pasa');
+    interactHint();
   } else if (state==='play'){
     const mag=Math.min(1,Math.hypot(ax.x,ax.y));
     if (tpAim()){   // apuntando: mira hacia la cámara y se mueve de lado
@@ -3937,9 +3970,7 @@ function update(dt){
     } else { player.vx=player.vz=0; }
     pushCircle(player,0.42,player.y);
     player.x=clamp(player.x,-LIM,XMAX); player.z=clamp(player.z,-LIM,ZMAX);
-    const near=nearestCar(4.2);
-    if (near) showHint(isTouch?`Pulsa ENTRAR para ${near.driver==='npc'||near.driver==='police'?'robar':'subir a'} este coche${near.k==='taxi'&&near.driver==='npc'?' · TAXI para pedirlo':''}`:`E: ${near.driver==='npc'||near.driver==='police'?'Robar':'Subir a'} este coche${near.k==='taxi'&&near.driver==='npc'?' · T: Pedir taxi':''}`);
-    else if (!isTouch && freeTaxiNear(TAXI.hail)) showHint('T: Pedir el taxi que pasa');
+    interactHint();
   }
   if (player.punchT>0) player.punchT-=dt;
   if (state==='play') bumpPeds(dt);
