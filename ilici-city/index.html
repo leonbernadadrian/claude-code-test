@@ -1563,8 +1563,8 @@ class Ped{
     this.stagger(dx,dz,1.2); return false;
   }
   stagger(dx,dz,power){
-    if (this.state==='dead'||this.state==='hit') return;
-    this.prevState=this.state==='stagger'?this.prevState:this.state; this.state='stagger'; this.t=0.45+0.3*power;
+    if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return;
+    this.prevState=this.state==='stagger'?this.prevState:this.state; this.state='stagger'; this.t=0.45+0.3*power; this.stPow=power; this.bumpT=0;
     this.vx=dx*(1.6+power*1.2); this.vz=dz*(1.6+power*1.2); this.wob=Math.random()*6;
   }
   damage(dmg,dx,dz,melee){
@@ -1586,11 +1586,11 @@ class Ped{
       // tambaleo: retrocede, se cubre y recupera el equilibrio
       this.t-=dt; this.x+=this.vx*dt; this.z+=this.vz*dt; this.vx-=this.vx*Math.min(1,dt*5); this.vz-=this.vz*Math.min(1,dt*5); pushCircle(this,0.4);
       if (riverBlocked(this.x,this.z)){ this.x-=this.vx*dt*2; this.z-=this.vz*dt*2; }
-      this.wob+=dt*14; const u=m.userData, k=Math.min(1,this.t*2);
+      this.wob+=dt*14; const u=m.userData, k=Math.min(1,this.t*2)*Math.min(1,0.3+(this.stPow??1));   // un empujón leve apenas se nota
       m.rotation.x=-0.28*k+Math.sin(this.wob)*0.05; m.rotation.z=Math.sin(this.wob*0.7)*0.12*k;
       u.arms[0].rotation.x=u.arms[1].rotation.x=-2.3*k; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-1.9*k; u.legs[0].rotation.x=0.25*k; u.legs[1].rotation.x=-0.15*k;
       m.position.set(this.x,this.y+(this.wgA!=null?0.06:this.block&&!this.cross?0.25:0.02),this.z); m.rotation.y=this.h;
-      if (this.t<=0){ m.rotation.x=0; m.rotation.z=0; if (this.cop && player.stars>0) this.state='cop'; else { this.state='flee'; this.t=6; this.fx=player.x; this.fz=player.z; } }
+      if (this.t<=0){ m.rotation.x=0; m.rotation.z=0; if (this.cop && player.stars>0) this.state='cop'; else if ((this.stPow??1)<0.5 && this.prevState==='walk') this.state='walk'; else { this.state='flee'; this.t=6; this.fx=player.x; this.fz=player.z; } }
       return;
     }
     if (this.state==='dead' || this.state==='hit'){
@@ -1618,6 +1618,12 @@ class Ped{
         m.position.set(this.x,0.02,this.z); m.rotation.y=this.h; return;
       }
     }
+    if (this.bumpT>0 && this.state==='walk'){   // le has empujado: se aparta o retrocede mirándote y luego sigue su camino
+      this.bumpT-=dt; const k=Math.min(1,this.bumpT*3), ox=this.x, oz=this.z;
+      this.x+=this.bvx*k*dt; this.z+=this.bvz*k*dt; pushCircle(this,0.4); if (riverBlocked(this.x,this.z)){ this.x=ox; this.z=oz; }
+      this.h+=wrapA(Math.atan2(player.x-this.x,player.z-this.z)-this.h)*Math.min(1,dt*8); this.phase+=dt*4;
+      animPed(m,this.phase,0.3); m.position.set(this.x,this.y+(this.wgA!=null?0.06:this.block&&!this.cross?0.25:0.02),this.z); m.rotation.y=this.h; return;
+    }
     let tx,tz,spd;
     if (this.state==='flee'){
       const a=Math.atan2(this.x-this.fx,this.z-this.fz); tx=this.x+Math.sin(a)*10; tz=this.z+Math.cos(a)*10; spd=4.6;
@@ -1638,7 +1644,7 @@ class Ped{
     if (spd>0){
       if (this.limp) spd*=0.5;
       const want=Math.atan2(tx-this.x,tz-this.z), look=Math.min(1.1,0.5+spd*0.25);
-      const probe=a=>{ const px=this.x+Math.sin(a)*look, pz=this.z+Math.cos(a)*look; return circleBlocked(px,pz,0.42) || riverBlocked(px,pz) || !!carAt(px,pz,0.3); };
+      const probe=a=>{ const px=this.x+Math.sin(a)*look, pz=this.z+Math.cos(a)*look; return circleBlocked(px,pz,0.42) || riverBlocked(px,pz) || !!carAt(px,pz,0.3) || (!player.inCar && d2(px,pz,player.x,player.z)<0.72); };   // también esquivan al jugador
       let head=want;
       if (probe(want)){ head=null; for (const da of [0.55,-0.55,1.1,-1.1,1.7,-1.7]) if (!probe(want+da)){ head=want+da; break; }
         if (head===null){ const car=carAt(this.x+Math.sin(want)*look,this.z+Math.cos(want)*look,0.3); if (car && car.speed>0.5 && this.state==='walk'){ spd=0; head=this.h; } else { head=this.h; this.stuckT=(this.stuckT||0)+dt*2; } } }
@@ -2733,6 +2739,35 @@ function policeTarget(){   // dónde busca la policía: lo que ve o lo último q
   if (now-intel.seenT<1.2) return {x:P.x,z:P.z,live:true};
   const k=Math.min(4,Math.max(0,now-intel.t)); return {x:intel.x+intel.vx*k,z:intel.z+intel.vz*k,live:false};
 }
+/* ---- choque jugador–peatón: el peatón cede y se aparta, el jugador nota resistencia pero no se queda bloqueado ---- */
+const bumpK=()=>now<(player.bumpSlow||0)?0.55:1;
+function bumpPeds(dt){
+  if (player.inCar || jack || player.downT>0 || player.y>0.8) return;
+  const R=0.8, sp=Math.hypot(player.vx,player.vz), fx=sp>0.5?player.vx/sp:Math.sin(player.h), fz=sp>0.5?player.vz/sp:Math.cos(player.h); let hit=false;
+  for (const p of peds){
+    if (p.state==='dead'||p.state==='hit'||p.state==='dragged') continue;
+    let dx=p.x-player.x, dz=p.z-player.z; const dd=dx*dx+dz*dz; if (dd>=R*R) continue;
+    const d=Math.sqrt(dd); if (d<1e-3){ dx=fx; dz=fz; } else { dx/=d; dz/=d; } const pen=R-d;
+    // hacia qué lado se aparta: el lado en el que ya está respecto a tu avance (de frente, uno al azar pero fijo)
+    let sd=dx*(-fz)+dz*fx; if (Math.abs(sd)<0.2){ p.sideBias=p.sideBias||(Math.random()<0.5?-1:1); sd=p.sideBias; }
+    const lx=-fz*Math.sign(sd), lz=fx*Math.sign(sd);
+    // el peatón cede poco hacia delante (no lo arrastras) y se desvía hacia su lado; el resto del solape te frena a ti
+    const ox=p.x, oz=p.z, fwd=Math.min(pen*(p.state==='cop'?0.35:0.6),1.6*dt), lat=Math.min(pen,1.1*dt);
+    p.x+=dx*fwd+lx*lat; p.z+=dz*fwd+lz*lat; pushCircle(p,0.4); if (riverBlocked(p.x,p.z)){ p.x=ox; p.z=oz; }
+    const nd=Math.hypot(p.x-player.x,p.z-player.z), rest=Math.max(0,R-nd);
+    player.x-=dx*rest; player.z-=dz*rest; hit=true;
+    const vn=player.vx*dx+player.vz*dz; if (vn>0){ player.vx-=dx*vn*0.6; player.vz-=dz*vn*0.6; }
+    if (now<(p.bumpCd||0)) continue; p.bumpCd=now+1.1;
+    player.bumpSlow=now+(sp>5.5?0.45:0.3); if (sp>5.5) shake(0.12);   // el golpe se nota: frenas un instante
+    if (p.state==='walk'){
+      if (sp>5.5 && Math.random()<0.8) p.stagger(lx*0.8+dx*0.3,lz*0.8+dz*0.3,0.3);   // a la carrera: se tambalea un poco hacia un lado
+      else { p.bumpT=0.55; p.bvx=(lx+dx*0.35)*0.95; p.bvz=(lz+dz*0.35)*0.95; }       // andando: se aparta y retrocede un paso
+      p.bumps=(now-(p.bumpLast??-99)<6?(p.bumps||0):0)+1; p.bumpLast=now;
+      if (p.bumps>=3){ p.bumps=0; p.bumpT=0; p.scare(player.x,player.z,4); }   // si le sigues empujando, se va
+    } else if (p.state==='flee' && sp>5.5) p.stagger(lx*0.8+dx*0.3,lz*0.8+dz*0.3,0.3);
+  }
+  if (hit) pushCircle(player,0.42,player.y);
+}
 /* ---- impactos de vehículos: dependen de la velocidad, el ángulo y el peso ---- */
 const MASS={bike:0.28,compact:0.9,sedan:1,taxi:1,sports:1,police:1.05,van:1.3,boxvan:1.5,pickup:1.3,truck:1.9,bus:2};
 function impact(c,x,z){
@@ -3065,7 +3100,7 @@ function update(dt){
     if (mag>0.12){
       const fx=Math.sin(player.h), fz=Math.cos(player.h), rx=-fz, rz=fx;
       let dx=fx*ax.y+rx*ax.x, dz=fz*ax.y+rz*ax.x; const L=Math.hypot(dx,dz)||1; dx/=L; dz/=L;
-      const spd=(running()&&ax.y>0.3?8.2:4)*mag*(player.crouch?0.45:1);
+      const spd=(running()&&ax.y>0.3?8.2:4)*mag*(player.crouch?0.45:1)*bumpK();
       player.vx=dx*spd; player.vz=dz*spd;
       const ox=player.x, oz=player.z; player.x+=player.vx*dt; player.z+=player.vz*dt;
       if (blockedAt(player.x,player.z)){ player.x=ox; player.z=oz; }
@@ -3080,7 +3115,7 @@ function update(dt){
     if (tpAim()){   // apuntando: mira hacia la cámara y se mueve de lado
       player.h+=wrapA(camYaw-player.h)*Math.min(1,dt*18); aimT=Math.max(aimT,0.15);
       if (mag>0.12){ const fx=Math.sin(camYaw), fz=Math.cos(camYaw), rx=-fz, rz=fx;
-        let dx=fx*ax.y+rx*ax.x, dz=fz*ax.y+rz*ax.x; const L=Math.hypot(dx,dz)||1, spd=2.6*mag*(player.crouch?0.55:1);
+        let dx=fx*ax.y+rx*ax.x, dz=fz*ax.y+rz*ax.x; const L=Math.hypot(dx,dz)||1, spd=2.6*mag*(player.crouch?0.55:1)*bumpK();
         player.vx=dx/L*spd; player.vz=dz/L*spd; const ox=player.x, oz=player.z; player.x+=player.vx*dt; player.z+=player.vz*dt;
         if (blockedAt(player.x,player.z)){ player.x=ox; player.z=oz; } player.phase+=dt*spd*4.2;
       } else { player.vx=player.vz=0; }
@@ -3088,7 +3123,7 @@ function update(dt){
       const fx=Math.sin(camYaw), fz=Math.cos(camYaw), rx=-fz, rz=fx;
       const dx=fx*ax.y+rx*ax.x, dz=fz*ax.y+rz*ax.x, L=Math.hypot(dx,dz)||1;
       const want=Math.atan2(dx/L,dz/L); player.h+=wrapA(want-player.h)*Math.min(1,dt*10);
-      const spd=(running()&&meleeCharge===null?8.2:4)*mag*(player.crouch?0.45:1)*(meleeCharge!==null?0.6:1);
+      const spd=(running()&&meleeCharge===null?8.2:4)*mag*(player.crouch?0.45:1)*(meleeCharge!==null?0.6:1)*bumpK();
       player.vx=Math.sin(player.h)*spd; player.vz=Math.cos(player.h)*spd;
       const ox=player.x, oz=player.z;
       player.x+=player.vx*dt; player.z+=player.vz*dt;
@@ -3101,6 +3136,7 @@ function update(dt){
     if (near) showHint(isTouch?`Pulsa ENTRAR para ${near.driver==='npc'||near.driver==='police'?'robar':'subir a'} este coche`:`E: ${near.driver==='npc'||near.driver==='police'?'Robar':'Subir a'} este coche`);
   }
   if (player.punchT>0) player.punchT-=dt;
+  if (state==='play') bumpPeds(dt);
 
   // coches
   for (const c of cars){
