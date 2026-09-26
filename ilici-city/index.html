@@ -68,6 +68,7 @@
   #cross::before{left:10px;top:0;width:2px;height:22px}
   #cross::after{top:10px;left:0;height:2px;width:22px}
   #cross.hit::before,#cross.hit::after{background:var(--red)}
+  #cross.head{transform:scale(1.5)}
   #feed{display:flex;flex-direction:column;align-items:flex-end;gap:4px;margin-top:6px;max-width:min(300px,52vw)}
   #feed div{background:rgba(15,21,28,.74);border-right:3px solid var(--gold);padding:4px 10px;font-size:15px;font-weight:600;line-height:1.22;text-align:right;transition:opacity .4s}
   #feed div em{font-style:normal;color:var(--gold)}
@@ -1531,6 +1532,15 @@ class Ped{
     if (power>=2.3 || (bat && power>=1.7) || (this.hp<20 && Math.random()<0.4)){ this.knock(dx*(2+power*1.5),dz*(2+power*1.5),false); return false; }
     this.stagger(dx,dz,power); return false;
   }
+  gunHit(dmg,zone,dx,dz){
+    if (this.state==='dead') return false;
+    this.hp-=dmg;
+    if (this.hp<=0){ const f=zone==='head'?2:zone==='leg'?4:3; this.knock(dx*f,dz*f,true); return true; }
+    if (zone==='leg'){ this.limp=true; if (Math.random()<0.65){ this.knock(dx*1.5,dz*1.5,false); return false; } this.stagger(dx,dz,0.6); return false; }
+    if (zone==='arm'){ this.stagger(dx*0.5,dz*0.5,0.5); return false; }
+    if (zone==='head'){ this.knock(dx*2,dz*2,false); return false; }
+    this.stagger(dx,dz,1.2); return false;
+  }
   stagger(dx,dz,power){
     if (this.state==='dead'||this.state==='hit') return;
     this.prevState=this.state==='stagger'?this.prevState:this.state; this.state='stagger'; this.t=0.45+0.3*power;
@@ -1602,6 +1612,7 @@ class Ped{
       }
     }
     if (spd>0){
+      if (this.limp) spd*=0.5;
       const want=Math.atan2(tx-this.x,tz-this.z), look=Math.min(1.1,0.5+spd*0.25);
       const probe=a=>{ const px=this.x+Math.sin(a)*look, pz=this.z+Math.cos(a)*look; return circleBlocked(px,pz,0.42) || riverBlocked(px,pz) || !!carAt(px,pz,0.3); };
       let head=want;
@@ -2040,6 +2051,7 @@ function closeHelp(){ $('help').hidden=true; state='play'; }
 /* ================= primera persona ================= */
 let fp=false; try{ fp=localStorage.getItem('ilici-fp')==='1'; }catch(e){}
 let aiming=false, aimPitch=0, aimK=0;
+let lastHitZone=null;
 let fpPitch=0, fpCarLook=0, vmKick=0, vmBob=0, hitFlash=0, lastRayHit=null;
 const vmScene=new THREE.Scene(), vmCam=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,0.01,10);
 const vmHemi=new THREE.HemisphereLight(0xdfe8f5,0x6b5a40,1), vmSun=new THREE.DirectionalLight(0xffffff,1.2); vmSun.position.set(1,2,1); vmScene.add(vmHemi,vmSun);
@@ -2104,9 +2116,9 @@ function addStars(n,why){
   if (player.stars>before){ hud.stars.classList.add('flash'); setTimeout(()=>hud.stars.classList.remove('flash'),2500); if (why) toast(why,2.5); }
 }
 function shake(a){ shakeA=Math.max(shakeA,a); }
-function hurt(n){
+function hurt(n,zone='torso'){
   if (player.health<=0) return;
-  if (player.armor>0){ const a=Math.min(player.armor,n*0.8); player.armor-=a; n-=a; }
+  if (player.armor>0 && zone==='torso'){ const a=Math.min(player.armor,n*0.8); player.armor-=a; n-=a; }
   player.health=Math.max(0,player.health-n); player.lastHurt=now;
   if (player.health<=0) wasted();
 }
@@ -2238,18 +2250,28 @@ function aimTarget(ox,oz,h,range,cone){
   return best;
 }
 function tracer(ax,az,bx,bz,col='#fff0b0'){ for (let i=1;i<=8;i++){ const t=i/8; emit(glowP,lerp(ax,bx,t),1.3,lerp(az,bz,t),0,0,0,0.05,0.13,col); } }
-function rayShot(ox,oz,a,range,dmg){
-  const dx=Math.sin(a), dz=Math.cos(a); let wall=range;
-  for (let t=1;t<range;t+=1){ const c=pointBlocked(ox+dx*t,oz+dz*t); if (c && c.h>1.3){ wall=t; break; } }
-  let best=null, bt=wall;
-  for (const p of peds){ if (p.state==='dead') continue; const rx=p.x-ox, rz=p.z-oz, t=rx*dx+rz*dz; if (t<0||t>bt) continue; if (Math.abs(rx*dz-rz*dx)<0.55){ bt=t; best=p; } }
+// Zonas del cuerpo: la altura del impacto sale de la altura del arma y del ángulo vertical
+const ZONES={head:{mult:4,label:'cabeza'},torso:{mult:1,label:'torso'},arm:{mult:0.55,label:'brazo'},leg:{mult:0.55,label:'pierna'}};
+function hitZone(p,hy,lat){
+  if (p.state==='hit'||p.state==='dead') return 'torso';               // en el suelo: cuerpo entero
+  const base=p.y+(p.wgA!=null?0.06:p.block&&!p.cross?0.25:0.02), y=hy-base;
+  if (y>1.9 || y<0.05) return null;                                    // pasa por encima o por debajo
+  if (y>=1.5) return 'head';
+  if (y<0.95) return 'leg';
+  return lat>0.27 ? 'arm' : 'torso';
+}
+function rayShot(ox,oz,a,range,dmg,oy=1.35,pitch=0){
+  const dx=Math.sin(a), dz=Math.cos(a), tp=Math.tan(pitch); let wall=range;
+  for (let t=1;t<range;t+=1){ const y=oy+tp*t; if (y<0){ wall=t; break; } const c=pointBlocked(ox+dx*t,oz+dz*t); if (c && c.h>y){ wall=t; break; } }
+  let best=null, bt=wall, zone=null;
+  for (const p of peds){ if (p.state==='dead') continue; const rx=p.x-ox, rz=p.z-oz, t=rx*dx+rz*dz; if (t<0||t>bt) continue; const lat=Math.abs(rx*dz-rz*dx); if (lat<0.55){ const z=hitZone(p,oy+tp*t,lat); if (!z) continue; bt=t; best=p; zone=z; } }
   for (const c of cars){ if (c===player.inCar||c.exploded) continue;
     const r=c.T.w*0.62;
     for (const [px,pz] of carCircles(c)){ const rx=px-ox, rz=pz-oz, t=rx*dx+rz*dz, lat=Math.abs(rx*dz-rz*dx); if (lat>=r) continue; const th=t-Math.sqrt(r*r-lat*lat); if (th>0 && th<bt){ bt=th; best=c; } } }
-  const ex=ox+dx*bt, ez=oz+dz*bt; tracer(ox,oz,ex,ez); lastRayHit=best;
+  const ex=ox+dx*bt, ez=oz+dz*bt; tracer(ox,oz,ex,ez); lastRayHit=best; lastHitZone=null;
   if (best instanceof Ped){
     for (let i=0;i<5;i++) emit(smokeP,ex,1.2,ez,mrand(-1,1),mrand(0,2),mrand(-1,1),0.4,0.22,'#7a1010',6);
-    const killed=best.damage(dmg,dx,dz,false);
+    const killed=best.gunHit(dmg*ZONES[zone].mult,zone,dx,dz); lastHitZone=zone;
     if (killed) onPedKilled(best); else if (best.cop && now-lastPoliceHit>3){ lastPoliceHit=now; addStars(1,'¡Has disparado a un policía!'); }
   } else if (best){
     damageCar(best,dmg*0.3,0); best.hitByPlayer=now;
@@ -2262,13 +2284,22 @@ function shoot(W){
   const car=player.inCar; let h=car?car.h:player.h;
   const ox=car?car.x+Math.sin(h)*car.T.len*0.5:player.x+Math.sin(h)*0.5, oz=car?car.z+Math.cos(h)*car.T.len*0.5:player.z+Math.cos(h)*0.5;
   if (fp && car) h+=fpCarLook;
-  const tgt=aimTarget(ox,oz,h,W.range,fp?(car?0.12:0.07):(car?0.3:0.75));
+  const aimShot=aiming&&!car&&!fp ? shoulderAim(ox,oz) : null;
+  const tgt=aimShot?null:aimTarget(ox,oz,h,W.range,fp?(car?0.12:0.03):(car?0.3:0.75));
   if (tgt){ h=Math.atan2(tgt.x-ox,tgt.z-oz); if (!car && !fp) player.h=h; }
   vmKick=Math.min(1.4,vmKick+(W.kick?1.3:W.pellets?1.1:0.6)); let hit=false;
   aimT=0.5;
   const skyShot=fp && !car && fpPitch>0.5;
-  for (let k=0;k<(W.pellets||1);k++){ if (skyShot){ tracer(ox,oz,ox+Math.sin(h)*20,oz+Math.cos(h)*20); continue; } rayShot(ox,oz,h+mrand(-W.spread,W.spread)*(player.crouch?0.5:1),W.range,W.dmg); if (lastRayHit) hit=true; }
-  if (hit) hitFlash=0.18;
+  const oy=car?1.2:(player.crouch?0.95:1.4)+(player.y||0);
+  let pitch=fp&&!car?fpPitch:0;
+  if (!fp && tgt){ const d=Math.max(1,Math.hypot(tgt.x-ox,tgt.z-oz)); pitch=Math.atan2(1.25-oy,d); }   // tiro desde la cadera: al pecho
+  if (aimShot){ h=aimShot.yaw; pitch=aimShot.pitch; }
+  let head=false;
+  for (let k=0;k<(W.pellets||1);k++){ if (skyShot){ tracer(ox,oz,ox+Math.sin(h)*20,oz+Math.cos(h)*20); continue; }
+    const sp=W.spread*(player.crouch?0.5:1)*(aiming||fp?0.6:1);
+    rayShot(ox,oz,h+mrand(-sp,sp),W.range,W.dmg,oy,pitch+mrand(-sp,sp)*0.8); if (lastRayHit) hit=true; if (lastHitZone==='head') head=true; }
+  if (hit) hitFlash=head?0.35:0.18;
+  if (head){ tone(1500,0.06,'square',0.05); $('cross').classList.add('head'); setTimeout(()=>$('cross').classList.remove('head'),300); }
   emit(glowP,ox+Math.sin(h)*0.3,1.35,oz+Math.cos(h)*0.3,0,0,0,0.06,0.55,'#ffd27a');
   noise(W.snd[1],W.snd[2],W.snd[0]); shake(W.kick||(W.pellets?0.35:0.1));
   for (const p of peds) if (p.state!=='dead' && d2(p.x,p.z,ox,oz)<2025) p.scare(ox,oz,7);
@@ -2281,7 +2312,9 @@ const COP_GUN={pistol:{range:28,rate:[1.1,1.8],dmg:7},smg:{range:26,rate:[0.28,0
 function copWeapon(){ const s=player.stars, r=Math.random(); return s>=5&&r<0.35?'shotgun':s>=3&&r<0.45?'smg':'pistol'; }
 function copShot(ox,oz,P,d,dmg=7,range=40){
   tracer(ox,oz,P.x+mrand(-1,1),P.z+mrand(-1,1),'#bfe0ff'); noise(0.08,0.16,2000);
-  if (Math.random()<(player.inCar?0.55:0.42)*(1-d/(range+12))*(!player.inCar&&player.crouch?0.5:1)){ if (player.inCar) damageCar(player.inCar,dmg*0.6,0); else { hurt(dmg); shake(0.25); } }
+  if (Math.random()<(player.inCar?0.55:0.42)*(1-d/(range+12))*(!player.inCar&&player.crouch?0.5:1)){
+    if (player.inCar && !player.inCar.T.bike) damageCar(player.inCar,dmg*0.6,0);
+    else { const r=Math.random(), zone=r<0.08?'head':r<0.35?'leg':'torso'; hurt(dmg*(zone==='head'?2.2:zone==='leg'?0.7:1),zone); shake(zone==='head'?0.5:0.25); if (player.inCar && (zone==='head'||Math.random()<0.15)) bikeFall(P.x-ox,P.z-oz,4); } }
 }
 const grenades=[], grenGeo=new THREE.SphereGeometry(0.2,8,6);
 function throwGrenade(){
@@ -2310,6 +2343,7 @@ function updateMelee(dt){
   else if (!held && meleeCharge!==null) releaseMelee(W);
 }
 function releaseMelee(W){ const k=clamp((meleeCharge-0.12)/1.0,0,1), tired=meleeCharge>2.2; meleeCharge=null; punch(W,tired?1.4:1+2*k); fireCd=W.rate; }
+function shoulderAim(){ return null; } // se completa con el apuntado en tercera persona
 function tryFire(){
   if (state!=='play'||player.health<=0||fireCd>0) return;
   const W=curW();
@@ -2505,6 +2539,7 @@ const WG={nodes:[],adj:[],edges:[]};
     if (e.offs[0]===null && e.offs[1]===null) e.offs=null; }
   for (let i=0;i<WG.adj.length;i++) WG.adj[i]=WG.adj[i].filter(k=>WG.edges[k].offs); }
 function wgNearest(x,z){ let best=-1,bd=1e12; WG.nodes.forEach((n,i)=>{ const d=(n[0]-x)**2+(n[1]-z)**2; if (d<bd && WG.adj[i].length){ bd=d; best=i; } }); return best; }
+function bikeFall(dx,dz,f){ /* se completa con la bicicleta */ }
 function carAt(x,z,pad){ for (const c of cars){ const dx=x-c.x, dz=z-c.z; if (dx*dx+dz*dz>64) continue; const fx=Math.sin(c.h), fz=Math.cos(c.h), lon=dx*fx+dz*fz, lat=-dx*fz+dz*fx; if (Math.abs(lon)<c.T.len/2+pad && Math.abs(lat)<c.T.w/2+pad) return c; } return null; }
 function wgStep(p){ const edgesAt=WG.adj[p.wgB]; if (!edgesAt || !edgesAt.length){ p.wgA=null; return; }
   let opts=edgesAt.filter(e=>{ const E=WG.edges[e]; return (E.a===p.wgB?E.b:E.a)!==p.wgA; }); if (!opts.length) opts=edgesAt;
