@@ -61,6 +61,8 @@
   #banner{position:absolute;left:0;right:0;top:34%;text-align:center;font-size:clamp(34px,7vw,64px);line-height:1;opacity:0;transition:opacity .4s;padding-inline:16px}
   #banner.show{opacity:1}
   #banner small{display:block;font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;margin-top:10px;color:var(--paper)}
+  #charge{position:absolute;left:50%;top:58%;width:120px;height:8px;margin-left:-60px;background:rgba(0,0,0,.6);border:1px solid #000}
+  #charge i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--gold),var(--red))}
   #cross{position:absolute;left:50%;top:50%;width:22px;height:22px;margin:-11px 0 0 -11px;pointer-events:none}
   #cross::before,#cross::after{content:'';position:absolute;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.7)}
   #cross::before{left:10px;top:0;width:2px;height:22px}
@@ -157,6 +159,7 @@
     <div id="zone" class="disp outline"><small>Elche</small><span>Centro Histórico</span></div>
     <div id="banner" class="disp outline"></div>
     <div id="cross" hidden></div>
+    <div id="charge" hidden><i></i></div>
     <div id="hint" hidden></div>
     <div id="obj" class="outline"></div>
     <div id="keys"><div class="ctr">
@@ -1467,6 +1470,7 @@ function makeWeaponModels(arm){
 function setWeaponModel(mesh,id){ const wm=mesh.userData.wm; for (const k in wm) wm[k].visible = k===id; }
 function weaponPose(){
   const m=player.mesh, W=curW(), A=m.userData.arms;
+  m.children[0].rotation.y=0;
   setWeaponModel(m, W.throw ? (player.ammo.grenade>0?'grenade':null) : W.id);
   A[0].rotation.z=0; A[1].rotation.z=0;
   const E=m.userData.elbows, two=W.id==='smg'||W.id==='shotgun';
@@ -1476,7 +1480,16 @@ function weaponPose(){
     const f=1-player.punchT/player.punchDur, e=1-Math.pow(1-f,3);
     if (W.id==='bat'){ A[1].rotation.x=lerp(-3.0,-0.4,e); A[0].rotation.x=lerp(-2.7,-0.5,e); A[1].rotation.z=lerp(0.25,-0.15,e); A[0].rotation.z=lerp(-0.35,0.2,e); }
     else if (W.throw){ A[1].rotation.x=f<0.35?lerp(-0.4,-3.1,f/0.35):lerp(-3.1,-0.9,(f-0.35)/0.65); }
-    else { const k=f<0.35?f/0.35:1-(f-0.35)/0.65; A[1].rotation.x=-0.25-1.35*k; A[0].rotation.x=-0.6; }
+    else { const k=f<0.35?f/0.35:1-(f-0.35)/0.65, a=player.punchArm??1, o=1-a, sg=a?1:-1, kind=player.punchKind;
+      A[o].rotation.x=-1.2; E[o].rotation.x=-1.9;   // la otra mano en guardia
+      if (kind==='hook'){ A[a].rotation.x=-1.35; A[a].rotation.z=sg*lerp(0.9,-0.2,k); E[a].rotation.x=-0.9; m.children[0].rotation.y=sg*0.35*k; }
+      else if (kind==='upper'){ A[a].rotation.x=lerp(-0.3,-2.3,k); E[a].rotation.x=lerp(-1.6,-0.6,k); }
+      else if (kind==='heavy'){ A[a].rotation.x=-0.2-1.5*k; E[a].rotation.x=-0.2; m.children[0].rotation.y=sg*0.45*k; }
+      else { A[a].rotation.x=-0.25-1.35*k; E[a].rotation.x=-0.3*(1-k); } }
+  } else if (meleeCharge!==null && W.melee){
+    const k=Math.min(1,meleeCharge/1.1), a=W.id==='bat'?1:(1-(player.punchArm??1)), o=1-a, sg=a?1:-1;
+    if (W.id==='bat'){ A[1].rotation.x=-3.0-0.3*k; A[0].rotation.x=-2.7-0.3*k; A[1].rotation.z=0.5*k; }
+    else { A[a].rotation.x=0.4*k; E[a].rotation.x=-1.9; A[o].rotation.x=-1.2; E[o].rotation.x=-1.9; m.children[0].rotation.y=-sg*0.4*k; }
   } else if (aimT>0 && !W.melee && !W.throw){
     A[1].rotation.x=-1.5; if (two){ A[0].rotation.x=-1.35; A[0].rotation.z=-0.45; }
   } else if (W.id==='bat'){ A[1].rotation.x=-0.45; A[1].rotation.z=0.15; }
@@ -1509,7 +1522,20 @@ class Ped{
     b.corners.forEach((c,i)=>{ const d=d2(c[0],c[1],this.x,this.z); if(d<bd){bd=d;best=i;} });
     this.k=best; [this.tx,this.tz]=b.corners[best]; this.cross=false;
   }
-  scare(fx,fz,t=6){ if (this.state==='dead' || this.state==='cop') return; if (this.state!=='hit'){ this.state='flee'; } this.fx=fx; this.fz=fz; this.t=t; }
+  scare(fx,fz,t=6){ if (this.state==='dead' || this.state==='cop' || this.state==='stagger') return; if (this.state!=='hit'){ this.state='flee'; } this.fx=fx; this.fz=fz; this.t=t; }
+  meleeHit(dmg,dx,dz,power,bat){
+    if (this.state==='dead') return false;
+    this.hp-=dmg;
+    if (this.hp<=0){ this.knock(dx*(3+power*2),dz*(3+power*2),true); return true; }
+    // solo los golpes fuertes (cargados o con bate cargado) o un NPC ya muy tocado acaban en el suelo
+    if (power>=2.3 || (bat && power>=1.7) || (this.hp<20 && Math.random()<0.4)){ this.knock(dx*(2+power*1.5),dz*(2+power*1.5),false); return false; }
+    this.stagger(dx,dz,power); return false;
+  }
+  stagger(dx,dz,power){
+    if (this.state==='dead'||this.state==='hit') return;
+    this.prevState=this.state==='stagger'?this.prevState:this.state; this.state='stagger'; this.t=0.45+0.3*power;
+    this.vx=dx*(1.6+power*1.2); this.vz=dz*(1.6+power*1.2); this.wob=Math.random()*6;
+  }
   damage(dmg,dx,dz,melee){
     if (this.state==='dead') return false;
     this.hp-=dmg;
@@ -1524,6 +1550,17 @@ class Ped{
   }
   update(dt){
     const m=this.mesh;
+    if (this.state==='stagger'){
+      // tambaleo: retrocede, se cubre y recupera el equilibrio
+      this.t-=dt; this.x+=this.vx*dt; this.z+=this.vz*dt; this.vx-=this.vx*Math.min(1,dt*5); this.vz-=this.vz*Math.min(1,dt*5); pushCircle(this,0.4);
+      if (riverBlocked(this.x,this.z)){ this.x-=this.vx*dt*2; this.z-=this.vz*dt*2; }
+      this.wob+=dt*14; const u=m.userData, k=Math.min(1,this.t*2);
+      m.rotation.x=-0.28*k+Math.sin(this.wob)*0.05; m.rotation.z=Math.sin(this.wob*0.7)*0.12*k;
+      u.arms[0].rotation.x=u.arms[1].rotation.x=-2.3*k; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-1.9*k; u.legs[0].rotation.x=0.25*k; u.legs[1].rotation.x=-0.15*k;
+      m.position.set(this.x,this.y+(this.wgA!=null?0.06:this.block&&!this.cross?0.25:0.02),this.z); m.rotation.y=this.h;
+      if (this.t<=0){ m.rotation.x=0; m.rotation.z=0; if (this.cop && player.stars>0) this.state='cop'; else { this.state='flee'; this.t=6; this.fx=player.x; this.fz=player.z; } }
+      return;
+    }
     if (this.state==='dead' || this.state==='hit'){
       if (this.y>0 || this.vy>0){ this.vy-=22*dt; this.y+=this.vy*dt; if (this.y<=0){ this.y=0; this.vy=0; } }
       this.x+=this.vx*dt; this.z+=this.vz*dt; const f=this.y>0?0.3:4; this.vx-=this.vx*Math.min(1,f*dt); this.vz-=this.vz*Math.min(1,f*dt);
@@ -2002,10 +2039,12 @@ function closeHelp(){ $('help').hidden=true; state='play'; }
 
 /* ================= primera persona ================= */
 let fp=false; try{ fp=localStorage.getItem('ilici-fp')==='1'; }catch(e){}
+let aiming=false, aimPitch=0, aimK=0;
 let fpPitch=0, fpCarLook=0, vmKick=0, vmBob=0, hitFlash=0, lastRayHit=null;
 const vmScene=new THREE.Scene(), vmCam=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,0.01,10);
 const vmHemi=new THREE.HemisphereLight(0xdfe8f5,0x6b5a40,1), vmSun=new THREE.DirectionalLight(0xffffff,1.2); vmSun.position.set(1,2,1); vmScene.add(vmHemi,vmSun);
 const vmRoot=new THREE.Group(); vmScene.add(vmRoot); vmRoot.visible=false;
+const vmLeft=new THREE.Group(); vmLeft.visible=false;
 const vmR1=new THREE.Group(); vmR1.rotation.z=Math.PI; vmRoot.add(vmR1);
 const vmR2=new THREE.Group(); vmR2.rotation.x=Math.PI/2; vmR1.add(vmR2);
 const vmHolder=new THREE.Group(); vmHolder.position.y=0.3; vmHolder.scale.setScalar(0.72); vmR2.add(vmHolder);
@@ -2013,7 +2052,9 @@ const vmWM=makeWeaponModels(vmHolder);
 { const skinM=lambert('#e0ac85'), sleeveM=lambert('#1f8a4c');
   const fa=new THREE.Mesh(new THREE.CapsuleGeometry(0.042,0.3,3,10),skinM); fa.rotation.x=Math.PI/2; fa.position.set(0.01,-0.04,-0.18); vmRoot.add(fa);
   const sl=new THREE.Mesh(new THREE.CapsuleGeometry(0.055,0.25,3,10),sleeveM); sl.rotation.x=Math.PI/2; sl.position.set(0.03,-0.07,0.08); vmRoot.add(sl);
-  const hand=new THREE.Mesh(new THREE.SphereGeometry(0.048,12,10),skinM); hand.scale.set(1,0.8,1.2); hand.position.set(0,-0.02,-0.36); vmRoot.add(hand); }
+  const hand=new THREE.Mesh(new THREE.SphereGeometry(0.048,12,10),skinM); hand.scale.set(1,0.8,1.2); hand.position.set(0,-0.02,-0.36); vmRoot.add(hand);
+  // mano izquierda (solo con los puños)
+  vmLeft.add(fa.clone(), sl.clone(), hand.clone()); vmLeft.children.forEach(o=>o.position.x*=-1); vmScene.add(vmLeft); }
 function setFP(v,quiet){
   fp=v; try{ localStorage.setItem('ilici-fp',v?'1':'0'); }catch(e){}
   camera.near=v?0.2:0.4; camera.updateProjectionMatrix(); fpPitch=0; fpCarLook=0;
@@ -2034,21 +2075,23 @@ document.addEventListener('pointerlockchange',()=>{ if (!document.pointerLockEle
   lockEl.addEventListener('touchend',te); lockEl.addEventListener('touchcancel',te); }
 function updateViewmodel(dt){
   const show=fp && !player.inCar && (state==='play'||state==='dead') && player.health>0;
-  vmRoot.visible=show; $('cross').hidden=!(fp && (state==='play') && player.health>0);
+  vmRoot.visible=show; if (!show) vmLeft.visible=false; $('cross').hidden=!(fp && (state==='play') && player.health>0);
   if (hitFlash>0){ hitFlash-=dt; $('cross').classList.toggle('hit',hitFlash>0); }
   if (!show) return;
   const W=curW();
   for (const k in vmWM) vmWM[k].visible = k===(W.throw?(player.ammo.grenade>0?'grenade':''):W.id);
   const sp=Math.hypot(player.vx,player.vz); vmBob+=dt*sp*1.7; vmKick=Math.max(0,vmKick-dt*7);
-  let px=0.2+Math.sin(vmBob)*0.012*Math.min(1,sp/4), py=-0.23-Math.abs(Math.cos(vmBob))*0.014*Math.min(1,sp/4), pz=-0.08+vmKick*0.09, rx=vmKick*0.3, rz=0;
+  let lz=0, ry2=0; let px=0.2+Math.sin(vmBob)*0.012*Math.min(1,sp/4), py=-0.23-Math.abs(Math.cos(vmBob))*0.014*Math.min(1,sp/4), pz=-0.08+vmKick*0.09, rx=vmKick*0.3, rz=0;
   if (player.punchT>0 && player.punchDur){
     const f=1-player.punchT/player.punchDur, e=1-Math.pow(1-f,3);
     if (W.id==='bat'){ rx=lerp(0.9,-0.7,e); rz=lerp(0.7,-0.5,e); px-=0.05; }
     else if (W.throw){ rx=f<0.35?lerp(0,1.2,f/0.35):lerp(1.2,-0.6,(f-0.35)/0.65); }
-    else { const k=f<0.35?f/0.35:1-(f-0.35)/0.65; pz-=0.28*k; px-=0.1*k; }
+    else { const k=f<0.35?f/0.35:1-(f-0.35)/0.65; if ((player.punchArm??1)===1){ pz-=0.28*k; px-=0.1*k; } else lz-=0.3*k*(player.punchKind==='heavy'?1.3:1); }
   }
+  if (meleeCharge!==null && W.melee){ const k=Math.min(1,meleeCharge/1.1); if (W.id==='bat'){ rx+=0.5*k; rz+=0.3*k; } else if ((player.punchArm??1)===0){ pz+=0.12*k; ry2=0.25*k; } else { lz+=0.12*k; } }
   if (W.id==='bat' && !(player.punchT>0)){ rx+=0.35; rz+=0.25; }
-  vmRoot.position.set(px,py,pz); vmRoot.rotation.set(rx,0,rz);
+  vmRoot.position.set(px,py,pz); vmRoot.rotation.set(rx,ry2,rz);
+  vmLeft.visible=W.id==='fist'; vmLeft.position.set(-0.4-Math.sin(vmBob)*0.01,-0.23-Math.abs(Math.cos(vmBob))*0.012,-0.08+lz);
   vmHemi.intensity=hemi.intensity; vmSun.intensity=sun.intensity*0.8;
 }
 
@@ -2119,33 +2162,42 @@ function exitCar(forced,silent){
   player.inCar=null; player.mesh.visible=true;
   if (forced && !silent) hurt(25);
 }
-function punch(W){
+function punch(W,power=1){
   W=W||WEAPONS[0];
   if (player.inCar || player.punchT>0 || player.health<=0) return;
-  const bat=W.id==='bat';
-  player.punchT=player.punchDur=bat?0.5:0.3; player.hitT=bat?0.2:0.1; player.hitW=W;
-  noise(0.12,0.08,bat?700:1500);
+  const bat=W.id==='bat', heavy=power>=1.8;
+  if (!bat) player.punchArm=1-(player.punchArm??1);
+  player.punchKind = heavy ? 'heavy' : bat ? 'swing' : mpick(['jab','jab','hook','upper']);
+  player.punchPower=power;
+  if (!fp){ // en tercera persona el personaje se gira hacia el objetivo cercano
+    let best=null, bs=1e9; const fx=Math.sin(player.h), fz=Math.cos(player.h);
+    for (const p of peds){ if (p.state==='dead') continue; const dx=p.x-player.x, dz=p.z-player.z, L=Math.hypot(dx,dz); if (L>W.range+1.2) continue; const dot=(dx*fx+dz*fz)/Math.max(L,0.01); if (dot<-0.2) continue; const sc=L-dot; if (sc<bs){ bs=sc; best=p; } }
+    if (best) player.h=Math.atan2(best.x-player.x,best.z-player.z);
+  }
+  player.punchT=player.punchDur=(bat?0.5:0.3)*(heavy?1.3:1); player.hitT=player.punchDur*0.4; player.hitW=W;
+  noise(heavy?0.22:0.12,heavy?0.16:0.08,bat?700:1500);
 }
 function meleeHit(W){
   if (player.inCar || player.health<=0) return;
-  const fx=Math.sin(player.h), fz=Math.cos(player.h); let hitAny=false;
+  const power=player.punchPower||1, fx=Math.sin(player.h), fz=Math.cos(player.h); let hitAny=false;
+  const reach=W.range*(power>=1.8?1.15:1);
   for (const p of peds){
     if (p.state==='dead') continue;
     const dx=p.x-player.x, dz=p.z-player.z, L=Math.hypot(dx,dz);
-    if (L<W.range && (dx*fx+dz*fz)/Math.max(L,0.01)>0.4){
-      const killed=p.damage(W.dmg,fx,fz,true); hitAny=true;
+    if (L<reach && (dx*fx+dz*fz)/Math.max(L,0.01)>(L<1.2?-0.1:0.4)){
+      const killed=p.meleeHit(W.dmg*power,fx,fz,power,W.id==='bat'); hitAny=true;
       if (killed) onPedKilled(p); else if (p.cop) addStars(1,'¡Has agredido a un policía!'); else if (policeNear(50)) addStars(1,'La policía te ha visto');
       for (const q of peds) if (q!==p && d2(q.x,q.z,player.x,player.z)<400) q.scare(player.x,player.z,6);
     }
   }
-  if (hitAny){ sfxPunch(); if (W.id==='bat') { noise(0.18,0.4,500); shake(0.2); } }
+  if (hitAny){ sfxPunch(); if (W.id==='bat'||power>=1.8){ noise(0.18,0.25+power*0.1,500); shake(0.12*power); } }
 }
 function horn(){ sfxHorn(); const e=player.inCar||player; for (const p of peds) if (d2(p.x,p.z,e.x,e.z)<144 && Math.random()<0.5) p.scare(e.x,e.z,3); }
 
 /* ---- armas ---- */
 const WEAPONS=[
-  {id:'fist',name:'Puños',melee:true,range:1.8,dmg:35,rate:0.35},
-  {id:'bat',name:'Bate',melee:true,range:2.4,dmg:60,rate:0.5,price:80},
+  {id:'fist',name:'Puños',melee:true,range:1.8,dmg:18,rate:0.3},
+  {id:'bat',name:'Bate',melee:true,range:2.4,dmg:38,rate:0.5,price:80},
   {id:'deagle',name:'Desert Eagle',desc:'Muy potente, pocas balas',range:55,dmg:80,rate:0.5,spread:0.015,price:700,ammoPrice:80,pack:14,snd:[1100,0.2,0.6],kick:0.3},
   {id:'pistol',name:'Pistola',desc:'Precisa y barata',range:48,dmg:40,rate:0.3,spread:0.025,price:300,ammoPrice:50,pack:24,snd:[2200,0.09,0.35]},
   {id:'smg',name:'Subfusil',desc:'Ráfaga automática',range:42,dmg:22,rate:0.085,auto:true,spread:0.06,price:900,ammoPrice:100,pack:60,snd:[2600,0.06,0.25]},
@@ -2248,11 +2300,21 @@ function updateGrenades(dt){
       if (now>shotAlertT){ addStars(1,'¡Explosión! La policía acude'); shotAlertT=now+6; } }
   }
 }
+// Golpe cargado: mantener para cargar (máx. 1,1 s); a los 2,2 s se suelta solo por cansancio
+let meleeCharge=null;
+function updateMelee(dt){
+  const W=curW(), held=(keys.has('KeyF')||mouseHeld||fireHeld) && !aiming;
+  if (!W.melee || player.inCar || state!=='play' || player.health<=0){ meleeCharge=null; return; }
+  if (held && meleeCharge===null && player.punchT<=0 && fireCd<=0) meleeCharge=0;
+  else if (held && meleeCharge!==null){ meleeCharge+=dt; if (meleeCharge>2.2){ releaseMelee(W); fireCd=0.9; toast('Demasiado tiempo cargando: pierdes fuerza',1.2); } }
+  else if (!held && meleeCharge!==null) releaseMelee(W);
+}
+function releaseMelee(W){ const k=clamp((meleeCharge-0.12)/1.0,0,1), tired=meleeCharge>2.2; meleeCharge=null; punch(W,tired?1.4:1+2*k); fireCd=W.rate; }
 function tryFire(){
   if (state!=='play'||player.health<=0||fireCd>0) return;
   const W=curW();
   if (player.inCar && (W.melee||W.throw)) return;
-  if (W.melee){ punch(W); fireCd=W.rate; return; }
+  if (W.melee) return; // los golpes se cargan y se sueltan en updateMelee()
   if (!(player.ammo[W.id]>0)){ fireCd=0.4; tone(180,0.05,'square',0.05); toast('Sin munición. Cómprala en la armería del Palmeral',1.6); return; }
   player.ammo[W.id]--; fireCd=W.rate;
   if (W.throw) throwGrenade(); else shoot(W);
@@ -2597,6 +2659,7 @@ function update(dt){
   if (player.hitT>0){ player.hitT-=dt; if (player.hitT<=0) meleeHit(player.hitW); }
   if (!player.inCar && (player.y>0 || player.vy>0)){ player.vy-=20*dt; player.y+=player.vy*dt; if (player.y<=0){ player.y=0; player.vy=0; } }
   if (fireEdge){ fireEdge=false; tryFire(); } else if ((fireHeld||mouseHeld||keys.has('KeyF')) && curW().auto) tryFire();
+  updateMelee(dt);
 
   // jugador
   if (player.inCar){
@@ -2625,7 +2688,7 @@ function update(dt){
       const fx=Math.sin(camYaw), fz=Math.cos(camYaw), rx=-fz, rz=fx;
       const dx=fx*ax.y+rx*ax.x, dz=fz*ax.y+rz*ax.x, L=Math.hypot(dx,dz)||1;
       const want=Math.atan2(dx/L,dz/L); player.h+=wrapA(want-player.h)*Math.min(1,dt*10);
-      const spd=(running()?8.2:4)*mag*(player.crouch?0.45:1);
+      const spd=(running()&&meleeCharge===null?8.2:4)*mag*(player.crouch?0.45:1)*(meleeCharge!==null?0.6:1);
       player.vx=Math.sin(player.h)*spd; player.vz=Math.cos(player.h)*spd;
       const ox=player.x, oz=player.z;
       player.x+=player.vx*dt; player.z+=player.vz*dt;
@@ -2797,6 +2860,7 @@ function updateHUD(dt){
   const h=Math.floor(gameMin/60), m=Math.floor(gameMin%60); hud.clock.textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
   if (player.inCar){ hud.speed.hidden=false; hud.speed.textContent=Math.round(player.inCar.speed*3.6)+' km/h'; } else hud.speed.hidden=true;
   hud.dates.textContent=`Dátiles de oro ${save.dates.length}/12`;
+  { const ch=$('charge'); ch.hidden=meleeCharge===null||meleeCharge<0.15; if (!ch.hidden) ch.firstElementChild.style.width=Math.min(100,meleeCharge/1.1*100)+'%'; }
   { const W=curW(); hud.weapon.innerHTML=W.melee?W.name:`${W.name} <b>${player.ammo[W.id]||0}</b>`; }
   hud.armor.style.width=(player.armor||0)+'%'; $('armor').hidden=!(player.armor>0);
   hud.drugs.hidden=!(player.drugs>0); hud.drugs.textContent=`Paquetes: ${player.drugs}`;
