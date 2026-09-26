@@ -133,9 +133,20 @@
   .mlist li b{color:var(--palm);font-weight:700;white-space:nowrap}
   .mlist li i{font-style:normal;color:var(--mute);white-space:nowrap}
   .prow{display:flex;flex-wrap:wrap;gap:10px}
-  #bigmap{background:rgba(10,14,19,.94);cursor:pointer}
-  #bigmap canvas{max-width:100%;max-height:100%}
-  #bigmap p{position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);left:0;right:0;text-align:center;margin:0;font-size:17px;color:var(--mute)}
+  #bigmap{background:#12161b;padding:0;cursor:grab}
+  #bigmap.drag{cursor:grabbing}
+  #bigc{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+  #mapbar{position:absolute;right:calc(env(safe-area-inset-right,0px) + 14px);top:calc(env(safe-area-inset-top,0px) + 14px);display:flex;flex-direction:column;gap:8px;pointer-events:auto}
+  #mapbar .btn{min-width:52px;padding:8px 12px;font-size:17px}
+  #mapinfo{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 14px);max-width:min(620px,calc(100% - 200px));text-align:center;font-size:19px;font-weight:700;background:rgba(10,14,19,.78);padding:8px 14px;border-radius:10px;pointer-events:auto}
+  #mapinfo:empty{display:none}
+  #mapinfo .btn{margin:8px 4px 0;padding:6px 14px;font-size:17px}
+  #maplegend{position:absolute;left:calc(env(safe-area-inset-left,0px) + 14px);bottom:calc(env(safe-area-inset-bottom,0px) + 44px);display:grid;grid-template-columns:auto auto;gap:4px 14px;font-size:14px;font-weight:600;background:rgba(10,14,19,.78);padding:8px 12px;border-radius:10px;pointer-events:none}
+  #maplegend i{display:inline-block;width:10px;height:10px;border:2px solid #000;margin-right:6px;vertical-align:-1px}
+  #maphelp{position:absolute;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);left:0;right:0;text-align:center;margin:0;font-size:15px;color:var(--mute);pointer-events:none}
+  #nav{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 58px);font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px;white-space:nowrap;background:rgba(15,21,28,.55);padding:3px 12px;border-radius:14px}
+  #nav b{display:inline-block;color:#c77dff;font-size:20px;line-height:1}
+  @media (max-width:560px){ #maplegend{display:none} #mapinfo{max-width:calc(100% - 100px);font-size:16px} #nav{font-size:15px} }
   @media (max-width:560px){
     #mini{width:118px;height:118px}
     .topb{top:calc(env(safe-area-inset-top,0px) + 144px)}
@@ -170,6 +181,7 @@
     <div id="cross" hidden></div>
     <div id="charge" hidden><i></i></div>
     <div id="hint" hidden></div>
+    <div id="nav" class="outline" hidden><b id="navArrow">▲</b><span id="navTxt"></span></div>
     <div id="obj" class="outline"></div>
     <div id="keys"><div class="ctr">
       <kbd>W A S D</kbd><span>Andar / conducir</span>
@@ -203,8 +215,17 @@
   </div>
 
   <div class="ov" id="bigmap" hidden>
-    <canvas id="bigc" width="1400" height="1400"></canvas>
-    <p>Toca o pulsa M para cerrar</p>
+    <canvas id="bigc"></canvas>
+    <div id="mapinfo" class="outline"></div>
+    <div id="mapbar">
+      <button class="btn" id="mZin" type="button" aria-label="Acercar">+</button>
+      <button class="btn" id="mZout" type="button" aria-label="Alejar">−</button>
+      <button class="btn" id="mCenter" type="button">Centrar</button>
+      <button class="btn" id="mClear" type="button">Quitar destino</button>
+      <button class="btn" id="mClose" type="button">Cerrar</button>
+    </div>
+    <div id="maplegend"></div>
+    <p id="maphelp">Rueda o +/−: zoom · Arrastra: mover · Clic en un icono o en cualquier sitio: destino · Clic derecho: quitarlo · M: cerrar</p>
   </div>
 
   <div class="ov" id="pause" hidden>
@@ -1942,28 +1963,41 @@ function setObj(t){ hud.obj.innerHTML=t||''; }
 /* mapa base (canvas) */
 const MAPK=2048/1800;
 const mapCanvas=document.createElement('canvas'); mapCanvas.width=mapCanvas.height=2048;
-{
-  const c=mapCanvas.getContext('2d'), k=MAPK, U=x=>(x+900)*k;
-  c.fillStyle='#252b31'; c.fillRect(0,0,2048,2048);
-  c.fillStyle='#3a434c';
-  for (const b of blocks) if (!b.river) c.fillRect(U(b.x0+ROAD),U(b.z0+ROAD),(b.x1-b.x0-2*ROAD)*k,(b.z1-b.z0-2*ROAD)*k);
-    else { c.fillRect(U(b.x0+ROAD),U(b.z0+ROAD),(riverX(b.cz)-RH-b.x0-ROAD)*k,(b.z1-b.z0-2*ROAD)*k); c.fillRect(U(riverX(b.cz)+RH),U(b.z0+ROAD),(b.x1-ROAD-riverX(b.cz)-RH)*k,(b.z1-b.z0-2*ROAD)*k); }
-  for (const b of blocks) if (b.palmeral){ c.fillStyle='#46562f'; c.fillRect(U(b.x0+ROAD),U(b.z0+ROAD),(b.x1-b.x0-2*ROAD)*k,(b.z1-b.z0-2*ROAD)*k); }
-  for (const s of SPECIAL){ if (s.type==='palmeral') continue; c.fillStyle={park:'#3c6e3a',huerto:'#3a6a38',stadium:'#557258',campus:'#4f7a3f',plaza:'#6a6152',landmark:'#8a7250'}[s.type]; c.fillRect(U(s.x0),U(s.z0),(s.x1-s.x0)*k,(s.z1-s.z0)*k); }
-  c.fillStyle='#3a434c'; c.fillRect(U(RZ.x0),U(RZ.z0),(RZ.x1-RZ.x0)*k,(RZ.z1-RZ.z0)*k);
-  const poly=(P,fill)=>{ c.fillStyle=fill; c.beginPath(); P.forEach(([x,z],i)=>i?c.lineTo(U(x),U(z)):c.moveTo(U(x),U(z))); c.closePath(); c.fill(); };
-  for (const a of RZ_AREAS) poly(a.pts,{park:'#3c6e3a',plaza:'#6a6152',pitch:'#3f7a45',water:'#4a7a8a'}[a.t]);
-  for (const b of RZ_BLD) poly(b.pts,'#58626c');
-  c.fillStyle='#4a5a55'; c.beginPath();
-  for (let z=-900;z<=900;z+=10) c.lineTo(U(riverX(z)-RHz(z)),U(z));
-  for (let z=900;z>=-900;z-=10) c.lineTo(U(riverX(z)+RHz(z)),U(z));
-  c.fill();
-  c.strokeStyle='#5aa7c0'; c.lineWidth=5*k; c.beginPath(); for (let z=-900;z<=900;z+=10) c.lineTo(U(riverX(z)),U(z)); c.stroke();
-  c.strokeStyle='#8c939b'; c.lineCap='round'; c.lineWidth=2*ROAD*k;
-  for (const e of edges){ if (e.real) continue; const A=nodes[e.a],B=nodes[e.b]; c.beginPath(); c.moveTo(U(A.x),U(A.z)); c.lineTo(U(B.x),U(B.z)); c.stroke(); }
-  for (const [list,col] of [[RZ_WALKS,'#9d9384'],[RZ_ROADS,'#8c939b']]) for (const r of list){ c.strokeStyle=col; c.lineWidth=Math.max(1.5,r.w*k); c.beginPath(); r.pts.forEach(([x,z],i)=>i?c.lineTo(U(x),U(z)):c.moveTo(U(x),U(z))); c.stroke(); }
-  c.fillStyle='#d8bd8f'; for (const [x,z] of [[-55,-55],[-150,-73],[35,35],[-55,24],[55,-165]]){ c.beginPath(); c.arc(U(x),U(z),6,0,7); c.fill(); }
+// Dibuja el mapa con cualquier escala: Ux/Uz pasan de metros a píxeles, k = píxeles por metro; vb = zona visible (para no dibujar lo que no se ve)
+const polyBB=o=>o.bb||(o.bb=(o.pts).reduce((b,[x,z])=>[Math.min(b[0],x),Math.min(b[1],z),Math.max(b[2],x),Math.max(b[3],z)],[1e9,1e9,-1e9,-1e9]));
+function paintAirport(c,Ux,Uz,k){
+  c.fillStyle='#5b6064'; c.fillRect(Ux(AP.x0),Uz(AP.z0),(AP.x1-AP.x0)*k,(AP.z1-AP.z0)*k);
+  c.fillStyle='#2a2d31'; c.fillRect(Ux(2420),Uz(440),760*k,60*k);
+  c.fillStyle='#d8dde0'; c.fillRect(Ux(2600),Uz(576),320*k,62*k);
+  c.strokeStyle='#8c939b'; c.lineWidth=Math.max(2,14*k); c.lineCap='round'; c.lineJoin='round'; c.beginPath();
+  hwyPts.forEach((p,i)=>i?c.lineTo(Ux(p[0]),Uz(p[1])):c.moveTo(Ux(p[0]),Uz(p[1]))); c.stroke();
 }
+function paintMap(c,Ux,Uz,k,vb,airport){
+  const vis=(x0,z0,x1,z1)=>!vb||(x1>=vb.x0&&x0<=vb.x1&&z1>=vb.z0&&z0<=vb.z1);
+  const rect=(x0,z0,x1,z1)=>{ if (x1>x0 && z1>z0 && vis(x0,z0,x1,z1)) c.fillRect(Ux(x0),Uz(z0),(x1-x0)*k,(z1-z0)*k); };
+  c.fillStyle='#3a434c';
+  for (const b of blocks) if (!b.river) rect(b.x0+ROAD,b.z0+ROAD,b.x1-ROAD,b.z1-ROAD);
+    else { rect(b.x0+ROAD,b.z0+ROAD,riverX(b.cz)-RH,b.z1-ROAD); rect(riverX(b.cz)+RH,b.z0+ROAD,b.x1-ROAD,b.z1-ROAD); }
+  c.fillStyle='#46562f'; for (const b of blocks) if (b.palmeral) rect(b.x0+ROAD,b.z0+ROAD,b.x1-ROAD,b.z1-ROAD);
+  for (const s of SPECIAL){ if (s.type==='palmeral') continue; c.fillStyle={park:'#3c6e3a',huerto:'#3a6a38',stadium:'#557258',campus:'#4f7a3f',plaza:'#6a6152',landmark:'#8a7250'}[s.type]; rect(s.x0,s.z0,s.x1,s.z1); }
+  c.fillStyle='#3a434c'; rect(RZ.x0,RZ.z0,RZ.x1,RZ.z1);
+  const poly=(o,fill)=>{ const b=polyBB(o); if (!vis(b[0],b[1],b[2],b[3])) return; c.fillStyle=fill; c.beginPath(); o.pts.forEach(([x,z],i)=>i?c.lineTo(Ux(x),Uz(z)):c.moveTo(Ux(x),Uz(z))); c.closePath(); c.fill(); };
+  for (const a of RZ_AREAS) poly(a,{park:'#3c6e3a',plaza:'#6a6152',pitch:'#3f7a45',water:'#4a7a8a'}[a.t]);
+  for (const b of RZ_BLD) poly(b,'#58626c');
+  c.fillStyle='#4a5a55'; c.beginPath();
+  for (let z=-900;z<=900;z+=10) c.lineTo(Ux(riverX(z)-RHz(z)),Uz(z));
+  for (let z=900;z>=-900;z-=10) c.lineTo(Ux(riverX(z)+RHz(z)),Uz(z));
+  c.fill();
+  c.strokeStyle='#5aa7c0'; c.lineWidth=Math.max(1,5*k); c.beginPath(); for (let z=-900;z<=900;z+=10) c.lineTo(Ux(riverX(z)),Uz(z)); c.stroke();
+  c.strokeStyle='#8c939b'; c.lineCap='round'; c.lineJoin='round'; c.lineWidth=Math.max(1.5,2*ROAD*k); c.beginPath();
+  for (const e of edges){ if (e.real) continue; const A=nodes[e.a],B=nodes[e.b]; if (!vis(Math.min(A.x,B.x),Math.min(A.z,B.z),Math.max(A.x,B.x),Math.max(A.z,B.z))) continue; c.moveTo(Ux(A.x),Uz(A.z)); c.lineTo(Ux(B.x),Uz(B.z)); }
+  c.stroke();
+  for (const [list,col] of [[RZ_WALKS,'#9d9384'],[RZ_ROADS,'#8c939b']]) for (const r of list){ const b=polyBB(r); if (!vis(b[0],b[1],b[2],b[3])) continue;
+    c.strokeStyle=col; c.lineWidth=Math.max(1.5,r.w*k); c.beginPath(); r.pts.forEach(([x,z],i)=>i?c.lineTo(Ux(x),Uz(z)):c.moveTo(Ux(x),Uz(z))); c.stroke(); }
+  c.fillStyle='#d8bd8f'; for (const [x,z] of [[-55,-55],[-150,-73],[35,35],[-55,24],[55,-165]]){ c.beginPath(); c.arc(Ux(x),Uz(z),Math.max(3,5.3*k),0,7); c.fill(); }
+  if (airport) paintAirport(c,Ux,Uz,k);
+}
+{ const c=mapCanvas.getContext('2d'); c.fillStyle='#252b31'; c.fillRect(0,0,2048,2048); paintMap(c,x=>(x+900)*MAPK,z=>(z+900)*MAPK,MAPK,null,false); }
 const mini=$('mini'), mctx=mini.getContext('2d');
 function toMini(x,z,cx,cz,rot,scale){ const dx=(x-cx)*scale, dz=(z-cz)*scale; const c=Math.cos(rot), s=Math.sin(rot); return [dx*c-dz*s, dx*s+dz*c]; }
 function drawBlip(ctx,x,y,color,r,shape){
@@ -1998,6 +2032,9 @@ function drawMini(yaw,spd){
   mctx.restore();
   mctx.save(); mctx.beginPath(); mctx.arc(cx,cx,cx,0,7); mctx.clip(); mctx.translate(cx,cx);
   const lim=cx-12, blip=(x,z,col,r,shape,edge)=>{ let [u,v]=toMini(x,z,e.x,e.z,rot,scale); const L=Math.hypot(u,v); if (L>lim){ if(!edge) return; u*=lim/L; v*=lim/L; } drawBlip(mctx,u,v,col,r,shape); };
+  if (dest && dest.route){ mctx.strokeStyle='#c77dff'; mctx.lineWidth=6; mctx.lineCap='round'; mctx.lineJoin='round'; mctx.beginPath();
+    dest.route.forEach(([x,z],i)=>{ const [u,v]=toMini(x,z,e.x,e.z,rot,scale); i?mctx.lineTo(u,v):mctx.moveTo(u,v); }); mctx.stroke(); }
+  if (dest) blip(dest.x,dest.z,'#c77dff',8,'c',true);
   for (const c of cars) if (c.driver==='police') blip(c.x,c.z,Math.floor(now*4)%2?'#ff3b3b':'#3b6bff',6,'sq');
   if (!mission.cur) MISSIONS.forEach(ms=>blip(ms.start[0],ms.start[1],save.done.includes(ms.id)?'#b99a4a':'#ffd23f',9,'sq',true));
   for (const sh of SHOPS) blip(sh.mx,sh.mz,sh.color,8,'sq',true);
@@ -2014,33 +2051,159 @@ function drawMini(yaw,spd){
   mctx.fillStyle='#f5efe2'; mctx.font='bold 22px "Barlow Condensed",sans-serif'; mctx.textAlign='center'; mctx.textBaseline='middle';
   mctx.fillText('N',cx+nr[0]/nl*(cx-16),cx+nr[1]/nl*(cx-16));
 }
-function drawBigMap(){
-  const cv=$('bigc'), c=cv.getContext('2d'), W=cv.width, k=W/2048, U=x=>(x+900)*MAPK*k;
-  c.drawImage(mapCanvas,0,0,W,W);
+/* ================= mapa grande: zoom, desplazamiento, puntos de interés y destinos ================= */
+const MV={cx:0,cz:0,z:0.6,zt:0.6,anchor:null,ptr:new Map(),pinch:null,wasPinch:false,dirty:true,mode:null,onPick:null,W:1,H:1,dpr:1,hover:null,pois:[],zmin:0.15,zmax:9,pulseT:0};
+// tipos de destino: se pueden añadir más (gasolineras, negocios...) sin tocar el resto del sistema
+const POI_TYPES={mision:{col:'#ffd23f',label:'Misiones',shape:'sq'},trabajo:{col:'#35c6e8',label:'Trabajos',shape:'sq'},actividad:{col:'#35c6e8',label:'Actividades',shape:'sq'},
+  negocio:{col:'#35c6e8',label:'Negocios',shape:'sq'},tienda:{col:'#e8464b',label:'Tiendas',shape:'sq'},gasolinera:{col:'#ff8a3d',label:'Gasolineras',shape:'sq'},
+  atraco:{col:'#ff8a3d',label:'Comercios',shape:'sq'},objetivo:{col:'#ff4d4d',label:'Objetivo',shape:'c'},poi:{col:'#f5efe2',label:'Lugares',shape:'c'},waypoint:{col:'#c77dff',label:'Destino',shape:'c'}};
+function mapPOIs(){
+  const L=[], add=(x,z,name,type,col)=>L.push({x,z,name,type,col});
+  if (!mission.cur) MISSIONS.forEach(ms=>add(ms.start[0],ms.start[1],'Misión: '+ms.name,'mision',save.done.includes(ms.id)?'#b99a4a':null));
+  for (const p of objectivePoints()) add(p[0],p[1],'Objetivo de la misión','objetivo');
+  for (const sh of SHOPS) add(sh.mx,sh.mz,sh.title,sh.id==='rob_gasolinera'?'gasolinera':sh.rob?'atraco':sh.errand?'actividad':sh.id==='inmo'?'negocio':sh.job?'trabajo':'tienda',sh.color);
+  for (const sp of SPECIAL) if (sp.type!=='palmeral') add((sp.x0+sp.x1)/2,(sp.z0+sp.z1)/2,sp.name,'poi');
+  for (const b of RZ_BLD) if (b.n) add(b.cx,b.cz,b.n,'poi');
+  add(2760,610,'Aeropuerto de Alicante-Elche','poi');
+  return L;
+}
+function mapResize(){
+  const cv=$('bigc'), r=cv.getBoundingClientRect(); MV.dpr=Math.min(2,devicePixelRatio||1); MV.W=r.width||innerWidth; MV.H=r.height||innerHeight;
+  cv.width=Math.round(MV.W*MV.dpr); cv.height=Math.round(MV.H*MV.dpr); MV.zmin=Math.min(MV.W/4400,MV.H/2600); MV.zt=clamp(MV.zt,MV.zmin,MV.zmax); MV.z=clamp(MV.z,MV.zmin,MV.zmax); MV.dirty=true;
+}
+const mapToWorld=(sx,sy)=>[MV.cx+(sx-MV.W/2)/MV.z,MV.cz+(sy-MV.H/2)/MV.z];
+const worldToMap=(x,z)=>[(x-MV.cx)*MV.z+MV.W/2,(z-MV.cz)*MV.z+MV.H/2];
+function zoomAt(sx,sy,zt){ const [wx,wz]=mapToWorld(sx,sy); MV.zt=clamp(zt,MV.zmin,MV.zmax); MV.anchor={sx,sy,wx,wz}; MV.dirty=true; }
+function mapCenter(){ const e=player.inCar||player; MV.cx=e.x; MV.cz=e.z; MV.anchor=null; MV.dirty=true; }
+function openMap(opts={}){
+  try{ document.exitPointerLock?.(); }catch(e){}
+  state='map'; $('bigmap').hidden=false; MV.mode=opts.mode||null; MV.onPick=opts.onPick||null; MV.ptr.clear(); MV.hover=null;
+  mapResize(); if (!MV.init){ MV.init=true; MV.z=MV.zt=clamp(Math.min(MV.W,MV.H)/1500,MV.zmin,MV.zmax); }
+  mapCenter(); MV.pois=mapPOIs(); buildLegend(); updateMapInfo(); drawMapView();
+}
+function closeMap(){ $('bigmap').hidden=true; state='play'; MV.mode=null; MV.onPick=null; MV.ptr.clear(); }
+function buildLegend(){
+  const types=['mision','trabajo','tienda','atraco','poi','waypoint'];
+  $('maplegend').innerHTML=types.map(t=>`<span><i style="background:${POI_TYPES[t].col};border-radius:${POI_TYPES[t].shape==='c'?'50%':'2px'}"></i>${POI_TYPES[t].label}</span>`).join('')+'<span><i style="background:#fff"></i>Tú</span>';
+}
+const fmtDist=d=>d<1000?`${Math.max(10,Math.round(d/10)*10)} m`:`${(d/1000).toFixed(1)} km`;
+function updateMapInfo(){
+  const el=$('mapinfo'); if (MV.mode==='taxi'){ el.innerHTML=taxiMapInfo(); return; }
+  if (!dest){ el.textContent=''; return; }
+  const P=player.inCar||player, T=POI_TYPES[dest.type]||POI_TYPES.waypoint;
+  el.innerHTML=`📍 ${dest.name} <small style="color:var(--mute)">· ${T.label.replace(/s$/,'')} · ${fmtDist(Math.hypot(dest.x-P.x,dest.z-P.z))}</small>`;
+}
+function poiAt(sx,sy){ let best=null,bd=15; for (const p of MV.pois){ if (p.type==='poi' && MV.z<0.35) continue; const [x,y]=worldToMap(p.x,p.z), d=Math.hypot(x-sx,y-sy); if (d<bd){ bd=d; best=p; } } return best; }
+const placeName=(x,z)=>streetAt(x,z)||zoneName(x,z)||'Punto marcado';
+function mapClick(sx,sy){
+  if (dest && !MV.mode){ const [x,y]=worldToMap(dest.x,dest.z); if (Math.hypot(x-sx,y-sy)<13){ clearDest(); return; } }   // clic sobre el destino: se quita
+  const p=poiAt(sx,sy), [wx,wz]=mapToWorld(sx,sy);
+  const d=p?{x:p.x,z:p.z,name:p.name,type:p.type}:{x:wx,z:wz,name:placeName(wx,wz),type:'waypoint'};
+  if (MV.mode==='taxi' && MV.onPick){ MV.onPick(d); return; }
+  setDest(d);
+}
+function updateMapView(dt){
+  if (!(keys.has('ShiftLeft')||keys.has('ControlLeft'))){
+    const px=(keys.has('ArrowLeft')||keys.has('KeyA')?-1:0)+(keys.has('ArrowRight')||keys.has('KeyD')?1:0), pz=(keys.has('ArrowUp')||keys.has('KeyW')?-1:0)+(keys.has('ArrowDown')||keys.has('KeyS')?1:0);
+    if (px||pz){ MV.cx+=px*dt*520/MV.z; MV.cz+=pz*dt*520/MV.z; MV.anchor=null; MV.dirty=true; } }
+  if (MV.z!==MV.zt){   // zoom suave y anclado al cursor
+    const lz=Math.log(MV.z), lt=Math.log(MV.zt); MV.z=Math.abs(lt-lz)<0.003?MV.zt:Math.exp(lz+(lt-lz)*(1-Math.exp(-dt*14)));
+    if (MV.anchor){ MV.cx=MV.anchor.wx-(MV.anchor.sx-MV.W/2)/MV.z; MV.cz=MV.anchor.wz-(MV.anchor.sy-MV.H/2)/MV.z; }
+    MV.dirty=true; }
+  MV.cx=clamp(MV.cx,-1000,3300); MV.cz=clamp(MV.cz,-1000,1250);
+  if (dest || MV.mode){ MV.pulseT-=dt; if (MV.pulseT<=0){ MV.pulseT=0.12; MV.dirty=true; } }
+  if (MV.dirty){ MV.dirty=false; drawMapView(); }
+}
+function drawMapView(){
+  const cv=$('bigc'), c=cv.getContext('2d'), d=MV.dpr, W=cv.width, H=cv.height, z=MV.z*d;
+  const Ux=x=>(x-MV.cx)*z+W/2, Uz=v=>(v-MV.cz)*z+H/2;
+  const vb={x0:MV.cx-W/2/z-30,x1:MV.cx+W/2/z+30,z0:MV.cz-H/2/z-30,z1:MV.cz+H/2/z+30};
+  c.setTransform(1,0,0,1,0,0); c.fillStyle='#161a1f'; c.fillRect(0,0,W,H);
+  c.fillStyle='#252b31'; c.fillRect(Ux(-900),Uz(-900),1800*z,1800*z);
+  if (MV.z<1.25){ c.imageSmoothingEnabled=true; c.drawImage(mapCanvas,Ux(-900),Uz(-900),1800*z,1800*z); paintAirport(c,Ux,Uz,z); }   // lejos: imagen ya dibujada (rápido)
+  else paintMap(c,Ux,Uz,z,vb,true);                                                                                            // cerca: vectorial, nítido
   c.textAlign='center'; c.textBaseline='middle';
-  c.font='600 13px "Barlow Condensed","Arial Narrow",sans-serif'; c.fillStyle='#161a1f';
-  { const groups=new Map(); for (const e of edges){ if (!e.name) continue; if (!groups.has(e.name)) groups.set(e.name,[]); groups.get(e.name).push(e); }
-    for (const [name,list] of groups){ const e=list[Math.floor(list.length/2)], A=nodes[e.a], B=nodes[e.b]; let ang=Math.atan2(B.z-A.z,B.x-A.x); if (ang>Math.PI/2) ang-=Math.PI; if (ang<-Math.PI/2) ang+=Math.PI;
-      c.save(); c.translate(U((A.x+B.x)/2),U((A.z+B.z)/2)); c.rotate(ang); c.fillText(name,0,0); c.restore(); } }
-  c.font='600 22px "Barlow Condensed",sans-serif';
-  for (const s of SPECIAL){ if (s.type==='palmeral') continue; const x=U((s.x0+s.x1)/2), y=U((s.z0+s.z1)/2); c.lineWidth=4; c.strokeStyle='rgba(0,0,0,.8)'; c.strokeText(s.name,x,y); c.fillStyle='#f5efe2'; c.fillText(s.name,x,y); }
-  c.font='26px "Bowlby One",Impact,sans-serif';
-  for (const [n,x,z] of [['CARRÚS',-560,-420],['EL TOSCAR',-540,300],['EL PLA',300,-640],['EL RAVAL',280,120],['ALTABIX',700,-300],['LOS PALMERALES',260,600],['POLÍGONO',-720,640],['CENTRO',-40,-150]]){ c.lineWidth=5; c.strokeStyle='rgba(0,0,0,.85)'; c.strokeText(n,U(x),U(z)); c.fillStyle='#f2b544'; c.fillText(n,U(x),U(z)); }
-  c.save(); c.textAlign='left'; c.font='600 18px "Barlow Condensed",sans-serif'; c.fillStyle='rgba(245,239,226,.75)'; c.fillText('Centro real: © colaboradores de OpenStreetMap',12,W-14); c.restore();
-  c.save(); c.textAlign='center'; c.font='600 15px "Barlow Condensed",sans-serif'; c.lineWidth=3; c.strokeStyle='rgba(0,0,0,.8)';
-  for (const b of RZ_BLD) if (b.n){ c.strokeText(b.n,U(b.cx),U(b.cz)); c.fillStyle='#ffd9a0'; c.fillText(b.n,U(b.cx),U(b.cz)); }
-  for (const a of RZ_AREAS) if (a.n && a.t!=='plaza'){ let cx=0,cz=0; a.pts.forEach(q=>{cx+=q[0];cz+=q[1];}); cx/=a.pts.length; cz/=a.pts.length; c.strokeText(a.n,U(cx),U(cz)); c.fillStyle='#b8e0a8'; c.fillText(a.n,U(cx),U(cz)); }
-  c.restore();
-  c.save(); c.textAlign='right'; c.font='600 22px "Barlow Condensed",sans-serif'; c.lineWidth=4; c.strokeStyle='rgba(0,0,0,.85)'; c.strokeText('Aeropuerto de El Altet →',W-12,U(250)); c.fillStyle='#8fd0e6'; c.fillText('Aeropuerto de El Altet →',W-12,U(250)); c.restore();
-  c.save(); c.translate(U(-300),U(-760)); c.rotate(-Math.PI/2); c.font='italic 600 24px "Barlow Condensed",sans-serif'; c.fillStyle='#8fd0e6'; c.fillText('Río Vinalopó',0,0); c.restore();
-  if (!mission.cur) MISSIONS.forEach(ms=>drawBlip(c,U(ms.start[0]),U(ms.start[1]),save.done.includes(ms.id)?'#b99a4a':'#ffd23f',10,'sq'));
-  for (const p of objectivePoints()) drawBlip(c,U(p[0]),U(p[1]),'#ff4d4d',11,'c');
-  for (const cl of clients) drawBlip(c,U(cl.x),U(cl.z),'#c99bff',8,'c');
-  c.font='600 20px "Barlow Condensed",sans-serif';
-  for (const sh of SHOPS){ drawBlip(c,U(sh.mx),U(sh.mz),sh.color,10,'sq'); c.lineWidth=4; c.strokeStyle='rgba(0,0,0,.85)'; c.strokeText(sh.title,U(sh.mx),U(sh.mz)-22); c.fillStyle='#f5efe2'; c.fillText(sh.title,U(sh.mx),U(sh.mz)-22); }
-  DATES.forEach((p,i)=>{ if (!save.dates.includes(i)) drawBlip(c,U(p[0]),U(p[1]),'#e8a93a',6,'c'); });
-  const e=player.inCar||player;
-  c.save(); c.translate(U(e.x),U(e.z)); c.rotate(Math.PI-e.h); c.fillStyle='#fff'; c.strokeStyle='#000'; c.lineWidth=3; c.beginPath(); c.moveTo(0,-16); c.lineTo(11,12); c.lineTo(0,6); c.lineTo(-11,12); c.closePath(); c.fill(); c.stroke(); c.restore();
+  const txt=(t,x,y,size,fill,font='600',fam='"Barlow Condensed","Arial Narrow",sans-serif')=>{ c.font=`${font} ${size*d}px ${fam}`; c.lineWidth=Math.max(2,size*0.22)*d; c.strokeStyle='rgba(0,0,0,.85)'; c.strokeText(t,x,y); c.fillStyle=fill; c.fillText(t,x,y); };
+  const inV=(x,y,m=40)=>x>-m&&y>-m&&x<W+m&&y<H+m;
+  if (MV.z>=1.6){   // nombres de calles
+    const seen=new Set(); c.font=`600 ${13*d}px "Barlow Condensed","Arial Narrow",sans-serif`;
+    for (const e of edges){ if (!e.name) continue; const A=nodes[e.a], B=nodes[e.b], mx=Ux((A.x+B.x)/2), my=Uz((A.z+B.z)/2); if (!inV(mx,my,0)) continue;
+      const len=Math.hypot(B.x-A.x,B.z-A.z)*z, key=e.name+Math.round(mx/(260*d))+','+Math.round(my/(260*d)); if (len<c.measureText(e.name).width*0.8 || seen.has(key)) continue; seen.add(key);
+      let ang=Math.atan2(B.z-A.z,B.x-A.x); if (ang>Math.PI/2) ang-=Math.PI; if (ang<-Math.PI/2) ang+=Math.PI;
+      c.save(); c.translate(mx,my); c.rotate(ang); c.fillStyle='#161a1f'; c.fillText(e.name,0,0); c.restore(); }
+    for (const r of RZ_ROADS.concat(RZ_WALKS)){ if (!r.n||r.pts.length<2) continue; const k2=Math.floor(r.pts.length/2), A=r.pts[Math.max(0,k2-1)], B=r.pts[k2], mx=Ux((A[0]+B[0])/2), my=Uz((A[1]+B[1])/2); if (!inV(mx,my,0)) continue;
+      const key=r.n+Math.round(mx/(220*d))+','+Math.round(my/(220*d)); if (seen.has(key)) continue; seen.add(key);
+      let ang=Math.atan2(B[1]-A[1],B[0]-A[0]); if (ang>Math.PI/2) ang-=Math.PI; if (ang<-Math.PI/2) ang+=Math.PI; c.save(); c.translate(mx,my); c.rotate(ang); c.fillStyle='#161a1f'; c.fillText(r.n,0,0); c.restore(); }
+  }
+  if (MV.z<2.4) for (const [n,x,y] of [['CARRÚS',-560,-420],['EL TOSCAR',-540,300],['EL PLA',300,-640],['EL RAVAL',280,120],['ALTABIX',700,-300],['LOS PALMERALES',260,600],['POLÍGONO',-720,640],['CENTRO',-40,-150],['EL ALTET',2800,760]]){ const X=Ux(x),Y=Uz(y); if (inV(X,Y)) txt(n,X,Y,MV.z<0.5?20:26,'#e9e1cf','400','"Bowlby One",Impact,sans-serif'); }
+  if (MV.z>=0.45) for (const sp of SPECIAL){ if (sp.type==='palmeral') continue; const X=Ux((sp.x0+sp.x1)/2), Y=Uz((sp.z0+sp.z1)/2); if (inV(X,Y)) txt(sp.name,X,Y+14*d,16,'#f5efe2'); }
+  if (MV.z>=1.4) for (const b of RZ_BLD) if (b.n){ const X=Ux(b.cx), Y=Uz(b.cz); if (inV(X,Y)) txt(b.n,X,Y+13*d,14,'#ffd9a0'); }
+  { const X=Ux(-300),Y=Uz(-760); if (inV(X,Y)){ c.save(); c.translate(X,Y); c.rotate(-Math.PI/2); txt('Río Vinalopó',0,0,20,'#8fd0e6','italic 600'); c.restore(); } }
+  // ruta hacia el destino
+  if (dest && dest.route){ c.strokeStyle='#c77dff'; c.lineWidth=Math.max(4,Math.min(10,5*z)); c.lineCap='round'; c.lineJoin='round'; c.globalAlpha=0.9; c.beginPath(); dest.route.forEach(([x,y],i)=>i?c.lineTo(Ux(x),Uz(y)):c.moveTo(Ux(x),Uz(y))); c.stroke(); c.globalAlpha=1; }
+  // puntos de interés
+  for (const cl of clients){ const X=Ux(cl.x),Y=Uz(cl.z); if (inV(X,Y)) drawBlip(c,X,Y,'#c99bff',7*d,'c'); }
+  DATES.forEach((p,i)=>{ if (!save.dates.includes(i)){ const X=Ux(p[0]),Y=Uz(p[1]); if (inV(X,Y)) drawBlip(c,X,Y,'#e8a93a',4*d,'c'); } });
+  for (const p of MV.pois){ if (p.type==='poi' && MV.z<0.35) continue; const X=Ux(p.x), Y=Uz(p.z); if (!inV(X,Y)) continue; const T=POI_TYPES[p.type];
+    drawBlip(c,X,Y,p.col||T.col,(T.shape==='c'?(p.type==='poi'?5:8):9)*d*(p===MV.hover?1.35:1),T.shape);
+    if (p.type!=='poi' && (MV.z>=0.9 || p===MV.hover)) txt(p.name,X,Y-19*d,15,'#f5efe2'); else if (p===MV.hover) txt(p.name,X,Y-16*d,15,'#fff'); }
+  // destino
+  if (dest){ const X=Ux(dest.x), Y=Uz(dest.z), pul=0.5+0.5*Math.sin(performance.now()/180);
+    c.strokeStyle='rgba(199,125,255,'+(0.35+0.4*pul)+')'; c.lineWidth=3*d; c.beginPath(); c.arc(X,Y,(14+8*pul)*d,0,7); c.stroke();
+    c.fillStyle='#c77dff'; c.strokeStyle='#000'; c.lineWidth=2*d; c.beginPath(); c.moveTo(X,Y); c.lineTo(X-8*d,Y-15*d); c.arc(X,Y-19*d,9*d,Math.PI*0.8,Math.PI*0.2); c.closePath(); c.fill(); c.stroke();
+    c.fillStyle='#fff'; c.beginPath(); c.arc(X,Y-19*d,3.5*d,0,7); c.fill(); txt(dest.name,X,Y-38*d,16,'#e7c8ff'); }
+  // jugador (si está fuera de la vista, una flecha en el borde indica dónde)
+  const e=player.inCar||player, PX=Ux(e.x), PY=Uz(e.z);
+  if (inV(PX,PY,-8)){ c.save(); c.translate(PX,PY); c.rotate(Math.PI-e.h); c.fillStyle='#fff'; c.strokeStyle='#000'; c.lineWidth=3*d; c.beginPath(); c.moveTo(0,-15*d); c.lineTo(11*d,11*d); c.lineTo(0,5*d); c.lineTo(-11*d,11*d); c.closePath(); c.fill(); c.stroke(); c.restore(); }
+  else { const a=Math.atan2(PY-H/2,PX-W/2), m=34*d, ex=clamp(W/2+Math.cos(a)*W,m,W-m), ey=clamp(H/2+Math.sin(a)*H,m,H-m);
+    c.save(); c.translate(ex,ey); c.rotate(a); c.fillStyle='#fff'; c.strokeStyle='#000'; c.lineWidth=3*d; c.beginPath(); c.moveTo(16*d,0); c.lineTo(-8*d,-11*d); c.lineTo(-8*d,11*d); c.closePath(); c.fill(); c.stroke(); c.restore(); txt('Tú',ex-Math.cos(a)*24*d,ey-Math.sin(a)*24*d,15,'#fff'); }
+  // escala
+  { const steps=[10,20,50,100,200,500,1000,2000]; let m=steps.find(v=>v*MV.z>=90)||2000; const w=m*z, x0=W-w-24*d, y0=H-58*d;
+    c.strokeStyle='#f5efe2'; c.lineWidth=3*d; c.beginPath(); c.moveTo(x0,y0-6*d); c.lineTo(x0,y0); c.lineTo(x0+w,y0); c.lineTo(x0+w,y0-6*d); c.stroke(); txt(m>=1000?`${m/1000} km`:`${m} m`,x0+w/2,y0-12*d,15,'#f5efe2'); }
+  c.save(); c.textAlign='left'; c.font=`600 ${13*d}px "Barlow Condensed",sans-serif`; c.fillStyle='rgba(245,239,226,.65)'; c.fillText('Centro real: © colaboradores de OpenStreetMap',12*d,16*d); c.restore();
+}
+let taxiRide=null;
+function taxiMapInfo(){ return ''; }
+function taxiCancel(){ closeMap(); }
+// navegación: destino activo, ruta por la red de calles, flecha en el HUD, marca en el minimapa y columna de luz en el mundo
+let dest=null;
+const navBeam=new THREE.Mesh(new THREE.CylinderGeometry(1.3,1.3,80,16,1,true),new THREE.MeshBasicMaterial({color:'#c77dff',transparent:true,opacity:0.3,depthWrite:false,side:THREE.DoubleSide}));
+navBeam.visible=false; scene.add(navBeam);
+function setDest(d){ dest=Object.assign({},d,{route:null,routeT:0}); navBeam.position.set(dest.x,40,dest.z); navBeam.visible=true; routeNow(); MV.dirty=true; tone(880,0.08,'sine',0.04); tone(1320,0.1,'sine',0.035,0.08); updateMapInfo(); }
+function clearDest(){ dest=null; navBeam.visible=false; MV.dirty=true; if ($('nav')) $('nav').hidden=true; updateMapInfo(); }
+function navRoute(x0,z0,x1,z1){
+  const a=nearestNode(x0,z0), b=nearestNode(x1,z1), p=a&&b?pathTo(a,b):null, pts=[[x0,z0]];
+  if (p) for (const i of p) pts.push([nodes[i].x,nodes[i].z]);
+  pts.push([x1,z1]); return pts;
+}
+function routeNow(){ if (!dest) return; const P=player.inCar||player; dest.route=navRoute(P.x,P.z,dest.x,dest.z); dest.routeT=1.5; }
+function updateNav(dt){
+  const el=$('nav');
+  if (!dest){ if (!el.hidden) el.hidden=true; return; }
+  const P=player.inCar||player, dd=Math.hypot(dest.x-P.x,dest.z-P.z);
+  if (dd<(player.inCar?16:9) && !taxiRide){ const n=dest.name; clearDest(); toast(`Has llegado: <em>${n}</em>`,2.2); sfxPick(); return; }
+  dest.routeT-=dt; if (dest.routeT<=0) routeNow();
+  const rel=wrapA(Math.atan2(dest.x-P.x,dest.z-P.z)-camYaw);   // 0 = de frente; positivo = a la izquierda
+  el.hidden=false; $('navArrow').style.transform=`rotate(${(-rel).toFixed(3)}rad)`;
+  const t=`${dest.name} · ${fmtDist(dd)}`; if ($('navTxt').textContent!==t) $('navTxt').textContent=t;
+}
+{ const bc=$('bigc'), rel=e=>{ const r=bc.getBoundingClientRect(); return [e.clientX-r.left,e.clientY-r.top]; };
+  bc.addEventListener('pointerdown',e=>{ if (state!=='map') return; try{ bc.setPointerCapture(e.pointerId); }catch(err){} const [x,y]=rel(e);
+    MV.ptr.set(e.pointerId,{x,y,sx:x,sy:y,b:e.button}); $('bigmap').classList.add('drag');
+    if (MV.ptr.size===2){ const [a,b]=[...MV.ptr.values()]; MV.pinch={d:Math.hypot(a.x-b.x,a.y-b.y)||1,z:MV.zt}; MV.wasPinch=true; } });
+  bc.addEventListener('pointermove',e=>{ if (state!=='map') return; const [x,y]=rel(e), p=MV.ptr.get(e.pointerId);
+    if (!p){ const h=poiAt(x,y); if (h!==MV.hover){ MV.hover=h; MV.dirty=true; } return; }
+    if (MV.ptr.size===1 && !MV.wasPinch){ MV.cx-=(x-p.x)/MV.z; MV.cz-=(y-p.y)/MV.z; MV.anchor=null; MV.dirty=true; }
+    p.x=x; p.y=y;
+    if (MV.ptr.size===2 && MV.pinch){ const [a,b]=[...MV.ptr.values()]; const dd=Math.hypot(a.x-b.x,a.y-b.y)||1; zoomAt((a.x+b.x)/2,(a.y+b.y)/2,MV.pinch.z*dd/MV.pinch.d); MV.z=MV.zt;
+      if (MV.anchor){ MV.cx=MV.anchor.wx-(MV.anchor.sx-MV.W/2)/MV.z; MV.cz=MV.anchor.wz-(MV.anchor.sy-MV.H/2)/MV.z; } } });
+  const up=e=>{ const p=MV.ptr.get(e.pointerId); if (!p) return; MV.ptr.delete(e.pointerId); const [x,y]=rel(e);
+    if (MV.ptr.size===0){ $('bigmap').classList.remove('drag'); if (!MV.wasPinch && p.b===0 && Math.hypot(x-p.sx,y-p.sy)<7) mapClick(x,y); MV.wasPinch=false; MV.pinch=null; } };
+  bc.addEventListener('pointerup',up); bc.addEventListener('pointercancel',e=>{ MV.ptr.delete(e.pointerId); if (!MV.ptr.size){ MV.wasPinch=false; $('bigmap').classList.remove('drag'); } });
+  bc.addEventListener('wheel',e=>{ if (state!=='map') return; e.preventDefault(); const [x,y]=rel(e); zoomAt(x,y,MV.zt*Math.pow(1.0017,-e.deltaY)); },{passive:false});
+  bc.addEventListener('contextmenu',e=>{ e.preventDefault(); if (state==='map' && !MV.mode) clearDest(); });
+  $('mZin').addEventListener('click',()=>zoomAt(MV.W/2,MV.H/2,MV.zt*1.7)); $('mZout').addEventListener('click',()=>zoomAt(MV.W/2,MV.H/2,MV.zt/1.7));
+  $('mCenter').addEventListener('click',mapCenter); $('mClear').addEventListener('click',()=>{ if (MV.mode==='taxi') return; clearDest(); }); $('mClose').addEventListener('click',()=>{ if (MV.mode==='taxi') taxiCancel(); else closeMap(); });
 }
 
 /* ================= audio ================= */
@@ -2105,7 +2268,13 @@ addEventListener('keydown',e=>{
   keys.add(e.code);
   if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
   if (state==='title' && (e.code==='Enter')) startGame();
-  if (state==='map' && (e.code==='KeyM'||e.code==='Escape')) { closeMap(); return; }
+  if (state==='map'){
+    if (e.code==='KeyM'||e.code==='Escape'){ if (MV.mode==='taxi') taxiCancel(); else closeMap(); }
+    else if (e.code==='Equal'||e.code==='NumpadAdd'||e.code==='KeyE') zoomAt(MV.W/2,MV.H/2,MV.zt*1.7);
+    else if (e.code==='Minus'||e.code==='NumpadSubtract'||e.code==='KeyQ') zoomAt(MV.W/2,MV.H/2,MV.zt/1.7);
+    else if (e.code==='KeyC'||e.code==='Space') mapCenter();
+    else if ((e.code==='Backspace'||e.code==='Delete'||e.code==='KeyX') && !MV.mode) clearDest();
+    return; }
   if (e.code==='Escape' && performance.now()-unlockT<400) return;   // el Esc que suelta el ratón ya ha abierto la pausa
   if (state==='paused' && (e.code==='KeyP'||e.code==='Escape')) { resume(); return; }
   if (state==='shop' && (e.code==='Escape'||e.code==='KeyE')) { closeShop(); return; }
@@ -3521,6 +3690,7 @@ function updateLighting(){
 }
 
 function updateHUD(dt){
+  updateNav(dt);
   shownMoney+=(player.money-shownMoney)*Math.min(1,dt*6); if (Math.abs(player.money-shownMoney)<1) shownMoney=player.money;
   hud.money.textContent='€'+String(Math.round(shownMoney)).padStart(8,'0');
   { const T=starDecay(), fading=player.stars>0 && state==='play' && starCool>T-STAR_FADE;
@@ -3578,8 +3748,6 @@ function pause(){
   $('bSound').textContent='Sonido: '+(soundOn?'sí':'no'); $('bQual').textContent='Gráficos: '+QUALITY[quality].label.toLowerCase(); $('bReset').textContent='Borrar progreso'; $('bReset').dataset.arm='';
 }
 function resume(){ $('pause').hidden=true; state='play'; }
-function openMap(){ try{ document.exitPointerLock?.(); }catch(e){} state='map'; $('bigmap').hidden=false; drawBigMap(); }
-function closeMap(){ $('bigmap').hidden=true; state='play'; }
 $('bPlay').addEventListener('click',startGame);
 $('bResume').addEventListener('click',resume);
 $('bSound').addEventListener('click',()=>{ soundOn=!soundOn; $('bSound').textContent='Sonido: '+(soundOn?'sí':'no'); });
@@ -3587,7 +3755,6 @@ $('bReset').addEventListener('click',e=>{
   const b=e.currentTarget; if (!b.dataset.arm){ b.dataset.arm='1'; b.textContent='¿Seguro? Pulsa otra vez'; return; }
   save={money:150,done:[],dates:[],deagleGift:true}; player.owned=['fist','deagle']; player.ammo={deagle:35}; player.w=1; player.armor=0; player.drugs=0; player.money=150; shownMoney=150; dateMeshes.forEach(m=>m.visible=true); persist(); b.dataset.arm=''; b.textContent='Progreso borrado';
 });
-$('bigmap').addEventListener('click',closeMap);
 $('bView').addEventListener('click',()=>{ setFP(!fp,true); });
 setFP(fp,true);
 $('bQual').addEventListener('click',()=>{ quality={alta:'media',media:'baja',baja:'alta'}[quality]; try{ localStorage.setItem('ilici-q',quality); }catch(e){} applyQuality(); $('bQual').textContent='Gráficos: '+QUALITY[quality].label.toLowerCase(); });
@@ -3595,7 +3762,7 @@ $('bShopClose').addEventListener('click',closeShop);
 $('bHelpClose').addEventListener('click',closeHelp);
 $('bCtl').addEventListener('click',openHelp);
 
-addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); vmCam.aspect=camera.aspect; vmCam.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+addEventListener('resize',()=>{ if (state==='map') mapResize(); camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); vmCam.aspect=camera.aspect; vmCam.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
 applyQuality();
 document.addEventListener('visibilitychange',()=>{ if (document.hidden && state==='play') pause(); });
 
@@ -3638,7 +3805,7 @@ function frame(t){
     camera.position.set(-55+Math.sin(titleA)*110,55,-55+Math.cos(titleA)*110); camera.up.set(0,1,0); camera.lookAt(-30,10,-60);
     for (const p of peds) p.update(dt);
     for (const c of cars){ if (c.driver==='npc'&&c.ai) cruise(c,dt); else c.drive(dt,0,0,true); pushCircle(c,1.2); c.sync(); }
-  } else if (state==='paused'||state==='map'||state==='shop'||state==='help'){ if (AC&&eng){ eng.g.gain.value=0; siren.g.gain.value=0; } }
+  } else if (state==='paused'||state==='map'||state==='shop'||state==='help'){ if (AC&&eng){ eng.g.gain.value=0; siren.g.gain.value=0; } if (state==='map') updateMapView(dt); }
   updateLighting();
   renderer.clear(); renderer.render(scene,camera);
   if (vmRoot.visible && (state==='play'||state==='dead')){ renderer.clearDepth(); renderer.render(vmScene,vmCam); }
