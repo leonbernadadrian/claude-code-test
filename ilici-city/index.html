@@ -153,7 +153,7 @@
       <kbd>Shift · Espacio</kbd><span>Correr · freno de mano</span>
       <kbd>E</kbd><span>Entrar, robar coche, salir</span>
       <kbd>F · clic</kbd><span>Disparar o golpear</span>
-      <kbd>Q · rueda · 1-6</kbd><span>Cambiar de arma</span>
+      <kbd>Q · rueda · 1-7</kbd><span>Cambiar de arma</span>
       <kbd>H</kbd><span>Claxon</span>
       <kbd>C</kbd><span>Cambiar cámara</span>
       <kbd>M</kbd><span>Mapa con calles</span>
@@ -204,7 +204,7 @@
         <kbd>E</kbd><span>Entrar, robar un coche o salir</span>
         <kbd>F · clic</kbd><span>Disparar, golpear o lanzar granada (mantén para ráfaga)</span>
         <kbd>Q · rueda</kbd><span>Siguiente arma</span>
-        <kbd>1-6</kbd><span>Puños, bate, pistola, subfusil, escopeta, granadas</span>
+        <kbd>1-7</kbd><span>Puños, bate, Desert Eagle, pistola, subfusil, escopeta, granadas</span>
         <kbd>H</kbd><span>Claxon</span>
         <kbd>C</kbd><span>Cámara normal / cenital</span>
         <kbd>M</kbd><span>Mapa con nombres de calles</span>
@@ -246,7 +246,7 @@
         <kbd>E</kbd><span>Entrar o robar un coche, salir</span>
         <kbd>Espacio</kbd><span>Freno de mano / correr</span>
         <kbd>F · clic</kbd><span>Disparar o golpear</span>
-        <kbd>Q · 1-6</kbd><span>Cambiar de arma</span>
+        <kbd>Q · 1-7</kbd><span>Cambiar de arma</span>
         <kbd>H</kbd><span>Claxon</span>
         <kbd>C</kbd><span>Cambiar cámara (vista cenital)</span>
         <kbd>M</kbd><span>Mapa de Elche</span>
@@ -1007,36 +1007,69 @@ const glassMat=new THREE.MeshPhongMaterial({color:'#142029',shininess:140,specul
 const headMat=new THREE.MeshBasicMaterial({color:'#fff4cc'}), tailMat=new THREE.MeshBasicMaterial({color:'#ff2a2a'});
 const sirenR=new THREE.MeshBasicMaterial({color:'#ff2020'}), sirenB=new THREE.MeshBasicMaterial({color:'#2050ff'});
 function part(g,mat,sx,sy,sz,x,y,z,shadow=true){ const m=new THREE.Mesh(boxGeo,mat); m.scale.set(sx,sy,sz); m.position.set(x,y,z); m.castShadow=shadow; g.add(m); return m; }
-function buildCarMesh(k,color){
-  const T=TYPES[k], g=new THREE.Group(), bodyH=T.h*0.46, cm=paint(color), painted=[];
-  painted.push(part(g,cm,T.w,bodyH,T.len,0,0.32+bodyH/2,0));
-  const top=0.32+bodyH;
-  if (k==='van'){
-    const ch=T.h-bodyH-0.3;
-    painted.push(part(g,cm,T.w*0.98,ch,T.len*0.74,0,top+ch/2,-T.len*0.12));
-    part(g,glassMat,T.w*0.9,ch*0.62,0.08,0,top+ch*0.55,T.len*0.25+0.01,false);
-  } else {
-    const ch=T.h*0.38;
-    part(g,glassMat,T.w*0.84,ch,T.len*0.48,0,top+ch/2,-T.len*0.06);
-    painted.push(part(g,cm,T.w*0.87,0.09,T.len*0.44,0,top+ch,-T.len*0.06));
+// Carrocerías con silueta real: perfiles laterales extruidos con bisel
+const carVCMat=new THREE.MeshLambertMaterial({vertexColors:true}), carLightMat=new THREE.MeshBasicMaterial({vertexColors:true}); carLightMat.toneMapped=false;
+function extrudeSide(pts,width,bevel=0.06){
+  const sh=new THREE.Shape(pts.map(p=>new THREE.Vector2(p[0],p[1])));
+  const depth=Math.max(0.01,width-2*bevel);
+  const g=new THREE.ExtrudeGeometry(sh,{depth,bevelEnabled:bevel>0,bevelThickness:bevel,bevelSize:bevel,bevelSegments:2,curveSegments:6});
+  g.rotateY(-Math.PI/2); g.translate(depth/2,0,0); g.computeVertexNormals(); return g;
+}
+function carProfiles(k,T){
+  const L=T.len, H=T.h, h2=L/2;
+  if (k==='van') return {
+    body:[[-h2,0.32],[h2,0.32],[h2,0.95],[h2-0.3,1.12],[h2-0.72,H-0.02],[-h2+0.05,H-0.02],[-h2,H-0.1],[-h2,0.32]],
+    glass:[[h2-0.33,1.15],[h2-0.7,H-0.1],[h2-0.95,H-0.1],[h2-0.95,1.15]], gw:0.94, roof:null };
+  if (k==='sports') return {
+    body:[[-h2,0.3],[h2,0.3],[h2,0.5],[h2-0.08,0.6],[L*0.14,0.72],[-L*0.36,0.78],[-h2+0.04,0.74],[-h2,0.58]],
+    glass:[[L*0.16,0.72],[-L*0.04,H-0.03],[-L*0.24,H-0.03],[-L*0.46,0.78]], gw:0.82, roof:[[-L*0.03,H-0.06],[-L*0.23,H-0.06],[-L*0.23,H+0.01],[-L*0.04,H+0.01]] };
+  if (k==='compact') return {
+    body:[[-h2,0.32],[h2,0.32],[h2,0.6],[h2-0.1,0.76],[L*0.22,0.86],[-h2+0.02,0.88],[-h2,0.72]],
+    glass:[[L*0.23,0.86],[L*0.05,H-0.03],[-L*0.4,H-0.04],[-h2+0.04,0.88]], gw:0.86, roof:[[L*0.05,H-0.08],[-L*0.4,H-0.08],[-L*0.4,H+0.01],[L*0.05,H+0.01]] };
+  return {
+    body:[[-h2,0.32],[h2,0.32],[h2,0.6],[h2-0.12,0.76],[L*0.18,0.85],[-L*0.3,0.87],[-h2+0.06,0.83],[-h2,0.68]],
+    glass:[[L*0.2,0.85],[L*0.03,H-0.03],[-L*0.22,H-0.03],[-L*0.35,0.87]], gw:0.86, roof:[[L*0.03,H-0.08],[-L*0.22,H-0.08],[-L*0.22,H+0.01],[L*0.03,H+0.01]] };
+}
+const carGeoCache={};
+function carGeos(k){
+  if (carGeoCache[k]) return carGeoCache[k];
+  const T=TYPES[k], L=T.len, W=T.w, P=carProfiles(k,T), out={};
+  out.body=extrudeSide(P.body,W,0.07);
+  out.glass=extrudeSide(P.glass,W*P.gw,0.04);
+  if (P.roof) out.roof=extrudeSide(P.roof,W*P.gw+0.04,0.03);
+  const trim=[], lights=[], by=0.42;
+  for (const sg of [-1,1]){
+    trim.push(tintGeo(PG.box,'#1c1d20',0,by,sg*(L/2+0.04),W*1.02,0.2,0.2));
+    trim.push(tintGeo(PG.box,'#1c1d20',sg*(W/2+0.02),0.36,0,0.06,0.12,L*0.62));
+    trim.push(tintGeo(PG.box,'#1c1d20',sg*(W/2+0.09),k==='van'?1.25:0.95,L*(k==='van'?0.3:0.16),0.14,0.1,0.1));
+    for (const [z,col] of [[L/2+0.02,'#fff4cc'],[-L/2-0.02,'#ff2a2a']]){ lights.push(tintGeo(PG.box,col,sg*W*0.32,k==='sports'?0.5:0.6,z,0.42,0.14,0.06)); }
   }
+  trim.push(tintGeo(PG.box,'#26272a',0,0.5,L/2+0.05,W*0.48,0.16,0.04));
+  out.trim=mergeColored(trim); out.lights=mergeColored(lights);
+  return carGeoCache[k]=out;
+}
+const wheelGeoC=(()=>{ const t=new THREE.CylinderGeometry(0.36,0.36,0.26,18); t.rotateZ(Math.PI/2); const r=new THREE.CylinderGeometry(0.22,0.22,0.28,12); r.rotateZ(Math.PI/2); const h=new THREE.CylinderGeometry(0.07,0.07,0.29,8); h.rotateZ(Math.PI/2); return mergeColored([tintGeo(t,'#141414'),tintGeo(r,'#b9bdc2'),tintGeo(h,'#55595e')]); })();
+function buildCarMesh(k,color){
+  const T=TYPES[k], G=carGeos(k), g=new THREE.Group(), cm=paint(color), painted=[];
+  const add=(geo,mat,shadow=true)=>{ const m=new THREE.Mesh(geo,mat); m.castShadow=shadow; g.add(m); return m; };
+  painted.push(add(G.body,cm)); add(G.glass,glassMat,false); if (G.roof) painted.push(add(G.roof,cm,false));
+  add(G.trim,carVCMat,false); add(G.lights,carLightMat,false);
+  if (k==='van'){ for (const sg of [-1,1]){ const m=new THREE.Mesh(boxGeo,glassMat); m.scale.set(0.04,0.42,0.7); m.position.set(sg*(T.w/2+0.01),1.55,T.len*0.2); g.add(m); } }
   const wheels=[];
-  for (const [sx,sz] of [[1,1],[-1,1],[1,-1],[-1,-1]]){ const w=new THREE.Mesh(wheelGeo,wheelMat); w.position.set(sx*(T.w/2-0.06),0.36,sz*T.len*0.32); w.rotation.order='YXZ'; g.add(w); wheels.push(w); }
-  for (const s of [-1,1]){ part(g,headMat,0.42,0.18,0.06,s*T.w*0.32,0.32+bodyH*0.62,T.len/2+0.02,false); part(g,tailMat,0.42,0.16,0.06,s*T.w*0.32,0.32+bodyH*0.62,-T.len/2-0.02,false); }
-  for (const s of [-1,1]){ part(g,trimMat,T.w*1.02,0.2,0.2,0,0.42,s*(T.len/2+0.03),false); part(g,cm,0.16,0.12,0.12,s*(T.w/2+0.07),top+0.12,T.len*0.17,false); }
-  part(g,trimMat,T.w*0.5,bodyH*0.35,0.05,0,0.32+bodyH*0.5,T.len/2+0.03,false);
-  const glows=[]; for (const s of [-1,1]){ const sp=new THREE.Sprite(headGlowMat); sp.position.set(s*T.w*0.32,0.32+bodyH*0.62,T.len/2+0.25); sp.scale.set(1.6,1.6,1); g.add(sp); glows.push(sp); }
+  for (const [sx,sz] of [[1,1],[-1,1],[1,-1],[-1,-1]]){ const w=new THREE.Mesh(wheelGeoC,carVCMat); w.position.set(sx*(T.w/2-0.08),0.36,sz*T.len*0.32); w.rotation.order='YXZ'; w.castShadow=true; g.add(w); wheels.push(w); }
+  const bodyH=T.h*0.46, top=k==='sports'?0.78:0.87;
+  const glows=[]; for (const s of [-1,1]){ const sp=new THREE.Sprite(headGlowMat); sp.position.set(s*T.w*0.32,k==='sports'?0.5:0.6,T.len/2+0.25); sp.scale.set(1.6,1.6,1); g.add(sp); glows.push(sp); }
   let lights=null;
   if (k==='police'){
-    part(g,paint('#1f4fa3'),T.w+0.03,0.2,T.len*0.92,0,0.32+bodyH*0.55,0,false);
-    const y=top+T.h*0.38+0.18;
-    lights=[part(g,sirenR,0.55,0.18,0.3,-0.34,y,-T.len*0.06,false), part(g,sirenB,0.55,0.18,0.3,0.34,y,-T.len*0.06,false)];
+    for (const sg of [-1,1]) part(g,paint('#1f4fa3'),0.03,0.16,T.len*0.8,sg*(T.w/2+0.075),0.62,0,false);
+    const y=T.h+0.1;
+    part(g,trimMat,1.1,0.08,0.3,0,T.h+0.02,-T.len*0.06,false);
+    lights=[part(g,sirenR,0.5,0.16,0.26,-0.28,y,-T.len*0.06,false), part(g,sirenB,0.5,0.16,0.26,0.28,y,-T.len*0.06,false)];
   }
-  if (k==='taxi'){ part(g,paint('#b0262b'),T.w+0.03,0.16,T.len*0.9,0,0.32+bodyH*0.55,0,false); part(g,new THREE.MeshBasicMaterial({color:'#39d353'}),0.5,0.2,0.25,0,top+T.h*0.38+0.18,-T.len*0.06,false); }
-  if (k==='sports' && color==='#1f8a4c'){ part(g,lambert('#f4f4f0'),0.5,bodyH+0.02,T.len+0.02,0,0.32+bodyH/2,0,false); }
+  if (k==='taxi'){ for (const sg of [-1,1]) part(g,paint('#b0262b'),0.03,0.14,T.len*0.8,sg*(T.w/2+0.075),0.62,0,false); part(g,new THREE.MeshBasicMaterial({color:'#39d353'}),0.5,0.18,0.24,0,T.h+0.1,-T.len*0.06,false); }
+  if (k==='sports' && color==='#1f8a4c'){ part(g,paint('#f4f4f0'),0.42,0.02,T.len*0.7,0,top+0.01,T.len*0.1,false); }
   return {g,wheels,painted,lights};
 }
-
 const cars=[];
 class Car{
   constructor(k,color){
@@ -1082,25 +1115,70 @@ const peds=[];
 const SKIN=['#f1c9a5','#e0ac85','#c68863','#8d5a3b','#f6d7bd'], HAIR=['#2b1d14','#4a3121','#111','#b7884f','#d9d2c5','#6b3b22'];
 const SHIRT=['#e74c3c','#3498db','#f1c40f','#ecf0f1','#2c3e50','#e67e22','#9b59b6','#1abc9c','#f5b7b1','#7f8c8d','#c0392b'];
 const PANTS=['#2c3e50','#34495e','#1b1b1b','#5d6d7e','#7b5e3c','#1f3a5f'];
-function makePedMesh(shirt,pants,skin,hair,extra){
-  const g=new THREE.Group(), sm=lambert(shirt), pm=lambert(pants), km=lambert(skin);
-  part(g,sm,0.52,0.62,0.3,0,1.2,0);
-  part(g,km,0.3,0.32,0.3,0,1.68,0);
-  part(g,lambert(hair),0.32,0.12,0.32,0,1.87,-0.01);
-  const legs=[], arms=[];
-  for (const s of [-1,1]){
-    const lp=new THREE.Group(); lp.position.set(s*0.13,0.9,0); part(lp,pm,0.2,0.88,0.22,0,-0.44,0); g.add(lp); legs.push(lp);
-    const ap=new THREE.Group(); ap.position.set(s*0.34,1.48,0); part(ap,sm,0.14,0.62,0.16,0,-0.31,0); part(ap,km,0.13,0.12,0.14,0,-0.66,0,false); g.add(ap); arms.push(ap);
-  }
-  if (extra==='elche'){ part(g,lambert('#f4f4f0'),0.53,0.14,0.31,0,1.28,0,false); part(g,lambert('#f4f4f0'),0.53,0.14,0.31,0,1.06,0,false); }
-  if (extra==='cop'){ part(g,lambert('#1f3a8a'),0.34,0.1,0.34,0,1.92,0,false); }
-  g.userData={legs,arms,wm:makeWeaponModels(arms[1])}; if (extra==='cop') setWeaponModel(g,'pistol'); return g;
+// Cuerpos humanos modelados (geometría con colores por vértice; un solo material para todos)
+const pedMat=new THREE.MeshLambertMaterial({vertexColors:true});
+const PG={sph:new THREE.SphereGeometry(1,14,10), cap:new THREE.SphereGeometry(1,14,8,0,Math.PI*2,0,Math.PI*0.56), cyl:new THREE.CylinderGeometry(1,1,1,12), box:new THREE.BoxGeometry(1,1,1)};
+const capCache={};
+const capsule=(r,l)=>capCache[r+'_'+l]||(capCache[r+'_'+l]=new THREE.CapsuleGeometry(r,l,3,10));
+function tintGeo(geo,hex,x=0,y=0,z=0,sx=1,sy=1,sz=1,rx=0){
+  let g=geo.index?geo.toNonIndexed():geo.clone(); if (rx) g.rotateX(rx); g.scale(sx,sy,sz); g.translate(x,y,z);
+  const n=g.attributes.position.count, c=new Float32Array(n*3); _c.set(hex); for (let i=0;i<n;i++){ c[i*3]=_c.r; c[i*3+1]=_c.g; c[i*3+2]=_c.b; }
+  g.setAttribute('color',new THREE.BufferAttribute(c,3)); return g;
 }
+function mergeColored(list){
+  let n=0; for (const g of list) n+=g.attributes.position.count;
+  const pos=new Float32Array(n*3), nor=new Float32Array(n*3), col=new Float32Array(n*3); let o=0;
+  for (const g of list){ pos.set(g.attributes.position.array,o*3); nor.set(g.attributes.normal.array,o*3); col.set(g.attributes.color.array,o*3); o+=g.attributes.position.count; g.dispose(); }
+  const out=new THREE.BufferGeometry(); out.setAttribute('position',new THREE.BufferAttribute(pos,3)); out.setAttribute('normal',new THREE.BufferAttribute(nor,3)); out.setAttribute('color',new THREE.BufferAttribute(col,3));
+  out.userData.ped=true; return out;
+}
+const pedMesh=(parts,shadow)=>{ const m=new THREE.Mesh(mergeColored(parts),pedMat); m.castShadow=shadow; return m; };
+const TORSO_M=[[0.15,0],[0.165,0.12],[0.195,0.3],[0.21,0.4],[0.18,0.47],[0.07,0.51]].map(p=>new THREE.Vector2(p[0],p[1]));
+const TORSO_F=[[0.14,0],[0.13,0.1],[0.165,0.27],[0.175,0.37],[0.15,0.46],[0.065,0.5]].map(p=>new THREE.Vector2(p[0],p[1]));
+const torsoGeoM=new THREE.LatheGeometry(TORSO_M,14), torsoGeoF=new THREE.LatheGeometry(TORSO_F,14);
+function makePedMesh(shirt,pants,skin,hair,extra){
+  const civ=!extra, fem=civ && Math.random()<0.45, shadow=extra==='elche';
+  const skirt=fem && Math.random()<0.4, longSleeve=extra==='cop'||Math.random()<0.3, shorts=civ&&!fem&&Math.random()<0.2;
+  const shoes=extra==='cop'?'#111':mpick(['#1b1b1b','#efefef','#5a3b22','#2c3e50','#8a1f1f']);
+  const g=new THREE.Group(), body=[];
+  body.push(tintGeo(PG.sph,skirt?shirt:pants,0,0.96,0,fem?0.19:0.175,0.13,0.13));
+  body.push(tintGeo(fem?torsoGeoF:torsoGeoM,shirt,0,0.97,0,1,1,0.64));
+  if (skirt) body.push(tintGeo(new THREE.CylinderGeometry(0.16,0.28,0.4,14,1,true),pants,0,0.8,0,1,1,0.8));
+  body.push(tintGeo(PG.cyl,skin,0,1.5,0,0.055,0.12,0.055));
+  body.push(tintGeo(PG.sph,skin,0,1.655,0.005,0.102,0.123,0.113));
+  body.push(tintGeo(PG.box,skin,0,1.645,0.112,0.028,0.045,0.035));
+  for (const sx of [-1,1]){ body.push(tintGeo(PG.sph,'#f2f2f2',sx*0.037,1.676,0.097,0.017,0.012,0.008)); body.push(tintGeo(PG.sph,'#1b1410',sx*0.037,1.676,0.103,0.009,0.009,0.006)); body.push(tintGeo(PG.box,hair,sx*0.038,1.697,0.1,0.03,0.008,0.01)); body.push(tintGeo(PG.sph,skin,sx*0.102,1.655,0,0.018,0.03,0.02)); }
+  body.push(tintGeo(PG.box,'#7a3b34',0,1.607,0.104,0.036,0.008,0.01));
+  if (extra==='cop'){
+    body.push(tintGeo(PG.cyl,'#1b2a5a',0,1.77,0,0.118,0.07,0.125)); body.push(tintGeo(PG.cyl,'#1b2a5a',0,1.745,0.07,0.1,0.015,0.09));
+    body.push(tintGeo(PG.box,'#e0b400',0.08,1.32,0.12,0.04,0.05,0.01)); body.push(tintGeo(PG.cyl,'#111',0,1.0,0,0.18,0.05,0.12));
+  } else if (fem){
+    body.push(tintGeo(PG.cap,hair,0,1.672,-0.005,0.112,0.12,0.123)); body.push(tintGeo(PG.box,hair,0,1.53,-0.075,0.2,0.3,0.07));
+  } else if (Math.random()<0.88){ body.push(tintGeo(PG.cap,hair,0,1.675,-0.006,0.108,0.1,0.118)); }
+  if (extra==='elche') for (const y of [1.12,1.26]) body.push(tintGeo(PG.cyl,'#f4f4f0',0,y,0,0.2,0.05,0.13));
+  g.add(pedMesh(body,shadow));
+  const legs=[], arms=[], knees=[], elbows=[]; let wmHolder=null;
+  for (const sx of [-1,1]){
+    const sh=new THREE.Group(); sh.position.set(sx*(fem?0.175:0.2),1.43,0); g.add(sh); arms.push(sh);
+    sh.add(pedMesh([tintGeo(capsule(0.052,0.2),shirt,0,-0.15,0)],shadow));
+    const el=new THREE.Group(); el.position.y=-0.31; sh.add(el); elbows.push(el);
+    el.add(pedMesh([tintGeo(capsule(0.043,0.18),longSleeve?shirt:skin,0,-0.13,0),tintGeo(PG.sph,skin,0,-0.31,0.006,0.042,0.06,0.03)],shadow));
+    if (sx===1){ wmHolder=new THREE.Group(); wmHolder.position.y=0.31; el.add(wmHolder); }
+    const hp=new THREE.Group(); hp.position.set(sx*0.095,0.93,0); g.add(hp); legs.push(hp);
+    hp.add(pedMesh([tintGeo(capsule(0.072,0.26),shorts?pants:(skirt?skin:pants),0,-0.2,0)],shadow));
+    const kn=new THREE.Group(); kn.position.y=-0.43; hp.add(kn); knees.push(kn);
+    kn.add(pedMesh([tintGeo(capsule(0.058,0.28),(shorts||skirt)?skin:pants,0,-0.2,0),tintGeo(PG.sph,shoes,0,-0.455,0.045,0.058,0.045,0.125)],shadow));
+  }
+  g.userData={legs,arms,knees,elbows,wm:makeWeaponModels(wmHolder)}; if (extra==='cop') setWeaponModel(g,'pistol');
+  return g;
+}
+function disposePed(mesh){ mesh.traverse(o=>{ if (o.isMesh && o.geometry.userData.ped) o.geometry.dispose(); }); }
 // Modelos de arma en la mano derecha (el brazo cuelga en -y; con el brazo levantado, -y apunta al frente y -z hacia el suelo)
-const WPN_MAT={dark:lambert('#1d1f22'),metal:lambert('#4a4f55'),wood:lambert('#8a5a32'),bat:lambert('#caa36a'),grip:lambert('#2b2b2b'),gren:lambert('#3d4a2a')};
+const WPN_MAT={silver:new THREE.MeshPhongMaterial({color:'#b9bec4',shininess:110,specular:0xffffff}),dark:lambert('#1d1f22'),metal:lambert('#4a4f55'),wood:lambert('#8a5a32'),bat:lambert('#caa36a'),grip:lambert('#2b2b2b'),gren:lambert('#3d4a2a')};
 const batGeo=new THREE.CylinderGeometry(0.035,0.085,1.0,10), grenHandGeo=new THREE.SphereGeometry(0.12,10,8);
 function makeWeaponModels(arm){
   const wm={}, grp=()=>{ const g=new THREE.Group(); g.visible=false; arm.add(g); return g; };
+  wm.deagle=grp(); part(wm.deagle,WPN_MAT.silver,0.095,0.38,0.14,0,-0.85,0.04,false); part(wm.deagle,WPN_MAT.dark,0.07,0.06,0.09,0,-1.05,0.06,false); part(wm.deagle,WPN_MAT.grip,0.08,0.1,0.22,0,-0.7,-0.08,false);
   wm.pistol=grp(); part(wm.pistol,WPN_MAT.dark,0.08,0.3,0.12,0,-0.82,0.03,false); part(wm.pistol,WPN_MAT.grip,0.07,0.09,0.2,0,-0.7,-0.07,false);
   wm.smg=grp(); part(wm.smg,WPN_MAT.dark,0.09,0.5,0.13,0,-0.88,0.03,false); part(wm.smg,WPN_MAT.metal,0.06,0.09,0.26,0,-0.83,-0.15,false); part(wm.smg,WPN_MAT.grip,0.06,0.14,0.08,0,-0.62,-0.02,false);
   wm.shotgun=grp(); part(wm.shotgun,WPN_MAT.metal,0.07,0.9,0.08,0,-1.05,0.04,false); part(wm.shotgun,WPN_MAT.wood,0.09,0.38,0.15,0,-0.56,-0.02,false); part(wm.shotgun,WPN_MAT.wood,0.08,0.22,0.1,0,-0.9,-0.04,false);
@@ -1113,7 +1191,9 @@ function weaponPose(){
   const m=player.mesh, W=curW(), A=m.userData.arms;
   setWeaponModel(m, W.throw ? (player.ammo.grenade>0?'grenade':null) : W.id);
   A[0].rotation.z=0; A[1].rotation.z=0;
-  const two=W.id==='smg'||W.id==='shotgun';
+  const E=m.userData.elbows, two=W.id==='smg'||W.id==='shotgun';
+  if (player.punchT>0 || aimT>0 || W.id==='bat' || two) E[1].rotation.x=0;
+  if (aimT>0 && two) E[0].rotation.x=-0.5;
   if (player.punchT>0 && player.punchDur){
     const f=1-player.punchT/player.punchDur, e=1-Math.pow(1-f,3);
     if (W.id==='bat'){ A[1].rotation.x=lerp(-3.0,-0.4,e); A[0].rotation.x=lerp(-2.7,-0.5,e); A[1].rotation.z=lerp(0.25,-0.15,e); A[0].rotation.z=lerp(-0.35,0.2,e); }
@@ -1124,7 +1204,13 @@ function weaponPose(){
   } else if (W.id==='bat'){ A[1].rotation.x=-0.45; A[1].rotation.z=0.15; }
   else if (two){ A[1].rotation.x=-0.7; A[0].rotation.x=-0.75; A[0].rotation.z=-0.4; }
 }
-function animPed(mesh,phase,amp){ const {legs,arms}=mesh.userData; const s=Math.sin(phase)*amp; legs[0].rotation.x=s; legs[1].rotation.x=-s; arms[0].rotation.x=-s*0.8; arms[1].rotation.x=s*0.8; }
+function animPed(mesh,phase,amp){
+  const u=mesh.userData, sn=Math.sin(phase), s=sn*amp;
+  u.legs[0].rotation.x=s; u.legs[1].rotation.x=-s;
+  u.knees[0].rotation.x=Math.max(0,sn)*amp*1.4+amp*0.1; u.knees[1].rotation.x=Math.max(0,-sn)*amp*1.4+amp*0.1;
+  u.arms[0].rotation.x=-s*0.8; u.arms[1].rotation.x=s*0.8;
+  u.elbows[0].rotation.x=-0.2-amp*0.35; u.elbows[1].rotation.x=-0.2-amp*0.35;
+}
 
 class Ped{
   constructor(x,z,cop=false){
@@ -1214,7 +1300,7 @@ class Ped{
     if (!nb || nb.noWalk){ this.k=(this.k+this.dir+4)%4; [this.tx,this.tz]=b.corners[this.k]; return; }
     this.block=nb; this.k=nk; [this.tx,this.tz]=nb.corners[nk]; this.cross=true;
   }
-  remove(){ scene.remove(this.mesh); const i=peds.indexOf(this); if (i>=0) peds.splice(i,1); }
+  remove(){ scene.remove(this.mesh); disposePed(this.mesh); const i=peds.indexOf(this); if (i>=0) peds.splice(i,1); }
 }
 
 /* ================= jugador ================= */
@@ -1360,7 +1446,7 @@ function spawnClient(){
   }
 }
 function updateClients(dt){
-  if (player.drugs<=0){ if (clients.length){ for (const c of clients) scene.remove(c.m); clients.length=0; } return; }
+  if (player.drugs<=0){ if (clients.length){ for (const c of clients){ scene.remove(c.m); disposePed(c.m); } clients.length=0; } return; }
   clientT-=dt; if (clients.length<3 && clientT<=0){ spawnClient(); clientT=3; }
   if (state!=='play') return;
   const P=player.inCar||player;
@@ -1370,7 +1456,7 @@ function updateClients(dt){
     if (player.inCar && player.inCar.speed>3){ showHint('Frena para vender'); continue; }
     const n=Math.min(player.drugs,1+Math.floor(Math.random()*3)); player.drugs-=n; player.money+=n*c.pay;
     sfxPick(); toast(`Venta: ${n} paquete${n>1?'s':''} · +${n*c.pay} €`,2);
-    scene.remove(c.m); clients.splice(clients.indexOf(c),1); clientT=10;
+    scene.remove(c.m); disposePed(c.m); clients.splice(clients.indexOf(c),1); clientT=10;
     if (policeNear(45)||peds.some(p=>p.cop&&p.state!=='dead'&&d2(p.x,p.z,c.x,c.z)<1600)) addStars(2,'¡Te han pillado trapicheando!');
     else if (Math.random()<0.1) addStars(1,'Un vecino ha avisado a la policía');
     persist();
@@ -1517,7 +1603,7 @@ addEventListener('keydown',e=>{
   if (e.code==='KeyF') fireEdge=true;
   if (e.code==='KeyQ') selectWeapon(player.w+1);
   if (e.code==='KeyI') toggleKeys();
-  if (/^Digit[1-6]$/.test(e.code)){ const id=WEAPONS[+e.code.slice(5)-1].id, i=player.owned.indexOf(id); if (i>=0) selectWeapon(i); else toast(`No tienes ${W_BY[id].name.toLowerCase()}`,1.2); }
+  if (/^Digit[1-7]$/.test(e.code)){ const id=WEAPONS[+e.code.slice(5)-1].id, i=player.owned.indexOf(id); if (i>=0) selectWeapon(i); else toast(`No tienes ${W_BY[id].name.toLowerCase()}`,1.2); }
   if (e.code==='KeyH') horn();
   if (e.code==='KeyC') camMode=(camMode+1)%2;
   if (e.code==='KeyM') openMap();
@@ -1650,6 +1736,7 @@ function horn(){ sfxHorn(); const e=player.inCar||player; for (const p of peds) 
 const WEAPONS=[
   {id:'fist',name:'Puños',melee:true,range:1.8,dmg:35,rate:0.35},
   {id:'bat',name:'Bate',melee:true,range:2.4,dmg:60,rate:0.5,price:80},
+  {id:'deagle',name:'Desert Eagle',desc:'Muy potente, pocas balas',range:55,dmg:80,rate:0.5,spread:0.015,price:700,ammoPrice:80,pack:14,snd:[1100,0.2,0.6],kick:0.3},
   {id:'pistol',name:'Pistola',desc:'Precisa y barata',range:48,dmg:40,rate:0.3,spread:0.025,price:300,ammoPrice:50,pack:24,snd:[2200,0.09,0.35]},
   {id:'smg',name:'Subfusil',desc:'Ráfaga automática',range:42,dmg:22,rate:0.085,auto:true,spread:0.06,price:900,ammoPrice:100,pack:60,snd:[2600,0.06,0.25]},
   {id:'shotgun',name:'Escopeta',desc:'Devastadora de cerca',range:24,dmg:28,pellets:7,rate:0.95,spread:0.13,price:1200,ammoPrice:90,pack:10,snd:[900,0.25,0.55]},
@@ -1658,7 +1745,8 @@ const WEAPONS=[
 const W_BY=Object.fromEntries(WEAPONS.map(w=>[w.id,w]));
 const wOrder=id=>WEAPONS.findIndex(w=>w.id===id);
 player.owned=(save.owned||['fist']).filter(id=>W_BY[id]); if (!player.owned.includes('fist')) player.owned.unshift('fist');
-player.ammo=Object.assign({},save.ammo||{}); player.armor=save.armor||0; player.drugs=save.drugs||0; player.w=0;
+if (!save.deagleGift){ if (!player.owned.includes('deagle')) player.owned.push('deagle'); player.owned.sort((a,b)=>WEAPONS.findIndex(w=>w.id===a)-WEAPONS.findIndex(w=>w.id===b)); save.ammo=Object.assign({},save.ammo||{}); save.ammo.deagle=(save.ammo.deagle||0)+35; save.deagleGift=true; save.owned=player.owned; }
+player.ammo=Object.assign({},save.ammo||{}); player.armor=save.armor||0; player.drugs=save.drugs||0; player.w=Math.max(0,player.owned.indexOf('deagle'));
 let fireCd=0, fireEdge=false, fireHeld=false, mouseHeld=false, aimT=0, shotAlertT=0;
 const curW=()=>W_BY[player.owned[player.w]]||WEAPONS[0];
 function selectWeapon(i){
@@ -1716,7 +1804,7 @@ function shoot(W){
   aimT=0.5;
   for (let k=0;k<(W.pellets||1);k++) rayShot(ox,oz,h+mrand(-W.spread,W.spread),W.range,W.dmg);
   emit(glowP,ox+Math.sin(h)*0.3,1.35,oz+Math.cos(h)*0.3,0,0,0,0.06,0.55,'#ffd27a');
-  noise(W.snd[1],W.snd[2],W.snd[0]); shake(W.pellets?0.35:0.1);
+  noise(W.snd[1],W.snd[2],W.snd[0]); shake(W.kick||(W.pellets?0.35:0.1));
   for (const p of peds) if (p.state!=='dead' && d2(p.x,p.z,ox,oz)<2025) p.scare(ox,oz,7);
   if (now>shotAlertT){
     if (policeNear(70) || peds.some(p=>p.cop&&p.state!=='dead'&&d2(p.x,p.z,ox,oz)<4900)){ addStars(1,'¡Disparos! La policía acude'); shotAlertT=now+6; }
@@ -2254,6 +2342,7 @@ function startGame(){
   $('title').hidden=true; $('hud').hidden=false; if (isTouch) $('touch').hidden=false;
   state='play'; camYaw=player.h; camPos.set(player.x-Math.sin(camYaw)*6,3,player.z-Math.cos(camYaw)*6);
   if (!isTouch) toggleKeys(true);
+  if (player.owned.includes('deagle') && !save.deagleTip){ save.deagleTip=true; persist(); setTimeout(()=>{ if (state==='play') toast(`Llevas una <em>Desert Eagle</em> con ${player.ammo.deagle||0} balas. ${isTouch?'Pulsa DISPARAR':'Pulsa F o haz clic'} para disparar: apunta sola al objetivo más cercano que tengas delante.`,6); },5500); }
   toast(save.done.length?`Bienvenido de nuevo a Elche. Llevas ${save.done.length}/5 misiones.`:'Estás en <em>La Glorieta</em>. Busca un marcador amarillo en el minimapa o roba el primer coche que veas.',5);
   try{ navigator.wakeLock?.request('screen').catch(()=>{}); }catch(e){}
 }
@@ -2271,7 +2360,7 @@ $('bResume').addEventListener('click',resume);
 $('bSound').addEventListener('click',()=>{ soundOn=!soundOn; $('bSound').textContent='Sonido: '+(soundOn?'sí':'no'); });
 $('bReset').addEventListener('click',e=>{
   const b=e.currentTarget; if (!b.dataset.arm){ b.dataset.arm='1'; b.textContent='¿Seguro? Pulsa otra vez'; return; }
-  save={money:150,done:[],dates:[]}; player.money=150; shownMoney=150; dateMeshes.forEach(m=>m.visible=true); persist(); b.dataset.arm=''; b.textContent='Progreso borrado';
+  save={money:150,done:[],dates:[],deagleGift:true}; player.owned=['fist','deagle']; player.ammo={deagle:35}; player.w=1; player.armor=0; player.drugs=0; player.money=150; shownMoney=150; dateMeshes.forEach(m=>m.visible=true); persist(); b.dataset.arm=''; b.textContent='Progreso borrado';
 });
 $('bigmap').addEventListener('click',closeMap);
 $('bQual').addEventListener('click',()=>{ quality={alta:'media',media:'baja',baja:'alta'}[quality]; try{ localStorage.setItem('ilici-q',quality); }catch(e){} applyQuality(); $('bQual').textContent='Gráficos: '+QUALITY[quality].label.toLowerCase(); });
