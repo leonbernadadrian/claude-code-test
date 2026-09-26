@@ -1703,7 +1703,7 @@ function explode(x,z,big=1,byPlayer=false){
   sfxBoom(1); shake(dist({x,z},player)<40?1.2:0.4);
   for (const p of peds) if (d2(p.x,p.z,x,z)<64){ const a=Math.atan2(p.x-x,p.z-z), was=p.state!=='dead'; p.knock(Math.sin(a)*12,Math.cos(a)*12,true); if (byPlayer&&was) onPedKilled(p); }
   for (const c of cars) if (!c.exploded && d2(c.x,c.z,x,z)<81 && (c.x!==x||c.z!==z)){ damageCar(c,55,0); const a=Math.atan2(c.x-x,c.z-z); c.vx+=Math.sin(a)*8; c.vz+=Math.cos(a)*8; }
-  if (!player.inCar && d2(player.x,player.z,x,z)<81) hurt(45);
+  if ((!player.inCar||player.inCar.T.bike) && d2(player.x,player.z,x,z)<81){ if (player.inCar) bikeFall(player.x-x,player.z-z,10); hurt(45); knockDown(1.4); }
 }
 function fireworks(x,z,n){
   let k=0; const fire=()=>{
@@ -2131,7 +2131,7 @@ function hurt(n,zone='torso'){
 }
 function damageCar(c,n,imp){
   if (c.exploded) return;
-  if (c.T.bike){ if (c===player.inCar && imp) sfxCrash(imp*0.5); return; }
+  if (c.T.bike){ if (c===player.inCar && imp){ sfxCrash(imp*0.5); if (imp>6.5) bikeFall(-c.vx||1,-c.vz,imp); else if (imp>4) hurt(imp*0.8); } return; }
   c.health-=n;
   if (c===player.inCar){ if (imp) sfxCrash(imp); shake(Math.min(1,n/40)); }
   if (c.health<=0 && !c.dead){ c.dead=true; c.burn=4.5; if (c===player.inCar) toast('¡El coche está ardiendo! <em>Sal ya</em>',2.5); }
@@ -2156,13 +2156,13 @@ function nearestCar(r){
 function enterExit(){
   if (player.health<=0) return;
   if (player.inCar){ exitCar(false); return; }
-  if (jack) return;
+  if (jack || player.downT>0) return;
   const c=nearestCar(4.2); if (!c) return;
   if (c.driver==='npc' || c.driver==='police'){
     if (c.speed>5){ toast('Va demasiado rápido para sacar al conductor',1.4); return; }
     startJack(c); return;
   }
-  c.driver='player'; c.ai=null; player.inCar=c; player.mesh.visible=false; setCrouch(false); player.y=0; player.vy=0;
+  c.driver='player'; c.ai=null; c.fallen=false; player.inCar=c; player.mesh.visible=false; setCrouch(false); player.y=0; player.vy=0;
   if (c.mission && mission.cur && mission.cur.steps[mission.step].type==='steal') advanceMission();
 }
 /* ---- robo con animación: abrir la puerta, sacar al conductor y subir ---- */
@@ -2416,7 +2416,7 @@ function shoulderAim(ox,oz,oy){   // punto al que apunta la cruceta (centro de l
   return { yaw:Math.atan2(px-ox,pz-oz), pitch:Math.atan2(py-oy,d) };
 }
 function tryFire(){
-  if (state!=='play'||player.health<=0||fireCd>0||jack) return;
+  if (state!=='play'||player.health<=0||fireCd>0||jack||player.downT>0) return;
   const W=curW();
   if (player.inCar && (W.melee||W.throw)) return;
   if (W.melee) return; // los golpes se cargan y se sueltan en updateMelee()
@@ -2610,7 +2610,23 @@ const WG={nodes:[],adj:[],edges:[]};
     if (e.offs[0]===null && e.offs[1]===null) e.offs=null; }
   for (let i=0;i<WG.adj.length;i++) WG.adj[i]=WG.adj[i].filter(k=>WG.edges[k].offs); }
 function wgNearest(x,z){ let best=-1,bd=1e12; WG.nodes.forEach((n,i)=>{ const d=(n[0]-x)**2+(n[1]-z)**2; if (d<bd && WG.adj[i].length){ bd=d; best=i; } }); return best; }
-function bikeFall(dx,dz,f){ /* se completa con la bicicleta */ }
+/* ---- impactos de vehículos: dependen de la velocidad, el ángulo y el peso ---- */
+const MASS={bike:0.28,compact:0.9,sedan:1,taxi:1,sports:1,police:1.05,van:1.3,boxvan:1.5,pickup:1.3,truck:1.9,bus:2};
+function impact(c,x,z){
+  let nx=x-c.x, nz=z-c.z; const L=Math.hypot(nx,nz)||1; nx/=L; nz/=L;
+  const vn=Math.max(0,c.vx*nx+c.vz*nz), mass=MASS[c.k]||1;   // solo cuenta la velocidad hacia el peatón (de frente > de refilón)
+  return { sev:vn*Math.sqrt(mass), vn, mass, nx, nz };
+}
+function knockDown(t){ if (player.inCar||player.health<=0) return; player.downT=Math.max(player.downT||0,t); player.vx=player.vz=0; setCrouch(false); aiming=false; }
+function bikeFall(dx,dz,f){   // salir despedido de la bici
+  const c=player.inCar; if (!c || !c.T.bike || player.health<=0) return;
+  const L=Math.hypot(dx,dz)||1, ux=dx/L, uz=dz/L, sp=c.speed;
+  exitCar(true,true); player.x=c.x+ux*1.2; player.z=c.z+uz*1.2; if (pointBlocked(player.x,player.z)||blockedAt(player.x,player.z)){ player.x=c.x; player.z=c.z; }
+  pushCircle(player,0.42); player.h=Math.atan2(ux,uz);
+  c.vx*=0.3; c.vz*=0.3; c.fallen=true; c.mesh.rotation.z=Math.PI/2*0.92;
+  hurt(Math.min(40,4+f*2+sp*0.8)); shake(0.7); sfxCrash(3); knockDown(1.6);
+  toast('¡Te has caído de la bici!',1.5);
+}
 function carAt(x,z,pad){ for (const c of cars){ const dx=x-c.x, dz=z-c.z; if (dx*dx+dz*dz>64) continue; const fx=Math.sin(c.h), fz=Math.cos(c.h), lon=dx*fx+dz*fz, lat=-dx*fz+dz*fx; if (Math.abs(lon)<c.T.len/2+pad && Math.abs(lat)<c.T.w/2+pad) return c; } return null; }
 function wgStep(p){ const edgesAt=WG.adj[p.wgB]; if (!edgesAt || !edgesAt.length){ p.wgA=null; return; }
   let opts=edgesAt.filter(e=>{ const E=WG.edges[e]; return (E.a===p.wgB?E.b:E.a)!==p.wgA; }); if (!opts.length) opts=edgesAt;
@@ -2773,6 +2789,7 @@ function update(dt){
     c.drive(dt, c.dead?0:ax.y, ax.x, handbrake());
     player.x=c.x; player.z=c.z; player.vx=c.vx; player.vz=c.vz;
   } else if (jack){ updateJack(dt);
+  } else if (player.downT>0){ player.downT-=dt; player.vx=player.vz=0; pushCircle(player,0.42,player.y);
   } else if (state==='play' && fp){
     if (keys.has('ArrowLeft')) player.h+=2.2*dt; if (keys.has('ArrowRight')) player.h-=2.2*dt;
     const mag=Math.min(1,Math.hypot(ax.x,ax.y));
@@ -2858,16 +2875,24 @@ function update(dt){
     const sp=c.speed; const fx=Math.sin(c.h), fz=Math.cos(c.h);
     const test=(px,pz)=>{ const dx=px-c.x, dz=pz-c.z, lon=dx*fx+dz*fz, lat=dx*(-fz)+dz*fx; return (Math.abs(lon)<c.T.len/2+0.35 && Math.abs(lat)<c.T.w/2+0.35) ? {lon,lat} : null; };
     for (const p of peds){
-      if (p.state==='dead' || d2(p.x,p.z,c.x,c.z)>16) continue;
+      if (p.state==='dead' || p.state==='dragged' || d2(p.x,p.z,c.x,c.z)>16) continue;
       const h=test(p.x,p.z); if (!h) continue;
-      if (sp>4.5){ const kill=sp>8; p.knock(c.vx*1.1,c.vz*1.1,kill); c.vx*=0.9; c.vz*=0.9;
-        if (c===player.inCar){ sfxCrash(3); if (kill) onPedKilled(p); else if (p.cop || policeNear(60)) addStars(1,null); }
-        for (const q of peds) if (q!==p && d2(q.x,q.z,p.x,p.z)<400) q.scare(c.x,c.z,6);
-      } else { const s=h.lat>=0?1:-1; p.x+=(-fz)*s*0.12; p.z+=fx*s*0.12; }
+      const I=impact(c,p.x,p.z), s=h.lat>=0?1:-1;
+      if (I.sev<1.6 || (now-(p.hitCarT||-9)<0.6)){ p.x+=(-fz)*s*0.12; p.z+=fx*s*0.12; if (I.sev>0.6 && p.state==='walk') p.scare(c.x,c.z,2); continue; }
+      p.hitCarT=now; const dmg=I.sev<3.5?4:I.sev<7?I.sev*4:I.sev*9, dx=I.nx, dz=I.nz;
+      p.hp-=dmg; const kill=p.hp<=0, byP=c===player.inCar;
+      if (kill) p.knock(c.vx*0.9+dx*2,c.vz*0.9+dz*2,true);
+      else if (I.sev<3.5) p.stagger(dx+(-fz)*s*0.8,dz+fx*s*0.8,1);   // a poca velocidad: empujón y tambaleo
+      else p.knock(c.vx*0.6+dx*2,c.vz*0.6+dz*2,false);                // se cae, pero sobrevive
+      c.vx*=1-Math.min(0.5,0.06*I.sev/I.mass); c.vz*=1-Math.min(0.5,0.06*I.sev/I.mass);
+      if (byP){ sfxCrash(Math.min(4,I.sev*0.5)); if (kill) onPedKilled(p); else if (I.sev>=3.5 && (p.cop || policeNear(60))) addStars(1,null);
+        if (c.T.bike && I.sev>=4.5 && Math.random()<0.25+I.sev*0.06) bikeFall(c.vx,c.vz,I.sev*0.6); }
+      if (I.sev>=3.5) for (const q of peds) if (q!==p && d2(q.x,q.z,p.x,p.z)<400) q.scare(c.x,c.z,6);
     }
     if (!player.inCar && state==='play' && d2(player.x,player.z,c.x,c.z)<16){
       const h=test(player.x,player.z);
-      if (h){ if (sp>5 && now-player.lastHurt>0.8){ hurt(sp*2.2); player.x+=c.vx*0.25; player.z+=c.vz*0.25; shake(0.6); }
+      if (h){ const I=impact(c,player.x,player.z);
+        if (I.sev>=2.5 && now-player.lastHurt>0.8){ hurt(I.sev<5?I.sev*2:I.sev*5); player.x+=c.vx*0.2; player.z+=c.vz*0.2; shake(0.6); if (I.sev>=4.5) knockDown(1.2+I.sev*0.05); }
         const s=h.lat>=0?1:-1; player.x+=(-fz)*s*0.15; player.z+=fx*s*0.15; }
     }
     // peatones esquivan coches rápidos
@@ -3076,7 +3101,9 @@ function frame(t){
       const u=player.mesh.userData;
       if (player.crouch){ const w=Math.sin(player.phase)*(sp>0.3?0.25:0); u.legs[0].rotation.x=-1.2+w; u.legs[1].rotation.x=-1.2-w; u.knees[0].rotation.x=u.knees[1].rotation.x=2.0; }
       else if (player.y>0.05){ u.legs[0].rotation.x=-0.5; u.legs[1].rotation.x=0.1; u.knees[0].rotation.x=0.9; u.knees[1].rotation.x=0.6; }
-      weaponPose(); }
+      weaponPose();
+      if (player.downT>0){ const k=player.downT>0.4?1:player.downT/0.4; player.mesh.rotation.x=-1.45*k; player.mesh.position.y=0.25+0.12*k; u.arms[0].rotation.x=u.arms[1].rotation.x=-2.6*k; setWeaponModel(player.mesh,null); }
+      else player.mesh.rotation.x=0; }
     if (keysT>0){ keysT-=dt; if (keysT<=0) $('keys').classList.remove('show'); }
     updateCamera(dt); updateViewmodel(dt); updateHUD(dt); updateMarkers(); updateAudio();
   } else if (state==='title'){
