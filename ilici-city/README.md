@@ -31,7 +31,8 @@ Los controles aparecen en pantalla al empezar (tecla I) y en el menú de pausa. 
 
 ## Qué incluye
 
-- **Mapa de Elche estilizado**: el río Vinalopó cruza la ciudad por un cauce hundido, con 6 puentes. Hay barrios con su propio estilo de edificios (Centro Histórico, El Raval, Carrús, El Toscar, El Pla, Altabix, Los Palmerales y el polígono) y las avenidas de Novelda, Alicante y Santa Pola.
+- **Centro real a escala 1:1**: de La Glorieta al carrer Aspe (Raval de Santa Teresa), con los datos de OpenStreetMap. Tiene 177 calles con su trazado, nombre y sentido, 488 edificios con su planta real, plazas (Plaça de Baix, plaça Santa Maria, Glorieta…), parques, el cauce real del Vinalopó y los puentes d'Altamira, de Canalejas y de Santa Teresa. Entre los monumentos están la Basílica de Santa Maria (cúpula y campanario), el Ajuntament con la Calendura, la Torre de la Calaforra, el Palau d'Altamira y la Dama d'Elx en La Glorieta. Hay tráfico que respeta los sentidos únicos y peatones por las aceras.
+- **Resto de Elche estilizado**: el río Vinalopó cruza la ciudad por un cauce hundido, con 6 puentes. Hay barrios con su propio estilo de edificios (Centro Histórico, El Raval, Carrús, El Toscar, El Pla, Altabix, Los Palmerales y el polígono) y las avenidas de Novelda, Alicante y Santa Pola.
 - **Monumentos**: Basílica de Santa María (cúpula azul), Palacio de Altamira, Torre de la Calahorra, Ayuntamiento con la Calendura, La Glorieta, Mercado Central, Parque Municipal, Huerto del Cura con la Palmera Imperial, Estadio Martínez Valero, Campus UMH, Hospital General, Comisaría y Estación.
 - **Unas 2.800 palmeras**: palmerales, huertos y las orillas del río.
 - **Callejero**: cada calle tiene nombre (C/ Corredora, Paseo de la Estación, C/ Reina Victoria, Av. de la Libertad...). Se ven en placas de azulejo en los cruces, en el HUD y en el mapa.
@@ -54,10 +55,21 @@ Los controles aparecen en pantalla al empezar (tecla I) y en el menú de pausa. 
 - **Ciclo de día y noche**: amanece a las 7:00 y anochece hacia las 21:00. De noche se iluminan ventanas, farolas y faros.
 - **Progreso guardado** en el navegador (localStorage).
 
-El mapa se basa en la geografía real de Elche, pero no es un plano exacto. Las calles siguen una cuadrícula para que el juego funcione bien.
+El centro (La Glorieta – carrer Aspe) es real. El resto del mapa se basa en la geografía de Elche, pero sus calles siguen una cuadrícula.
+
+## Datos del centro real
+
+- Fuente: © colaboradores de OpenStreetMap, licencia ODbL (https://www.openstreetmap.org/copyright).
+- `data/elche-centro.json` es el extracto ya convertido y va incrustado en `index.html`.
+- Para regenerarlo o ampliar la zona:
+  ```bash
+  curl -o zona.osm "https://api.openstreetmap.org/api/0.6/map?bbox=-0.7040,38.2620,-0.6935,38.2680"
+  python3 tools/osm_to_game.py zona.osm data/elche-centro.json
+  ```
+  Después hay que sustituir el contenido de `<script id="elx-data">` en `index.html` por el nuevo JSON. Si cambias la caja, ajusta también `RZ` en el script.
 
 ## Ideas para seguir
 
-- Cargar las calles reales de Elche desde OpenStreetMap (requiere acceso a la API de Overpass).
+- Ampliar la zona real a más barrios (Parque Municipal, Huerto del Cura, Carrús…).
 - Más tipos de misiones, radio con música y modelos de coche más detallados.
 - Multijugador.
