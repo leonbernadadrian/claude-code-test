@@ -2433,7 +2433,15 @@ function playerFlightInput(){ const ax=axis(); return {thr:ax.y, turn:ax.x, up:k
 function aircraftAIInput(a){   // piloto automático: patrulla por puntos de ruta o sigue al jugador desde el aire
   const A=a.ai, inp={thr:0,turn:0,up:false,down:false,strafe:0};
   let tx,tz,alt=A.alt||90;
-  if (A.mode==='follow'){ const P=player.inCar||player; tx=P.x+Math.sin(now*0.3)*35; tz=P.z+Math.cos(now*0.3)*35; alt=55; }
+  if (A.police){   // policía: solo sabe lo que ve (o lo que le cuentan) — sin conocer mágicamente tu posición
+    if (A.mode==='base') return inp;
+    if (A.mode==='return'){ tx=A.base[0]; tz=A.base[1]; const dd=Math.hypot(tx-a.x,tz-a.z); alt=45; if (dd<25){ const gy=a.y-airGround(a.x,a.z), want=Math.atan2(tx-a.x,tz-a.z);   // se coloca encima del helipuerto a baja altura y solo entonces se posa
+        inp.turn=dd>1.5?clamp(-wrapA(want-a.h)*1.5,-1,1):0; inp.thr=dd>1.5&&Math.abs(wrapA(want-a.h))<0.5?Math.min(0.35,dd/30):0; if (dd<2.5) inp.down=true; else if (gy<7) inp.up=true; else if (gy>10) inp.down=true; return inp; } }
+    else { const P=player.inCar||player;
+      if (now-(A.seeT??-99)<2.5){ A.lx=P.x; A.lz=P.z; A.lostT=now; tx=P.x+Math.sin(now*0.35)*26; tz=P.z+Math.cos(now*0.35)*26; alt=42; }   // te tiene: orbita encima
+      else { const K=policeTarget(), r=22+Math.min(90,(now-(A.lostT??now))*1.6); A.lx=K.x; A.lz=K.z; tx=K.x+Math.sin(now*0.22)*r; tz=K.z+Math.cos(now*0.22)*r; alt=55; } }   // la perdió: busca en círculos cada vez más amplios alrededor de la última pista
+  }
+  else if (A.mode==='follow'){ const P=player.inCar||player; tx=P.x+Math.sin(now*0.3)*35; tz=P.z+Math.cos(now*0.3)*35; alt=55; }
   else { const w=A.wps[A.i]; tx=w[0]; tz=w[1]; if (d2(a.x,a.z,tx,tz)<40*40) A.i=(A.i+1)%A.wps.length; }
   const want=Math.atan2(tx-a.x,tz-a.z), dh=wrapA(want-a.h), dist=Math.hypot(tx-a.x,tz-a.z);
   inp.turn=clamp(-dh*1.5,-1,1); inp.thr=Math.abs(dh)<0.6?clamp(dist/80,0.2,1):0.1;
@@ -2457,7 +2465,7 @@ function flightStep(a,dt,inp){
     }
     const cp=Math.cos(a.pitch); a.x+=fx*cp*a.v*dt; a.z+=fz*cp*a.v*dt; a.y+=a.vy*dt;
   } else {
-    const on=!!(a.pilot||a.ai); a.rpm=clamp(a.rpm+(on?0.35:-0.25)*dt,0,1); const lift=a.rpm>0.85;
+    const on=!!(a.pilot||(a.ai&&a.ai.mode!=='base')); a.rpm=clamp(a.rpm+(on?0.35:-0.25)*dt,0,1); const lift=a.rpm>0.85;
     const gyh=a.y-g; let vyT=lift?(inp.up?7:0)-(inp.down?6:0):-4; if (vyT<0 && gyh<5) vyT=Math.max(vyT,-1.2-gyh*0.5);   // cerca del suelo frena el descenso: se posa suave
     a.vy+=(vyT-a.vy)*dt*2.2;
     const air=a.y>g+0.3; a.v+=((air&&lift?inp.thr*38:0)-a.v)*Math.min(1,dt*(air?0.7:8)); a.side+=((air&&lift?inp.strafe*12:0)-a.side)*Math.min(1,dt*(air?1.5:8));
@@ -2503,12 +2511,37 @@ function exitAircraft(){
   for (const [sx,sz] of [[rx*off,rz*off],[-rx*off,-rz*off],[fx*3,fz*3],[rx*1.3+fx*0.6,rz*1.3+fz*0.6],[-rx*1.3+fx*0.6,-rz*1.3+fz*0.6]]){ const gh=airGround(a.x+sx,a.z+sz); if (Math.abs(gh-base)<0.5){ ex=a.x+sx; ez=a.z+sz; break; } }
   player.inAir=null; a.pilot=null; a.thr=0; player.x=ex; player.z=ez; player.y=airGround(player.x,player.z); player.vy=0; player.mesh.visible=true; player.h=a.h;
 }
+function heliSees(a){   // ¿ve al jugador desde el aire? alcance según la luz y línea de visión en 3D (los edificios tapan)
+  const P=player.inCar||player, py=(player.y||0)+1.2, dx=P.x-a.x, dz=P.z-a.z, dh=Math.hypot(dx,dz), rng=lerp(50,85,lightDay)+(a.ai.lightOn?15:0);
+  if (dh>rng) return false; const n=Math.ceil(Math.hypot(dh,a.y-py)/3);
+  for (let i=1;i<n;i++){ const t=i/n, y=a.y+(py-a.y)*t; if (airGround(a.x+dx*t,a.z+dz*t)>y+0.3) return false; }
+  return true;
+}
+function policeHeliLogic(a,dt){   // entra con 3 estrellas, busca donde la policía cree que estás y vuelve a la base cuando baja el nivel
+  const A=a.ai;
+  if (player.stars>=3 && state==='play'){ if (A.mode!=='hunt'){ A.mode='hunt'; A.lostT=now; if (A.announce!==true){ A.announce=true; toast('🚁 El helicóptero de la policía despega',2.2); } } }
+  else if (A.mode==='hunt'){ A.mode='return'; A.announce=false; }
+  if (A.mode==='return' && Math.hypot(a.x-A.base[0],a.z-A.base[1])<6 && a.y-heliGround(a)<0.2){ A.mode='base'; a.v=a.side=0; }
+  if (A.mode==='hunt'){ A.chk=(A.chk||0)-dt; if (A.chk<=0){ A.chk=0.3; if (heliSees(a)){ A.seeT=now; markSeen(); } } }
+}
+function policeHeliFx(a,dt){   // rotativos azul y rojo y foco de búsqueda por la noche
+  const A=a.ai, fl=A.mode!=='base';
+  if (!A.fx){ const g=a.mesh, r=new THREE.Mesh(boxGeo,new THREE.MeshBasicMaterial({color:'#ff2a2a'})), b=new THREE.Mesh(boxGeo,new THREE.MeshBasicMaterial({color:'#2a6bff'}));
+    r.scale.set(0.25,0.12,0.25); b.scale.copy(r.scale); r.position.set(-0.4,0.35,-0.8); b.position.set(0.4,0.35,-0.8); g.add(r); g.add(b);
+    const cm=new THREE.MeshBasicMaterial({color:'#fff4d6',transparent:true,opacity:0.12,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide}); cm.toneMapped=false;
+    const cone=new THREE.Mesh(new THREE.CylinderGeometry(0.25,7,1,20,1,true).translate(0,-0.5,0),cm); cone.frustumCulled=false; scene.add(cone);
+    const dm=new THREE.MeshBasicMaterial({color:'#fff2c8',transparent:true,opacity:0.35,depthWrite:false,blending:THREE.AdditiveBlending}); dm.toneMapped=false;
+    const disc=new THREE.Mesh(new THREE.CircleGeometry(7,24).rotateX(-Math.PI/2),dm); disc.frustumCulled=false; scene.add(disc); A.fx={r,b,cone,disc}; }
+  const F=A.fx, k=Math.floor(now*4)%2; F.r.visible=fl&&k===0; F.b.visible=fl&&k===1;
+  const night=lightDay<0.55, on=fl && A.mode==='hunt' && night; A.lightOn=on; F.cone.visible=F.disc.visible=on;
+  if (on){ const P=player.inCar||player, seen=now-(A.seeT??-99)<2.5, tx=seen?P.x:A.lx??a.x, tz=seen?P.z:A.lz??a.z; A.spx=lerp(A.spx??tx,tx+(seen?0:Math.sin(now*0.9)*14),Math.min(1,dt*2)); A.spz=lerp(A.spz??tz,tz+(seen?0:Math.cos(now*0.7)*14),Math.min(1,dt*2));
+    const gy=airGround(A.spx,A.spz)+0.08, L=Math.hypot(A.spx-a.x,gy-a.y,A.spz-a.z); F.cone.position.set(a.x,a.y-0.2,a.z); F.cone.scale.set(1,L,1); F.cone.lookAt(A.spx,gy,A.spz); F.cone.rotateX(-Math.PI/2); F.disc.position.set(A.spx,gy,A.spz); }
+}
 function updateAircraft(dt){
   for (const a of AIRCRAFT){ if (a.dead) continue;
     if (a.pilot===player){ flightStep(a,dt,playerFlightInput()); if (a.dead) continue; player.x=a.x; player.z=a.z; player.y=a.y; player.h=a.h;
       const gy=a.y-airGround(a.x,a.z); showHint(`${a.kind==='plane'?'✈':'🚁'} ${Math.round(Math.hypot(a.v,a.side)*3.6)} km/h · ${Math.max(0,Math.round(gy))} m${a.kind==='plane'?' · motor '+Math.round(a.thr*100)+'%'+(a.v<27&&gy>2?' · ¡PÉRDIDA!':''):a.rpm<0.85?' · arrancando rotor…':''}${gy<1.2&&Math.hypot(a.v,a.side)<3?' · E: bajar':''}`); }
-    else if (a.ai){ if (a.ai.police) a.ai.mode=player.stars>=3?'follow':'patrol'; flightStep(a,dt,aircraftAIInput(a));
-      if (a.ai.police && a.ai.mode==='follow' && player.stars>=4 && d2(a.x,a.z,player.x,player.z)<90*90) markSeen(); }   // con 4+ estrellas el helicóptero te localiza
+    else if (a.ai){ if (a.ai.police) policeHeliLogic(a,dt); flightStep(a,dt,aircraftAIInput(a)); if (a.ai.police) policeHeliFx(a,dt); }
     else if (a.rpm>0 || a.y>airGround(a.x,a.z)+0.05) flightStep(a,dt,{thr:0,turn:0,up:false,down:false,strafe:0});
     else a.sync(); }
 }
@@ -2519,8 +2552,8 @@ function updateAircraft(dt){
   new Aircraft('plane','Avioneta del aeroclub',2525,516,Math.PI,{color:'#1f4fa3'});
   pad(2560,600,'#ffd23f'); new Aircraft('heli','Helicóptero del aeropuerto',2560,600,Math.PI/2,{color:'#f4f4f0',stripe:'#1f4fa3'});
   if (HOSP){ const hx=(HOSP.x0+HOSP.x1)/2, hz=(HOSP.z0+HOSP.z1)/2; pad(hx,hz,'#e0342c'); new Aircraft('heli','Helicóptero sanitario',hx,hz,0,{color:'#f6f6f2',stripe:'#e0342c'}); }
-  const pol=new Aircraft('heli','Helicóptero de la Policía',-40,-120,0,{color:'#1f3a8a',stripe:'#f4f4f0',ai:{mode:'patrol',police:true,alt:95,i:0,wps:[[-300,-400],[300,-450],[600,0],[400,500],[-100,600],[-600,300],[-650,-300]]}});
-  pol.y=95; pol.rpm=1; pol.sync();
+  { const C=SPECIAL.find(s=>s.name==='Comisaría'), bx=C?(C.x0+C.x1)/2:-55, bz=C?(C.z0+C.z1)/2:165; pad(bx,bz,'#1f4fa3');   // el helicóptero de la policía espera en el helipuerto de la comisaría
+    new Aircraft('heli','Helicóptero de la Policía',bx,bz,0,{color:'#1f3a8a',stripe:'#f4f4f0',ai:{mode:'base',police:true,base:[bx,bz]}}); }
   INTERACT_SOURCES.push(out=>{ if (player.inCar||player.inAir) return; for (const a of AIRCRAFT) if (!a.dead && !a.pilot && !a.ai && d2(a.x,a.z,player.x,player.z)<9*9 && a.y-airGround(a.x,a.z)<1) out.push({verb:'Pilotar',name:a.kind==='plane'?'Avioneta':'Helicóptero',x:a.x,z:a.z,r:a.kind==='plane'?7:6.5,act:()=>boardAircraft(a)}); });
 }
 // Tienda de bicicletas en La Glorieta
@@ -5245,9 +5278,22 @@ function updateMarkers(){
   beams.forEach((b,i)=>{ const p=pts[i]; if (!p){ b.visible=false; return; } b.visible=true; const r=st&&st.r?st.r:4; b.scale.set(r,60,r); b.position.set(p[0],30,p[1]); });
 }
 
+const rotorVoices=new Map();
+function updateRotors(){   // helicópteros en vuelo: batido de palas posicional (también el de la policía)
+  const t=AC.currentTime, cx=camera.position.x, cz=camera.position.z;
+  for (const a of AIRCRAFT){ const want=soundOn && state==='play' && !a.dead && a.kind==='heli' && a.rpm>0.05 && d2(a.x,a.z,cx,cz)<320*320; let v=rotorVoices.get(a);
+    if (want && !v){ if (!noiseBuf){ noiseBuf=AC.createBuffer(1,AC.sampleRate,AC.sampleRate); const d=noiseBuf.getChannelData(0); for (let i=0;i<d.length;i++) d[i]=Math.random()*2-1; }
+      const src=AC.createBufferSource(); src.buffer=noiseBuf; src.loop=true; const f=AC.createBiquadFilter(); f.type='lowpass'; f.frequency.value=420; const am=AC.createGain(); am.gain.value=0.45;
+      const lfo=AC.createOscillator(); lfo.frequency.value=10; const lg=AC.createGain(); lg.gain.value=0.45; lfo.connect(lg); lg.connect(am.gain); const g=AC.createGain(); g.gain.value=0; const p=spatial(a.x,a.y,a.z,14,320,'veh');
+      src.connect(f); f.connect(am); am.connect(g); g.connect(p); src.start(); lfo.start(); v={src,lfo,g,p}; rotorVoices.set(a,v); }
+    if (!v) continue;
+    if (!want){ v.g.gain.setTargetAtTime(0,t,0.25); v.src.stop(t+1.2); v.lfo.stop(t+1.2); rotorVoices.delete(a); continue; }
+    if (v.p.positionX){ v.p.positionX.setTargetAtTime(a.x,t,0.05); v.p.positionY.setTargetAtTime(a.y+2,t,0.05); v.p.positionZ.setTargetAtTime(a.z,t,0.05); }
+    v.g.gain.setTargetAtTime(0.9*a.rpm*(a.pilot===player?0.5:1),t,0.2); v.lfo.frequency.setTargetAtTime(5+a.rpm*8,t,0.2); }
+}
 function updateAudio(){
   if (!AC) return;
-  updateListener();
+  updateListener(); updateRotors();
   const t=AC.currentTime;
   if (eng && player.inAir){ const a=player.inAir, on=soundOn&&state==='play'; eng.g.gain.setTargetAtTime(on?0.06:0,t,0.1); const f=a.kind==='plane'?45+a.rpm*70:22+a.rpm*18; eng.o.frequency.setTargetAtTime(f,t,0.08); eng.f.frequency.setTargetAtTime(a.kind==='plane'?500+a.rpm*900:260+a.rpm*200,t,0.1); }
   else if (eng){ const c=player.inCar, on=soundOn&&c&&!c.dead&&!c.T.bike&&state==='play'; eng.g.gain.setTargetAtTime(on?0.05:0,t,0.1); if (c){ const f=38+c.speed*3.2+Math.abs(axis().y)*12; eng.o.frequency.setTargetAtTime(f,t,0.05); eng.f.frequency.setTargetAtTime(300+c.speed*25,t,0.1); } }
@@ -5625,7 +5671,7 @@ function frame(t){
     camera.position.set(-55+Math.sin(titleA)*110,55,-55+Math.cos(titleA)*110); camera.up.set(0,1,0); camera.lookAt(-30,10,-60);
     for (const p of peds) p.update(dt);
     for (const c of cars){ if (c.driver==='npc'&&c.ai) cruise(c,dt); else c.drive(dt,0,0,true); pushCircle(c,1.2); c.sync(); }
-  } else if (state==='paused'||state==='map'||state==='shop'||state==='help'||state==='phone'){ if (AC&&eng){ eng.g.gain.value=0; } stopSirens(); if (state==='map') updateMapView(dt); }
+  } else if (state==='paused'||state==='map'||state==='shop'||state==='help'||state==='phone'){ if (AC&&eng){ eng.g.gain.value=0; } stopSirens(); if (AC) for (const [a2,v] of rotorVoices){ v.g.gain.setTargetAtTime(0,AC.currentTime,0.05); v.src.stop(AC.currentTime+0.3); v.lfo.stop(AC.currentTime+0.3); rotorVoices.delete(a2); } if (state==='map') updateMapView(dt); }
   updateLighting(); updateTrafficLights(); updatePalmLOD(dt); updatePedLOD(); updateBlobs(lightDay); waterU.uT.value+=dt; skyU.uT.value+=dt;
   renderer.clear(); renderer.render(scene,camera);
   if (vmRoot.visible && (state==='play'||state==='dead')){ renderer.clearDepth(); renderer.render(vmScene,vmCam); }
