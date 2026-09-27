@@ -1579,6 +1579,10 @@ const busStopMap=new Map(), BUS_STOPS=[];
     const x=A.x+ux*e.len*0.5-uz*9.6, z=A.z+uz*e.len*0.5+ux*9.6; if (Math.abs(x-riverX(z))<RHz(z)+4||inRZ(x,z)||NOROAD.some(r=>inRect(r,x,z))||query(x,z,3).length) continue;
     const ry=Math.atan2(ux,uz)+Math.PI/2;
     addBox(4.2,0.15,1.7,'#e8e2d0',x,2.6,z,{ry}); addBox(4.2,2.1,0.08,'#9fc3d6',x-Math.sin(ry)*0.8,1.4,z-Math.cos(ry)*0.8,{ry,shadow:false}); addBox(3,0.1,0.5,'#555',x,0.75,z,{ry,shadow:false});
+    { const bx=x-Math.sin(ry)*0.8, bz=z-Math.cos(ry)*0.8, ax=Math.abs(ux), az=Math.abs(uz);   // colisiones ajustadas a cada pieza: panel trasero, banco y poste (la calle es recta: cajas alineadas)
+      addCollider(bx-ax*2.1-az*0.12,bz-az*2.1-ax*0.12,bx+ax*2.1+az*0.12,bz+az*2.1+ax*0.12,2.5);
+      const sx=x-Math.sin(ry)*0.1, sz=z-Math.cos(ry)*0.1; addCollider(sx-ax*1.5-az*0.3,sz-az*1.5-ax*0.3,sx+ax*1.5+az*0.3,sz+az*1.5+ax*0.3,0.8);
+      addCollider(x+ux*2.6-0.12,z+uz*2.6-0.12,x+ux*2.6+0.12,z+uz*2.6+0.12,2.8); }
     addBox(0.12,2.8,0.12,'#d9282f',x+ux*2.6,1.4,z+uz*2.6,{shadow:false}); busStopMap.set(e.a+'_'+e.b,e.len*0.5); BUS_STOPS.push({key:e.a+'_'+e.b,x,z,ux,uz,ry,waiting:[]}); }
   { // contenedores de reciclaje junto al bordillo (resto, envases, papel, vidrio), en grupos
     const cont=[], lids=[], COLS=['#3d4a3a','#e2b52a','#2c5d9a','#3f8a4a'];
@@ -2256,7 +2260,7 @@ class Ped{
     const m=this.mesh;
     if (this.bubbleT>0){ this.bubbleT-=dt; if (this.bubbleT<=0) this.bubble.visible=false; }
     if (this.state==='busWait'){   // esperando el autobús en la marquesina: de pie, mira el móvil o hacia donde viene el bus
-      const S=this.stop, u=m.userData, tx=S.x+Math.sin(S.ry)*0.1+(-S.uz)*0+S.ux*this.slot, tz=S.z+Math.cos(S.ry)*0.1+S.uz*this.slot, d=Math.hypot(tx-this.x,tz-this.z);
+      const S=this.stop, u=m.userData, tx=S.x+Math.sin(S.ry)*0.8+S.ux*this.slot, tz=S.z+Math.cos(S.ry)*0.8+S.uz*this.slot, d=Math.hypot(tx-this.x,tz-this.z);
       if (d>0.4){ crimWalk(this,tx,tz,dt,1.3); animPed(m,this.phase,0.8); } else { animPed(m,0,0); const look=Math.sin(now*0.2+this.slot*3)>0.3; this.h+=wrapA((look?Math.atan2(-S.ux,-S.uz):S.ry+Math.PI)-this.h)*Math.min(1,dt*2);
         if (this.phoneUse){ u.arms[1].rotation.x=-1.1; u.elbows[1].rotation.x=-1.4; } }
       m.position.set(this.x,0.27,this.z); m.rotation.y=this.h; return; }
