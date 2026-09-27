@@ -691,7 +691,7 @@ renderer.autoClear = false;
 renderer.domElement.className='gl';
 container.prepend(renderer.domElement); { const v=document.createElement('div'); v.id='vig'; renderer.domElement.after(v); }   // viñeta suave
 const scene=new THREE.Scene();
-const camera=new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.4, 1100);
+const camera=new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.4, 720);   // más allá de la niebla (620 m) no se dibuja nada
 scene.background=null;
 scene.fog=new THREE.Fog(0x9cc3dc, 120, 620);
 const hemi=new THREE.HemisphereLight(0xcfe3f5, 0x6b5a40, 0.9); scene.add(hemi);
@@ -1957,6 +1957,7 @@ function updatePedLOD(){
   const cx=camera.position.x, cy=camera.position.y, cz=camera.position.z;
   for (const g of pedMeshes){ if (!g.parent){ pedMeshes.delete(g); continue; } const L=g.userData.lod; if (!L) continue;
     const P=g.parent===scene?g.position:g.getWorldPosition(_pv), d=(P.x-cx)**2+(P.y-cy)**2+(P.z-cz)**2, lo=L.on ? d>28*28 : d>32*32;
+    if (g!==player.mesh && g.parent===scene){ const far=d>(g.visible?185*185:175*175); if (far===g.visible) g.visible=!far; }   // a más de ~180 m (p. ej. desde el aire) no se dibujan
     if (lo!==L.on){ L.on=lo; for (const m of L.hi) m.visible=!lo; for (const m of L.lo) m.visible=lo; } }
 }
 // perfiles del torso (radio, altura desde la cadera): cadera, cintura, pecho, hombros
