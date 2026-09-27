@@ -450,7 +450,16 @@ const REAL_BRIDGES=[...RZ_ROADS,...RZ_WALKS].filter(r=>r.b).map(r=>({pts:r.pts,w
 const BRIDGE_J_ACT=BRIDGE_J.filter(j=>!(X(j)>RZ.z0-40 && X(j)<RZ.z1+40));
 function realBridgeAt(x,z){ for (const b of REAL_BRIDGES) for (let k=0;k<b.pts.length-1;k++) if (segDist(x,z,b.pts[k][0],b.pts[k][1],b.pts[k+1][0],b.pts[k+1][1])<b.w/2+0.8) return b; return null; }
 const onBridge = (x,z) => BRIDGE_J_ACT.some(j=>Math.abs(z-X(j))<7.2) || (inRZ(x,z,60) && !!realBridgeAt(x,z));
-const riverBlocked = (x,z) => Math.abs(x-riverX(z)) < RHz(z)-1.5 && !onBridge(x,z);
+const riverBlocked = (x,z) => Math.abs(x-riverX(z)) < RHz(z)-1.5 && !onBridge(x,z);   // para el tráfico y los peatones: el cauce no es camino
+// El jugador sí puede bajar al cauce: suelo con el perfil de los taludes, accesos entre los pretiles y el agua infranqueable.
+const RIV_OFF=[-44,-37,-27,-8,-3,3,8,27,37,44], RIV_HY=[0,-2,-8.4,-9,-9.2,-9.2,-9,-8.4,-2,0];
+function riverFloor(x,z){ const s=RHz(z)/RH, o=(x-riverX(z))/s; if (o<=-44||o>=44) return 0; let i=0; while (i<RIV_OFF.length-2 && o>RIV_OFF[i+1]) i++; const t=(o-RIV_OFF[i])/(RIV_OFF[i+1]-RIV_OFF[i]); return lerp(RIV_HY[i],RIV_HY[i+1],t); }
+const RIVER_RAMPS=[]; for (let z=-880+55; z<880; z+=110) RIVER_RAMPS.push(z);   // bajadas al cauce, a media manzana entre puentes
+const atRamp=z=>RIVER_RAMPS.some(r=>Math.abs(z-r)<3);
+function playerBlockedRiver(x,z){   // el jugador en el cauce: el agua no se cruza a pie y el pretil solo se pasa por las bajadas
+  const dx=Math.abs(x-riverX(z)), h=RHz(z); if (dx>=h || onBridge(x,z) || (inRZ(x,z,40)&&realBridgeAt(x,z))) return false;
+  if (dx<3.6*h/RH) return true;
+  if (dx>h-0.9 && !atRamp(z)) return true; return false; }
 
 const blk = (i0,i1,j0,j1) => ({x0:X(i0)+ROAD, x1:X(i1)-ROAD, z0:X(j0)+ROAD, z1:X(j1)-ROAD});
 const SPECIAL=[
@@ -620,6 +629,7 @@ function nearHwy(x,z,m){ for (let k=0;k<hwyPts.length-1;k++) if (segDist(x,z,hwy
 const XMAX=3250, ZMAX=1200;
 function offMap(x,z){ if (Math.abs(x)<=LIM && Math.abs(z)<=LIM) return false; if (inRect(AP,x,z)) return false; return !nearHwy(x,z,12.5); }
 const blockedAt=(x,z)=>riverBlocked(x,z)||offMap(x,z);
+const playerBlockedAt=(x,z)=>playerBlockedRiver(x,z)||offMap(x,z);
 const liveNodes = nodes.filter(n=>n.nb.length);
 // componente conexo principal: las rutas de la policía solo usan nodos alcanzables
 const mainNodes=(()=>{ const comp=new Map(); let best=[]; for (const n of liveNodes){ if (comp.has(n.id)) continue; const list=[n.id], st=[n.id]; comp.set(n.id,1);
@@ -973,9 +983,13 @@ instanced(boxGeo, worldTexMat(softTex,1/5), slabs.filter(s=>s.c===COL.earth), fa
   for (let z=-895; z<=895; z+=5){
     if (BRIDGE_J_ACT.some(j=>Math.abs(z-X(j))<9)) continue;
     const rx=riverX(z);
+    if (atRamp(z)) continue;
     for (const s of [-1,1]) if (!(inRZ(rx,z,40) && realBridgeAt(rx+s*(RHz(z)-0.3),z))) walls.push({x:rx+s*(RHz(z)-0.3),y:0.6,z,sx:0.5,sy:1.2,sz:5.2,c:'#d6c9ad'});
   }
   instanced(boxGeo, new THREE.MeshLambertMaterial({color:0xffffff}), walls, false);
+  const steps=[]; for (const z of RIVER_RAMPS){ const rx=riverX(z), h=RHz(z), sc=h/RH; if (inRZ(rx,z,60)&&REAL_BRIDGES.some(b=>b.pts.some(q=>Math.abs(q[1]-z)<12))) continue;
+    for (const s of [-1,1]) for (let k=0;k<18;k++){ const o=44-k*(17/18), x=rx+s*o*sc, y=riverFloor(x,z); steps.push({x,y:y-0.18,z,sx:Math.max(0.6,17/18*sc+0.05),sy:0.36,sz:3.2,c:'#cdbf9f'}); } }   // escalera de bajada al cauce
+  instanced(boxGeo, new THREE.MeshLambertMaterial({color:0xffffff}), steps, false);
 }
 
 /* ---- edificios con ventanas (shader) ---- */
@@ -1339,7 +1353,9 @@ const inCorridor=(x,z,m=0)=>Math.abs(x-riverX(z))<RHz(z)+m;
   for (const b of REAL_BRIDGES){ const P=b.pts;
     for (let k=0;k<P.length-1;k++){ const [ax,az]=P[k],[bx,bz]=P[k+1], L=Math.hypot(bx-ax,bz-az); if (L<1) continue; const ux=(bx-ax)/L, uz=(bz-az)/L, ang=Math.atan2(ux,uz), mx=(ax+bx)/2, mz=(az+bz)/2;
       addBox(b.w+1.2,1.3,L+1,'#bba27c',mx,-0.63,mz,{ry:ang,shadow:false});
-      for (const sg of [-1,1]){ const ox=-uz*(b.w/2+0.5)*sg, oz=ux*(b.w/2+0.5)*sg; addBox(0.4,1.1,L+0.6,'#d9c7a2',mx+ox,0.55,mz+oz,{ry:ang});
+      for (const sg of [-1,1]){ const ox=-uz*(b.w/2+0.5)*sg, oz=ux*(b.w/2+0.5)*sg;
+        if (REAL_BRIDGES.some(o=>o!==b && o.pts.some((q,i)=>i<o.pts.length-1 && [-0.35,0,0.35].some(f=>segDist(mx+ox+ux*L*f,mz+oz+uz*L*f,q[0],q[1],o.pts[i+1][0],o.pts[i+1][1])<o.w/2+0.4)))) continue;   // la acera y la calzada de un puente vienen como puentes separados: sin pretil entre ellas
+        addBox(0.4,1.1,L+0.6,'#d9c7a2',mx+ox,0.55,mz+oz,{ry:ang});
         const hx=ux*(L/2+0.3), hz=uz*(L/2+0.3), px=-uz*0.25, pz=ux*0.25; addPolyCollider([[mx+ox-hx-px,mz+oz-hz-pz],[mx+ox+hx-px,mz+oz+hz-pz],[mx+ox+hx+px,mz+oz+hz+pz],[mx+ox-hx+px,mz+oz-hz+pz]],1.1); }
       if (inCorridor(mx,mz,-6)) addBox(3,8.6,b.w+0.5,'#a8906a',mx,-5.3,mz,{ry:ang+Math.PI/2,shadow:false}); } }
   // monumentos reconocibles sobre su planta real
@@ -3710,7 +3726,7 @@ function jump(){
 }
 // altura del apoyo bajo (x,z) para quien tiene los pies a 'feet': obstáculos bajos y techos de coche a su alcance (+0,4 m: escalón o impulso final del salto)
 function supportAt(x,z,feet){
-  let h=0, car=null; const reach=feet+0.4;
+  let h=inCorridor(x,z,0)&&!onBridge(x,z)&&!(inRZ(x,z,40)&&realBridgeAt(x,z))?riverFloor(x,z):0, car=null; const reach=feet+0.4;
   for (const c of query(x,z,0.6)){ if (c.h>reach || c.h<=h) continue;
     const inside=c.poly ? (x>=c.x0&&x<=c.x1&&z>=c.z0&&z<=c.z1&&pointInPoly(x,z,c.poly)) : (x>=c.x0-0.1&&x<=c.x1+0.1&&z>=c.z0-0.1&&z<=c.z1+0.1);
     if (inside) h=c.h; }
@@ -4071,7 +4087,7 @@ function hitZone(p,hy,lat){
 }
 function rayShot(ox,oz,a,range,dmg,oy=1.35,pitch=0){
   const dx=Math.sin(a), dz=Math.cos(a), tp=Math.tan(pitch); let wall=range;
-  for (let t=1;t<range;t+=1){ const y=oy+tp*t; if (y<0){ wall=t; break; } const c=pointBlocked(ox+dx*t,oz+dz*t); if (c && c.h>y){ wall=t; break; } }
+  for (let t=1;t<range;t+=1){ const y=oy+tp*t; if (y<(inCorridor(ox+dx*t,oz+dz*t,0)?riverFloor(ox+dx*t,oz+dz*t):0)){ wall=t; break; } const c=pointBlocked(ox+dx*t,oz+dz*t); if (c && c.h>y){ wall=t; break; } }
   let best=null, bt=wall, zone=null;
   for (const p of peds){ if (p.state==='dead') continue; const rx=p.x-ox, rz=p.z-oz, t=rx*dx+rz*dz; if (t<0||t>bt) continue; const lat=Math.abs(rx*dz-rz*dx); if (lat<0.55){ const z=hitZone(p,oy+tp*t,lat); if (!z) continue; bt=t; best=p; zone=z; } }
   for (const c of cars){ if (c===player.inCar||c.exploded) continue;
@@ -5189,7 +5205,7 @@ function update(dt){
       const spd=(running()&&ax.y>0.3?8.2:4)*mag*(player.crouch?0.45:1)*bumpK();
       player.vx=dx*spd; player.vz=dz*spd;
       const ox=player.x, oz=player.z; player.x+=player.vx*dt; player.z+=player.vz*dt;
-      if (blockedAt(player.x,player.z)){ player.x=ox; player.z=oz; }
+      if (playerBlockedAt(player.x,player.z)){ player.x=ox; player.z=oz; }
       player.phase+=dt*spd*4.2;
     } else { player.vx=player.vz=0; }
     pushCircle(player,0.42,player.y+0.001);
@@ -5202,7 +5218,7 @@ function update(dt){
       if (mag>0.12){ const fx=Math.sin(camYaw), fz=Math.cos(camYaw), rx=-fz, rz=fx;
         let dx=fx*ax.y+rx*ax.x, dz=fz*ax.y+rz*ax.x; const L=Math.hypot(dx,dz)||1, spd=2.6*mag*(player.crouch?0.55:1)*bumpK();
         player.vx=dx/L*spd; player.vz=dz/L*spd; const ox=player.x, oz=player.z; player.x+=player.vx*dt; player.z+=player.vz*dt;
-        if (blockedAt(player.x,player.z)){ player.x=ox; player.z=oz; } player.phase+=dt*spd*4.2;
+        if (playerBlockedAt(player.x,player.z)){ player.x=ox; player.z=oz; } player.phase+=dt*spd*4.2;
       } else { player.vx=player.vz=0; }
     } else if (mag>0.12 && !player.exitA){
       const fx=Math.sin(camYaw), fz=Math.cos(camYaw), rx=-fz, rz=fx;
@@ -5212,7 +5228,7 @@ function update(dt){
       player.vx=Math.sin(player.h)*spd; player.vz=Math.cos(player.h)*spd;
       const ox=player.x, oz=player.z;
       player.x+=player.vx*dt; player.z+=player.vz*dt;
-      if (blockedAt(player.x,player.z)){ player.x=ox; player.z=oz; }
+      if (playerBlockedAt(player.x,player.z)){ player.x=ox; player.z=oz; }
       player.phase+=dt*spd*4.2;
     } else { player.vx=player.vz=0; }
     pushCircle(player,0.42,player.y+0.001);
@@ -5390,8 +5406,8 @@ function updateCamera(dt){
     const pf=camera.aspect<1?1.35:1;
     const onBike=player.inCar&&player.inCar.T.bike;
     let D=(onBike?5.8+spd*0.1:player.inCar?9+spd*0.13:5.5)*pf, H=(onBike?2.7:player.inCar?3.8+spd*0.04:2.5)*pf;
-    const k=aimK, eye=(player.crouch?1.2:1.75)+(player.y||0);
-    const op=tpPitch*(1-k); if (op){ H=Math.max(0.6,H+D*Math.sin(op)*0.9); D*=Math.cos(op*0.8); }   // inclinación elegida con el ratón
+    const k=aimK, eye=(player.crouch?1.2:1.75)+(player.y||0); if (!player.inCar) H+=player.y||0;   // sobre un tejado o en el cauce, la cámara acompaña la altura
+    const op=tpPitch*(1-k); if (op){ H=Math.max(0.6+(player.inCar?0:player.y||0),H+D*Math.sin(op)*0.9); D*=Math.cos(op*0.8); }   // inclinación elegida con el ratón
     D+= (2.3-D)*k; H+=(eye-0.1*aimPitch*2-H)*k;   // sobre el hombro
     // pivote: la cabeza del jugador (o el coche), desplazado al hombro derecho al apuntar si no hay pared al lado
     const py=player.inCar?1.4:(player.crouch?1.1:1.55)+(player.y||0), rx=-Math.cos(camYaw), rz=Math.sin(camYaw);
