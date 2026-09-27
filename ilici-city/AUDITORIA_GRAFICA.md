@@ -70,10 +70,31 @@ El orden propuesto se mantiene, con un cambio justificado por el código: las **
   - De noche se iluminan.
   - Los nombres son inventados (sin marcas reales). Usan un generador aleatorio aparte, de modo que no cambia ni un edificio de sitio.
 
+## Tercera pasada: rendimiento, monumentos y cielo
+
+- **Rendimiento**, en las mismas vistas de referencia:
+
+  | Vista | Antes | Después |
+  |---|---|---|
+  | Calle de la cuadrícula | 1,25 M triángulos, ~1.190 llamadas | 0,49 M triángulos, ~1.300 llamadas |
+  | La Glorieta | 1,04 M triángulos, ~600 llamadas | 0,44 M triángulos, ~720 llamadas |
+
+  Se consigue con tres cambios:
+  - **Mallas instanciadas troceadas** en celdas de 500 m (farolas, bordillos, marcas, toldos…). La cámara y la sombra descartan las celdas que no ven. Antes se dibujaba toda la ciudad en cada fotograma.
+  - **Palmeras**: el LOD ya existente también descarta las que quedan a la espalda de la cámara (con margen, y siempre las de menos de 45 m, por sus sombras). Los troncos entran en el mismo sistema.
+  - **LOD de peatones**: cada persona lleva una versión ligera (~400 caras frente a ~5.000) en las mismas articulaciones, así que todas las poses y animaciones siguen funcionando. Se cambia a más de 32 m de la cámara, con histéresis para que no parpadee.
+
+  Las llamadas suben un poco por el troceado, pero son mallas baratas; el ahorro de geometría es mucho mayor.
+- **Monumentos con material propio**: la Torre de la Calaforra, la Basílica, el Palau d'Altamira, la Mercé y el Salvador ya no salen con ventanas de piso, balcones ni tiendas. Llevan sillería con juntas y saeteras. El Ajuntament, el Gran Teatre y el palacio Jorge Juan quedan como edificios nobles: ventanas y portones, sin escaparates.
+- **Palau d'Altamira recuperado**: se había quitado porque su planta real salía del centro e invadía una calzada de la cuadrícula. Ahora se conserva la parte de dentro (unos 38 × 28 m, con el torreón redondo real), más torres cuadradas y almenas.
+  - Se comprobó que en esa zona no hay calzadas, aceras ni sendas.
+  - Tampoco queda dentro ningún objeto, farola ni recogida.
+- **Nubes**: capa procedural en el shader del cielo (sin texturas), que se mueve con el viento. De noche se oscurece y deja ver estrellas entre claros.
+- **LOD de coches: descartado por ahora**. Cada coche son unas 10 mallas; quitar piezas a distancia ahorra pocas llamadas y añade riesgo con daños, luces y explosiones.
+
 ## Siguientes pasos propuestos
 
-- Calahorra y Altamira con más geometría propia.
-- Peatones y vehículos a distancia con modelos simplificados (LOD).
+- Fase gráfica completada. Si hiciera falta más rendimiento en móviles: fusionar las piezas de cada peatón lejano en una sola malla (menos llamadas).
 
 ## Modelos externos: decisión
 

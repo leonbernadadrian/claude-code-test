@@ -103,6 +103,9 @@ Los controles aparecen en pantalla al empezar (tecla I) y en el menú de pausa. 
   - **Palmeras** datileras con anillos, hojas arqueadas y LOD.
   - **Luz** con más contraste y exposición según la hora.
   - **Detalles**: sombras de contacto bajo peatones y coches, agua con oleaje (Vinalopó y fuentes), Basílica de Santa María con cúpula azul nervada y campanario detallado, y unos 1.700 comercios con rótulo (nombres inventados) que se iluminan de noche.
+  - **Monumentos** con sillería y saeteras (Calaforra, Basílica, Mercé, Salvador), edificios nobles sin tiendas (Ajuntament, Gran Teatre) y el **Palau d'Altamira** recuperado con su torreón y almenas.
+  - **Cielo con nubes** que se mueven y dejan ver las estrellas de noche.
+  - **Rendimiento**: la mitad de triángulos en pantalla gracias al troceado de mallas por zonas, al recorte de palmeras fuera de cámara y al LOD de peatones.
 - **Gráficos**: cielo con sol y estrellas, corrección de color cinematográfica, asfalto y aceras con textura, fachadas con persianas y marcos, cornisas, coches con pintura brillante y halos de luz de farolas y faros por la noche. El menú de pausa permite elegir calidad alta, media o baja.
 - **Ciclo de día y noche**: amanece a las 7:00 y anochece hacia las 21:00. De noche se iluminan ventanas, farolas y faros.
 - **Interacción con E**: un único sistema muestra «[E] Verbo · Nombre» para lo que tengas delante (entrar, hablar, atracar, empezar misión, vender, robar, pilotar…) y nada se activa por pisar un círculo.
