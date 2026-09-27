@@ -2036,11 +2036,14 @@ function animPed(mesh,phase,amp){
 
 class Ped{
   constructor(x,z,cop=false){
-    this.mesh=makePedMesh(cop?'#1f3a8a':mpick(SHIRT),cop?'#1b2a4a':mpick(PANTS),mpick(SKIN),mpick(HAIR),cop?'cop':null);
+    { const r=Math.random(); this.age=cop?'adulto':r<0.28?'joven':r<0.8?'adulto':'mayor'; }   // edad y carácter propios: cada persona reacciona y habla a su manera
+    this.pers={temper:Math.random(),brave:Math.random(),chat:Math.random(),mood:Math.random(),humor:Math.random(),wary:Math.random()};
+    if (this.age==='mayor') this.pers.brave*=0.5;
+    this.mesh=makePedMesh(cop?'#1f3a8a':mpick(SHIRT),cop?'#1b2a4a':mpick(PANTS),mpick(SKIN),this.age==='mayor'?mpick(['#b9b5ae','#d6d3cc','#8d8a85','#e4e1da']):mpick(HAIR),cop?'cop':null);
     this.mesh.traverse(o=>{ if(o.isMesh) o.castShadow=false; });
     scene.add(this.mesh);
     this.x=x; this.z=z; this.y=0; this.h=mrand(0,6.28); this.state='walk'; this.speed=mrand(1.1,1.6);
-    this.phase=mrand(0,6); this.t=0; this.vx=0; this.vy=0; this.vz=0; this.hp=100; this.cop=cop; this.shootT=mrand(1,2); this.weapon=cop?copWeapon():null; if (cop) setWeaponModel(this.mesh,this.weapon); this.fx=0; this.fz=0;
+    this.phase=mrand(0,6); this.t=0; this.vx=0; this.vy=0; this.vz=0; this.hp=100; if (this.age==='mayor') this.speed*=0.8; this.cop=cop; this.shootT=mrand(1,2); this.weapon=cop?copWeapon():null; if (cop) setWeaponModel(this.mesh,this.weapon); this.fx=0; this.fz=0;
     this.block=null; this.k=0; this.dir=Math.random()<0.5?1:-1; this.tx=x; this.tz=z; this.cross=false;
     this.tough=cop?mrand(0.5,0.9):Math.random();   // aguante propio: no todos reaccionan igual a un golpe o un disparo
     peds.push(this);
@@ -2071,11 +2074,33 @@ class Ped{
   backoff(t,handsUp){ if (this.medic) return; if (this.state==='call') this.endCall(false); if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return; this.resetPose(); this.state='backoff'; this.t=t; this.handsUp=handsUp; this.lookT=0; this.bumpT=0; }
   meleeHit(dmg,dx,dz,power,bat){
     if (this.state==='dead') return false;
+    if (this.state==='guard' && !bat && power<1.8){ this.hp-=dmg*0.4; this.t=Math.min(this.t,0.6); say(this,mpick(['¡Ugh!','¡Para ya!','¡Eh!']),0.8); if (this.hp<=0){ this.knock(dx*3,dz*3,true); return true; } return false; }   // se cubre: encaja mejor el golpe
     this.hp-=dmg;
     if (this.hp<=0){ this.knock(dx*(3+power*2),dz*(3+power*2),true); return true; }
+    const fighting=this.state==='brawl';
     // solo los golpes fuertes (cargados o con bate cargado) o un NPC ya muy tocado acaban en el suelo
     if (power>=2.3 || (bat && power>=1.7) || (this.hp<20 && Math.random()<0.4)){ this.knock(dx*(2+power*1.5),dz*(2+power*1.5),false); return false; }
-    this.stagger(dx,dz,power); return false;
+    this.stagger(dx,dz,power*(fighting?0.5:1)); this.afterHit=fighting&&this.hp>35?'fight':this.decideAssault(power,bat); return false;
+  }
+  decideAssault(power,bat){   // qué hace cuando el jugador le pega: depende de su carácter, su edad, lo herido que está, si vas armado y de quién hay cerca
+    if (this.cop||this.role||this.medic) return null;
+    const P=this.pers||{temper:0.5,brave:0.5,wary:0.5}, W=curW(), armed=bat||(!W.melee&&!W.throw), old=this.age==='mayor', weak=this.hp<45;
+    let near=0; for (const q of peds) if (q!==this && !q.cop && q.state==='walk' && d2(q.x,q.z,this.x,this.z)<18*18) near++;
+    const w={fight:Math.max(0,P.temper*0.7+P.brave*0.7-0.65)*2.2*(armed?0.12:1)*(weak?0.3:1)*(old?0.15:1)*(power>=1.8?0.6:1),
+      guard:P.brave*0.45*(armed?0.3:1)*(weak?0.5:1), flee:0.55+(1-P.brave)*0.6+(armed?0.9:0)+(weak?0.5:0),
+      call:P.wary*0.55+(old?0.35:0), help:(1-P.brave)*0.4*(near>=2?1:0.15), sidestep:power<1.3&&P.temper<0.45&&!armed?0.45:0.03};
+    let tot=0; for (const k in w) tot+=w[k]; let r=Math.random()*tot; for (const k in w){ r-=w[k]; if (r<=0) return k; } return 'flee';
+  }
+  react(a){   // aplica la reacción elegida
+    const P=player; this.resetPose(); this.afterHit=null;
+    if (a==='fight'){ this.state='brawl'; this.t=mrand(7,12); this.pT=0.4; this.swing=0; this.report=null; say(this,mpick(this.age==='joven'?['¿Pero tú qué haces, loco?','¡Ven aquí!','¡Te vas a enterar!','¿Vas de listo?']:['¡Se acabó, ven aquí!','¡A mí no me pegas!','¿Tú de qué vas?','¡Te la estás buscando!']),1.6); return; }
+    if (a==='guard'){ this.state='guard'; this.t=mrand(1.6,2.8); say(this,mpick(['¡Eh! ¡Quieto!','¡Tranquilo, tranquilo!','¡Aparta!']),1.3); return; }
+    if (a==='call'){ if (!this.report) this.report={t:now+mrand(1.5,3),id:true,stars:1,x:P.x,z:P.z,car:null,type:'assault',cid:++crimeSeq}; this.state='flee'; this.t=3.5; this.fx=P.x; this.fz=P.z; say(this,mpick(['¡Voy a llamar a la policía!','¡Esto no se queda así!','¡Estás loco! ¡Policía!']),1.6); return; }
+    if (a==='help'){ say(this,mpick(['¡Socorro! ¡Ayuda!','¡Que alguien me ayude!','¡Ayuda, por favor!']),2); screamSound(this.x,this.z); let n=0;
+      for (const q of peds){ if (n>=2) break; if (q===this||q.cop||q.role||q.medic||q.state!=='walk'||q.age==='mayor'||d2(q.x,q.z,this.x,this.z)>18*18) continue; const Q=q.pers||{}; if (Q.brave>0.6 && Q.temper>0.4){ q.react('fight'); say(q,mpick(['¡Déjale en paz!','¡Eh! ¡Suéltale!','¿Qué haces? ¡Para!']),1.6); n++; } }
+      this.state='flee'; this.t=7; this.fx=P.x; this.fz=P.z; return; }
+    if (a==='sidestep'){ this.backoff(1.8,false); say(this,mpick(['¡Eh, tranquilo, tío!','Vale, vale, me voy','¿Pero qué te pasa?']),1.4); return; }
+    this.state='flee'; this.t=7; this.fx=P.x; this.fz=P.z; if (Math.random()<0.5) say(this,mpick(['¡Socorro!','¡Déjame!','¡Loco!','¡Ay, ay!']),1.2);
   }
   gunHit(dmg,zone,dx,dz){   // reacción según la zona, el daño y el aguante de cada uno
     if (this.state==='dead') return false;
@@ -2142,6 +2167,26 @@ class Ped{
       if (this.t<=0){ this.resetPose(); this.state='flee'; this.t=7; this.fx=cs.x; this.fz=cs.z; this.cowerSrc=null; }
       return;
     }
+    if (this.state==='brawl'){   // contraataca a puñetazos: se acerca, guardia alta, golpea cada poco
+      const P=player, dx=P.x-this.x, dz=P.z-this.z, d=Math.hypot(dx,dz)||1, u=m.userData, W=curW(); this.t-=dt;
+      if (this.t<=0 || this.hp<30 || d>16 || P.inCar || P.health<=0 || state!=='play' || (!W.melee && !W.throw && aimT>0)){   // cansado, herido, lejos… o le apuntas con un arma
+        this.resetPose(); this.state='flee'; this.t=6; this.fx=P.x; this.fz=P.z; if (Math.random()<0.6) say(this,mpick(['¡Esto no acaba aquí!','¡Estás loco!','Vale, vale…','¡Me voy a acordar de ti!']),1.4); return; }
+      this.h+=wrapA(Math.atan2(dx,dz)-this.h)*Math.min(1,dt*8);
+      if (d>1.25){ const sp=3.3, ox=this.x, oz=this.z; this.x+=dx/d*sp*dt; this.z+=dz/d*sp*dt; pushCircle(this,0.4); if (riverBlocked(this.x,this.z)){ this.x=ox; this.z=oz; } this.phase+=dt*sp*4.2; animPed(m,this.phase,0.8); this.pT=Math.max(this.pT,0.2); }
+      else { animPed(m,this.phase,0); this.pT-=dt; if (this.pT<=0 && this.swing<=0){ this.swing=0.32; this.swung=false; this.pT=mrand(0.8,1.4)*(1.2-this.pers.temper*0.4); } }
+      u.arms[0].rotation.x=-1.25; u.arms[1].rotation.x=-1.25; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-1.9;   // guardia
+      if (this.swing>0){ this.swing-=dt; const k=Math.sin((1-this.swing/0.32)*Math.PI); u.arms[1].rotation.x=-1.25-0.35*k; u.elbows[1].rotation.x=-1.9+1.7*k;
+        if (!this.swung && this.swing<0.16){ this.swung=true; if (d<1.6 && !player.inCar){ hurt(mrand(5,9),'torso',{x:this.x,z:this.z,melee:true}); sfxPunch(); shake(0.18); } } }
+      m.position.set(this.x,baseY(),this.z); m.rotation.y=this.h; return;
+    }
+    if (this.state==='guard'){   // se cubre y retrocede despacio; luego se encara o se va
+      const P=player, ax=this.x-P.x, az=this.z-P.z, L=Math.hypot(ax,az)||1, u=m.userData, ox=this.x, oz=this.z; this.t-=dt;
+      this.h+=wrapA(Math.atan2(-ax,-az)-this.h)*Math.min(1,dt*8); this.x+=ax/L*0.8*dt; this.z+=az/L*0.8*dt; pushCircle(this,0.4); if (riverBlocked(this.x,this.z)){ this.x=ox; this.z=oz; }
+      this.phase-=dt*3; animPed(m,this.phase,0.25); u.arms[0].rotation.x=u.arms[1].rotation.x=-1.9; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-2.2; u.arms[0].rotation.z=0.25; u.arms[1].rotation.z=-0.25;
+      m.position.set(this.x,baseY(),this.z); m.rotation.y=this.h;
+      if (this.t<=0){ const W=curW(); this.react((this.pers.temper>0.55 && W.melee && this.hp>45)?'fight':'flee'); }
+      return;
+    }
     if (this.state==='backoff'){   // retrocede sin quitarte ojo y luego se va
       this.t-=dt; const u=m.userData, ax=this.x-player.x, az=this.z-player.z, L=Math.hypot(ax,az)||1, ox=this.x, oz=this.z;
       this.h+=wrapA(Math.atan2(-ax,-az)-this.h)*Math.min(1,dt*6);
@@ -2185,7 +2230,7 @@ class Ped{
       else { m.rotation.x=-0.28*k+Math.sin(this.wob)*0.05; m.rotation.z=Math.sin(this.wob*0.7)*0.12*k;   // se echa atrás cubriéndose
         u.arms[0].rotation.x=u.arms[1].rotation.x=-2.3*k; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-1.9*k; u.legs[0].rotation.x=0.25*k; u.legs[1].rotation.x=-0.15*k; }
       m.position.set(this.x,this.y+(this.wgA!=null?0.06:this.block&&!this.cross?0.25:0.02)+yo,this.z); m.rotation.y=this.h+ry;
-      if (this.t<=0){ m.rotation.x=0; m.rotation.z=0; u.arms[0].rotation.z=u.arms[1].rotation.z=0; this.stZone=null; if (this.cop && player.stars>0) this.state='cop'; else if ((this.stPow??1)<0.5 && this.prevState==='walk') this.state='walk'; else { this.state='flee'; this.t=6; this.fx=player.x; this.fz=player.z; } }
+      if (this.t<=0){ m.rotation.x=0; m.rotation.z=0; u.arms[0].rotation.z=u.arms[1].rotation.z=0; this.stZone=null; if (this.afterHit){ this.react(this.afterHit); return; } if (this.cop && player.stars>0) this.state='cop'; else if ((this.stPow??1)<0.5 && this.prevState==='walk') this.state='walk'; else { this.state='flee'; this.t=6; this.fx=player.x; this.fz=player.z; } }
       return;
     }
     if (this.state==='dead' || this.state==='hit'){
@@ -3463,7 +3508,7 @@ function hurt(n,zone='torso',from=null){   // from: {x,z} de quien dispara o gol
   if (player.health<=0) return;
   if (player.armor>0 && zone==='torso'){ const a=Math.min(player.armor,n*0.8); player.armor-=a; n-=a; }
   player.health=Math.max(0,player.health-n); player.lastHurt=now; hurtFx=Math.min(1,hurtFx+0.25+n/40);
-  if (from && !player.inCar){ const dx=player.x-from.x, dz=player.z-from.z, y=0.25+(player.y||0)+(zone==='head'?1.62:zone==='leg'?0.6:1.2);
+  if (from && !from.melee && !player.inCar){ const dx=player.x-from.x, dz=player.z-from.z, y=0.25+(player.y||0)+(zone==='head'?1.62:zone==='leg'?0.6:1.2);
     bloodSpurt(player.x,y,player.z,dx,dz,Math.round(clamp(n/3,2,7)),2.2,player.y||0); player.hitFrom={x:from.x,z:from.z,t:now}; }
   if (player.health<=0) wasted(from);
 }
@@ -3623,7 +3668,7 @@ function meleeHit(W){
     if (L<reach && (dx*fx+dz*fz)/Math.max(L,0.01)>(L<1.2?-0.1:0.4)){
       const killed=p.meleeHit(W.dmg*power,fx,fz,power,W.id==='bat'); hitAny=true;
       if (killed) onPedKilled(p); else if (p.cop){ addStars(1,'¡Has agredido a un policía!'); markSeen(); } else crime('assault',player.x,player.z,1,{victim:p,care:0.8});
-      for (const q of peds) if (q!==p && d2(q.x,q.z,player.x,player.z)<400) q.scare(player.x,player.z,6);
+      for (const q of peds) if (q!==p && q.state!=='brawl' && q.state!=='guard' && d2(q.x,q.z,player.x,player.z)<400) q.scare(player.x,player.z,6);
     }
   }
   if (hitAny){ sfxPunch(); if (W.id==='bat'||power>=1.8){ noise(0.18,0.25+power*0.1,500); shake(0.12*power); } }
