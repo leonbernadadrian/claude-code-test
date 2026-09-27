@@ -2117,7 +2117,7 @@ class Ped{
   cower(mode,t=2.5){ if (this.medic) return; if (this.state==='call') this.endCall(false); if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return; this.resetPose(); this.state='cower'; this.cmode=mode; this.t=t; this.lookT=0; this.bumpT=0; }
   backoff(t,handsUp){ if (this.medic) return; if (this.state==='call') this.endCall(false); if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return; this.resetPose(); this.state='backoff'; this.t=t; this.handsUp=handsUp; this.lookT=0; this.bumpT=0; }
   meleeHit(dmg,dx,dz,power,bat){
-    if (this.state==='dead') return false;
+    if (this.state==='dead') return false; this.wasHit=true;   // se acordará
     if (this.state==='guard' && !bat && power<1.8){ this.hp-=dmg*0.4; this.t=Math.min(this.t,0.6); say(this,mpick(['¡Ugh!','¡Para ya!','¡Eh!']),0.8); if (this.hp<=0){ this.knock(dx*3,dz*3,true); return true; } return false; }   // se cubre: encaja mejor el golpe
     this.hp-=dmg;
     if (this.hp<=0){ this.knock(dx*(3+power*2),dz*(3+power*2),true); return true; }
@@ -2148,7 +2148,7 @@ class Ped{
   }
   gunHit(dmg,zone,dx,dz){   // reacción según la zona, el daño y el aguante de cada uno
     if (this.state==='dead') return false;
-    this.hp-=dmg; this.bleed(zone,dx,dz,dmg);
+    this.hp-=dmg; this.bleed(zone,dx,dz,dmg); this.wasHit=true;
     if (this.hp<=0){ const f=zone==='head'?0.6:zone==='leg'?4:3; this.knock(dx*f,dz*f,true,zone); return true; }   // en la cabeza: se desploma donde está
     const T=this.tough??0.5, heavy=dmg>=30, side=(dx*Math.cos(this.h)-dz*Math.sin(this.h))>0?1:0;   // brazo del lado del impacto
     if (zone==='leg'){ this.limp=true; if (Math.random()<(heavy?0.85:0.6)-T*0.35){ this.knock(dx*1.5,dz*1.5,false,'leg'); return false; } this.stagger(dx,dz,0.6,'leg',side); return false; }
@@ -2811,9 +2811,97 @@ function interactHint(){
   else if (!isTouch && freeTaxiNear(TAXI.hail)) showHint('T: Pedir el taxi que pasa');
 }
 function interact(){ const o=bestInteraction(); if (!o) return false; o.act(); return true; }
-const TALK=['Buenas.','¿Qué pasa, nano?','Hace una calor...','Vaya tráfico hoy.','¿Has visto el Elche este domingo?','No tengo suelto, lo siento.','¿Tú no eres el de la tele?','Ten cuidado por el Palmeral de noche.','Bon dia!','Estoy buscando la Glorieta, ¿sabes?'];
-function talkTo(p){ p.look(3.5); p.lookT=3.5; p.h=Math.atan2(player.x-p.x,player.z-p.z); say(p,mpick(TALK),2.2); }
-
+/* ---- conversaciones con los vecinos ----
+   Cada persona tiene carácter (simpática, seca, curiosa, desconfiada, con humor, con prisa…), edad y forma de hablar. Lo que dice depende de eso,
+   de la hora, del barrio, de lo que está pasando (sirenas, disparos, estrellas, si vas armado o herido) y de su relación contigo: se acuerda de
+   si le has pegado, de cuántas veces le has hablado y, si insistes demasiado, se cansa y corta la conversación. */
+const DLG={
+  greet:{morning:['Buenos días.','Bon dia.','Buenas, ¿qué tal?','Muy buenas.'],afternoon:['Buenas tardes.','Bona vesprada.','¿Qué hay?','Buenas.'],
+    evening:['Buenas tardes.','¿Qué tal la tarde?','Buenas.','Hola, hola.'],night:['Buenas noches.','Bona nit.','¿Qué haces por aquí a estas horas?','Hola…']},
+  friendly:['¡Qué tal! Qué buen día hace, ¿eh?','Encantado. Si necesitas algo del barrio, pregunta.','Hoy estoy de buen humor, fíjate.','Da gusto encontrar a alguien con quien charlar.',
+    '¿Vas bien? Si te pierdes, la Glorieta es el centro de todo.','Me alegra verte por aquí. Cuídate, ¿vale?','¿A que Elche es bonito cuando no hace tanto calor?','Qué majo eres, oye.'],
+  dry:['Ya.','Vale.','Aha.','Si tú lo dices…','No tengo tiempo para esto.','¿Y?','Mmm.','Bueno, pues nada.','Ajá. ¿Algo más?','Estoy a lo mío.'],
+  curious:['¿Tú de dónde eres? No te había visto nunca.','¿Qué te trae por aquí?','Oye, ¿tú no salías en las noticias?','¿Esa camiseta es del Elche? ¡Olé!',
+    '¿Vives por aquí o estás de paso?','¿A qué te dedicas tú, si se puede saber?','Tienes cara de haber tenido un día movido.','¿Buscas algo en concreto?'],
+  wary:['¿Te conozco de algo?','¿Qué quieres?','No llevo nada encima, ¿eh?','Mejor sigue tu camino.','Mira, no busco líos.','¿Por qué me hablas?','Te estoy vigilando, que lo sepas.','Hmm. No me fío.'],
+  funny:['Aquí hay más palmeras que personas, y las palmeras hablan menos.','Si llueve en Elche se para la ciudad. Tranquilo, no llueve nunca.','Yo he venido a por el pan y mira, aquí estoy, filosofando.',
+    '¿Sabes lo que es un ilicitano sin dátiles? Un alicantino.','Mi dieta es sencilla: arroz con costra los domingos y paciencia el resto.','Me han dicho que corra más. Llevo tres años pensándolo.',
+    'En agosto hace tanto calor que los gatos piden sombra por favor.','Si ves mi coche aparcado bien, avísame: será la primera vez.'],
+  busy:['Perdona, voy con prisa.','Ahora no puedo, que llego tarde.','Lo siento, tengo que irme.','Luego, luego…','Uf, ¡llego tarde al trabajo!','Tengo el autobús a punto de pasar.'],
+  ignore:['…','(te ignora)','(se pone los cascos)','(mira el móvil y sigue)'],
+  young:['Qué pasa, tío.','Buah, qué calor, ¿no?','¿Vas al Martínez Valero el domingo?','Esta noche hay fiesta por el Raval, dicen.','Tengo examen en la UMH y aquí estoy, de paseo.','Ni idea, bro. Yo tampoco soy de aquí.'],
+  old:['Ay, joven, en mis tiempos esto era todo huerto.','Yo me acuerdo de cuando se hacían alpargatas en cada casa.','Hijo, no corras tanto, que te vas a matar.','El Misteri, eso sí que es bonito. ¿Lo has visto?',
+    'Mi mujer y yo nos conocimos en la Glorieta, fíjate.','Antes la gente se saludaba por la calle, como tú ahora.','Ya no hay fruta como la de antes.'],
+  zone:{'Centro':['La Basílica de noche es preciosa.','¿Has ido al Mercat Central? El pescado es buenísimo.','En la Plaça de Baix siempre hay algo.','Aquí en el centro todo está a un paso.'],
+    'Los Palmerales':['Esto es el Palmeral, patrimonio de la humanidad, ¿sabías?','El Huerto del Cura está aquí al lado. Merece la pena.','De noche por aquí hay que ir con ojo.','Mi abuelo subía a las palmeras a por dátiles.'],
+    'San Antón':['San Antón es un barrio con mucha vida.','Aquí nos conocemos todos.','Por aquí la gente se echa una mano.','La ermita de San Antón es de las más antiguas.'],
+    'Carrús':['Carrús es el barrio más grande de Elche.','El mercadillo de los lunes es otra cosa.','Aquí se han hecho muchos zapatos, ¿eh?','En Carrús hay de todo, gente de todas partes.'],
+    'El Toscar':['El Toscar es tranquilo, no te creas.','Aquí vivimos muchos que vinimos a trabajar al calzado.','Hay buenos bares por aquí para almorzar.'],
+    'Altabix':['Por aquí está la universidad, mucho estudiante.','Altabix está bien, cerca del río.','En el parque se está a gusto por la tarde.'],
+    'El Raval':['El Raval es de lo más antiguo de Elche.','En fiestas esto se llena.','Aquí las calles son estrechas, cuidado con el coche.'],
+    'El Pla':['El Pla es un barrio de toda la vida.','Aquí cerca hay buenas panaderías.'],
+    'Candalix':['Candalix está un poco apartado, pero se vive bien.'],'La Rata':['Esto es tranquilo, casi nadie pasa por aquí.']},
+  night:['A estas horas no hay mucho que hacer por aquí.','Ya es tarde, yo me voy a casa.','De noche mejor no ir solo por según qué calles.','¿No duermes tú o qué?'],
+  morning:['Voy a por el pan y al trabajo.','Un café antes de empezar el día, eso es lo primero.','Qué pronto se levanta el sol aquí.'],
+  hot:['Hace una calor que no se puede estar.','Busca la sombra de una palmera, hazme caso.','Con este sol se pueden freír huevos en el capó.'],
+  stars:['Oye, ¿no te estará buscando la policía?','Hay mucha poli por aquí… ¿será por ti?','Yo no he visto nada, ¿eh?','Uf, sirenas otra vez.'],
+  armed:['Guarda eso, por favor…','No quiero problemas. Guarda el arma.','¿Qué haces con eso? Me estás asustando.','Tranquilo, tranquilo, no he visto nada.'],
+  hurt:['¿Estás bien? Estás sangrando.','Deberías ir al hospital, tienes mala cara.','Madre mía, ¿qué te ha pasado?','¿Llamo a una ambulancia?'],
+  shots:['¿Has oído eso? Parecían disparos.','Yo me voy de aquí, que hay tiros.','Qué miedo, ¿has oído los disparos?'],
+  hit:['¡Tú me pegaste! Aléjate de mí.','¡No te acerques!','¿Otra vez tú? ¡Voy a llamar a la policía!','Ni se te ocurra tocarme.'],
+  again:['¿Otra vez tú?','Hola de nuevo.','¿Qué más quieres?','Ya hemos hablado, ¿no?'],
+  annoyed:['Oye, que me estás agobiando.','¿No tienes nada mejor que hacer?','Vale ya, ¿no?','Que no me apetece hablar, en serio.'],
+  leave:['Mira, déjame en paz. Adiós.','Me voy, que no paras.','Hasta luego, pesado.','Bueno, yo me largo.'],
+  thread:[['¿Eres nuevo en el barrio?','Ah, pues bienvenido. Aquí somos gente maja.','Por cierto, me llamo {name}. Nos vemos.'],
+    ['¿Sabes lo que me pasó ayer?','Se me escapó el perro y lo encontré en la Glorieta.','Estaba comiéndose el bocadillo de un turista. ¡Qué vergüenza!'],
+    ['Estoy buscando trabajo, ¿sabes de algo?','En el taller de Carrús a veces necesitan gente.','Si te enteras de algo, avísame. Soy {name}.'],
+    ['¿Te gusta el fútbol?','Yo soy del Elche desde pequeño. Franjiverde hasta la muerte.','El domingo hay partido en el Martínez Valero. ¡Vente!']],
+  origin:{gitano:{hi:['¿Qué pasa, primo?','¿Qué hay, prima?','¡Hombre! ¿Qué pasa?','Buenas, chaval.'],line:['Mi familia lleva en Elche toda la vida.','Esta noche hay boda de mi prima, ¡qué fiesta!','En San Antón nos conocemos todos, primo.','Mi abuelo tenía un puesto en el mercadillo.'],tag:['primo','chaval','compare']},
+    magrebi:{hi:['Salam. ¿Qué tal?','Hola, hermano.','Buenas, amigo.','Salam aleikum.'],line:['Mis padres vinieron de Marruecos; yo nací aquí, en Elche.','Trabajo en una fábrica de calzado, como mi padre.','Mi madre hace un cuscús los viernes… hamdulillah.','Carrús es mi barrio, aquí está mi gente.'],tag:['hermano','amigo','wallah']},
+    latino:{hi:['¿Qué más? ¿Todo bien?','Hola, ¿qué tal, amigo?','Buenas, buenas.'],line:['Llevo cinco años en Elche y ya me siento de aquí.','Echo de menos la comida de mi tierra, pero el arroz de aquí está chévere.','Mi hermana también vive en Carrús.'],tag:['amigo','parcero','mi pana']},
+    local:{hi:['Bon dia!','Xe, ¿qué tal?','¿Qué pasa, nano?','Hola, bon vesprada.'],line:['Yo soy de Elx de toda la vida, de la Glorieta a la Plaça de Baix.','El 13 de agosto, la Nit de l\'Albà. No te la pierdas.','Aquí hablamos castellano y valenciano, lo que salga.'],tag:['nano','xe','home']}}};
+function dayPart(){ const h=gameMin/60; return h<6?'night':h<12?'morning':h<20?'afternoon':h<22.5?'evening':'night'; }
+function talkMood(p){   // carácter de fondo de esta persona
+  const P=p.pers||{}; if (P.chat<0.12) return 'ignore'; if (P.wary>0.72) return 'wary'; if (P.humor>0.78) return 'funny'; if (P.mood<0.3) return 'dry'; if (P.chat>0.62 && P.wary<0.4) return 'curious'; return P.mood>0.55?'friendly':'dry';
+}
+function talkLine(p){   // elige qué dice ahora, según contexto y relación
+  const P=p.pers||{mood:0.5,chat:0.5,wary:0.5}, O=DLG.origin[p.origin]||DLG.origin.local, dp=dayPart(), W=curW(), armed=!W.melee&&!W.throw;
+  const n=p.talks, gap=now-(p.lastTalk??-999), patience=1+Math.round(P.mood*3+P.chat*2);
+  if (p.wasHit) return {t:mpick(DLG.hit),end:'flee'};
+  if (armed) return {t:mpick(DLG.armed),end:'backoff'};   // con un arma a la vista nadie charla
+  if (p.noTalkUntil && now<p.noTalkUntil) return {t:mpick(DLG.ignore),end:'walk'};
+  if (n>patience){ p.noTalkUntil=now+45; return {t:mpick(DLG.leave),end:'backoff'}; }
+  if (n===patience && n>1) return {t:mpick(DLG.annoyed)};
+  const mood=talkMood(p);
+  if (mood==='ignore') return {t:mpick(DLG.ignore),end:'walk'};
+  if (dp!=='night' && P.chat<0.35 && Math.random()<0.35) return {t:mpick(DLG.busy),end:'walk'};
+  // lo que está pasando alrededor manda
+  if (player.health<40 && Math.random()<0.8) return {t:mpick(DLG.hurt)};
+  if (now-lastShotAt<25 && Math.random()<0.7) return {t:mpick(DLG.shots),end:P.brave<0.5?'flee':null};
+  if (player.stars>0 && Math.random()<0.6) return {t:mpick(DLG.stars),end:P.wary>0.5?'backoff':null};
+  // hilo de conversación: las personas curiosas o simpáticas te cuentan algo en varias veces
+  if ((mood==='curious'||mood==='friendly') && (p.thread!=null || Math.random()<0.45)){ if (p.thread==null){ p.thread=Math.floor(Math.random()*DLG.thread.length); p.threadI=0; }
+    const T=DLG.thread[p.thread]; if (p.threadI<T.length){ const t=T[p.threadI++].replace('{name}',p.name.split(' ')[0]); if (t.includes(p.name.split(' ')[0])) p.known=true; return {t}; } }
+  const pool=[];
+  const add=(arr,w=1)=>{ if (arr&&arr.length) pool.push([arr,w]); };
+  add(DLG[mood],3); add(O.line,1.2); add(DLG.zone[districtAt(p.x,p.z)],1.4);
+  if (p.age==='joven') add(DLG.young,1.2); if (p.age==='mayor') add(DLG.old,1.6);
+  if (dp==='night') add(DLG.night,1.5); if (dp==='morning') add(DLG.morning,1); if (dp==='afternoon' && gameMin/60<18) add(DLG.hot,0.8);
+  let tot=0; for (const q of pool) tot+=q[1]; let r=Math.random()*tot, arr=pool[0][0]; for (const q of pool){ r-=q[1]; if (r<=0){ arr=q[0]; break; } }
+  let t=mpick(arr);
+  if (n===1 && mood!=='dry' && mood!=='wary' && Math.random()<0.6) t=mpick(Math.random()<0.5?O.hi:DLG.greet[dp])+' '+t;   // primer saludo
+  else if (n>1 && gap<25 && Math.random()<0.35) t=mpick(DLG.again)+' '+t;
+  if (mood!=='dry' && mood!=='wary' && p.age!=='mayor' && Math.random()<0.2 && /[.!?…]$/.test(t)) t=t.replace(/([.!?…])$/,', '+mpick(O.tag)+'$1');   // muletilla propia
+  return {t};
+}
+function talkTo(p){
+  p.talks=(p.talks||0)+1; if (now-(p.lastTalk??-999)>120) p.talks=1;   // al rato se le pasa
+  const L=talkLine(p); p.lastTalk=now;
+  const who=p.known?p.name.split(' ')[0]:(p.fem?'Vecina':'Vecino');
+  if (L.end!=='walk'){ p.look(3.5); p.lookT=3.5; p.h=Math.atan2(player.x-p.x,player.z-p.z); }
+  say(p,L.t,Math.min(4.5,1.6+L.t.length*0.045)); toast(`<b>${who}:</b> ${L.t}`,Math.min(4.5,1.6+L.t.length*0.045));
+  if (L.end==='backoff') p.backoff(2,false); else if (L.end==='flee'){ p.state='flee'; p.t=6; p.fx=player.x; p.fz=player.z; }
+}
 /* ================= HUD ================= */
 const hud={weapon:$('weapon'),armor:$('armor').firstElementChild,drugs:$('drugs'),street:$('street'),money:$('money'),stars:$('stars'),hp:$('hp').firstElementChild,clock:$('clock'),speed:$('speed'),timer:$('timer'),obj:$('obj'),hint:$('hint'),zone:$('zone'),banner:$('banner'),dates:$('dates')};
 let streetT=0, shownMoney=player.money, zoneNow='', zoneT=0, toastT=0, bannerT=0;
@@ -3734,7 +3822,7 @@ const wOrder=id=>WEAPONS.findIndex(w=>w.id===id);
 player.owned=(save.owned||['fist']).filter(id=>W_BY[id]); if (!player.owned.includes('fist')) player.owned.unshift('fist');
 if (!save.deagleGift){ if (!player.owned.includes('deagle')) player.owned.push('deagle'); player.owned.sort((a,b)=>WEAPONS.findIndex(w=>w.id===a)-WEAPONS.findIndex(w=>w.id===b)); save.ammo=Object.assign({},save.ammo||{}); save.ammo.deagle=(save.ammo.deagle||0)+35; save.deagleGift=true; save.owned=player.owned; }
 player.ammo=Object.assign({},save.ammo||{}); player.armor=save.armor||0; player.drugs=save.drugs||0; player.w=Math.max(0,player.owned.indexOf('deagle'));
-let fireCd=0, fireEdge=false, fireHeld=false, mouseHeld=false, aimT=0, shotAlertT=0;
+let fireCd=0, fireEdge=false, fireHeld=false, mouseHeld=false, aimT=0, shotAlertT=0, lastShotAt=-999;   // lastShotAt: último disparo oído cerca del jugador
 const curW=()=>W_BY[player.owned[player.w]]||WEAPONS[0];
 function selectWeapon(i){
   const n=player.owned.length; player.w=((i%n)+n)%n; const W=curW();
@@ -3816,12 +3904,12 @@ function shoot(W){
   emit(glowP,ox+Math.sin(h)*0.3,1.35,oz+Math.cos(h)*0.3,0,0,0,0.06,0.55,'#ffd27a');
   noise(W.snd[1],W.snd[2],W.snd[0]); duck(['siren','veh'],0.7,0.18); shake(W.kick||(W.pellets?0.35:0.1));
   for (const p of peds) if (p.state!=='dead' && d2(p.x,p.z,ox,oz)<2025) p.scare(ox,oz,7);
-  if (now>shotAlertT){ shotAlertT=now+4; crime('shots',ox,oz,1,{loud:true,copMsg:'¡Disparos! La policía acude'}); }
+  lastShotAt=now; if (now>shotAlertT){ shotAlertT=now+4; crime('shots',ox,oz,1,{loud:true,copMsg:'¡Disparos! La policía acude'}); }
 }
 const COP_GUN={pistol:{range:28,rate:[1.1,1.8],dmg:7},smg:{range:26,rate:[0.28,0.45],dmg:4},shotgun:{range:15,rate:[1.4,2.0],dmg:15}};
 function copWeapon(){ const s=player.stars, r=Math.random(); return s>=5&&r<0.35?'shotgun':s>=3&&r<0.45?'smg':'pistol'; }
 function copShot(ox,oz,P,d,dmg=7,range=40){
-  tracer(ox,oz,P.x+mrand(-1,1),P.z+mrand(-1,1),'#bfe0ff'); noise(0.08,0.5,2000,'sfx',{x:ox,z:oz});
+  tracer(ox,oz,P.x+mrand(-1,1),P.z+mrand(-1,1),'#bfe0ff'); noise(0.08,0.5,2000,'sfx',{x:ox,z:oz}); lastShotAt=now;
   if (Math.random()<(player.inCar?0.55:0.42)*(1-d/(range+12))*(!player.inCar&&player.crouch?0.5:1)){
     if (player.inCar && !player.inCar.T.bike) damageCar(player.inCar,dmg*0.6,0);
     else { const r=Math.random(), zone=r<0.08?'head':r<0.35?'leg':'torso'; hurt(dmg*(zone==='head'?2.2:zone==='leg'?0.7:1),zone,{x:ox,z:oz}); shake(zone==='head'?0.5:0.25); if (player.inCar && (zone==='head'||Math.random()<0.15)) bikeFall(P.x-ox,P.z-oz,4); } }
@@ -4430,17 +4518,26 @@ function scream(p,T){
 }
 // bocadillos sobre los NPC (gritos, frases, llamadas)
 const bubbleTex={};
-function bubbleTexture(txt){
+let bubbleN=0;
+function bubbleTexture(txt){   // bocadillo de hasta 3 líneas: las frases largas se parten y la letra se ajusta
   if (bubbleTex[txt]) return bubbleTex[txt];
-  const c=document.createElement('canvas'), x=c.getContext('2d'); x.font='bold 40px Arial,sans-serif'; const w=Math.min(508,Math.ceil(x.measureText(txt).width)+44); c.width=512; c.height=88;
-  x.fillStyle='rgba(255,255,255,0.93)'; x.strokeStyle='rgba(0,0,0,0.55)'; x.lineWidth=4; const x0=(512-w)/2;
-  x.beginPath(); if (x.roundRect) x.roundRect(x0,6,w,70,22); else x.rect(x0,6,w,70); x.fill(); x.stroke();
-  x.fillStyle='#111'; x.font='bold 40px Arial,sans-serif'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(txt,256,42);
-  const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace; return bubbleTex[txt]=t;
+  if (++bubbleN>260){ for (const k in bubbleTex){ bubbleTex[k].dispose(); delete bubbleTex[k]; } bubbleN=1; }   // caché acotada (los diálogos generan muchas frases)
+  const c=document.createElement('canvas'), x=c.getContext('2d'); let fs=40, lines=[txt];
+  const wrap=()=>{ x.font=`bold ${fs}px Arial,sans-serif`; const words=txt.split(' '); lines=[]; let cur='';
+    for (const w of words){ const t2=cur?cur+' '+w:w; if (x.measureText(t2).width>460 && cur){ lines.push(cur); cur=w; } else cur=t2; } if (cur) lines.push(cur); };
+  wrap(); while ((lines.length>3 || lines.some(l=>x.measureText(l).width>470)) && fs>24){ fs-=3; wrap(); }
+  const lh=fs*1.15, h=Math.ceil(lines.length*lh+34); c.width=512; c.height=Math.max(88,h+10); x.font=`bold ${fs}px Arial,sans-serif`;
+  const w=Math.min(508,Math.ceil(Math.max(...lines.map(l=>x.measureText(l).width)))+44), x0=(512-w)/2;
+  x.fillStyle='rgba(255,255,255,0.93)'; x.strokeStyle='rgba(0,0,0,0.55)'; x.lineWidth=4;
+  x.beginPath(); if (x.roundRect) x.roundRect(x0,6,w,h-12,22); else x.rect(x0,6,w,h-12); x.fill(); x.stroke();
+  x.fillStyle='#111'; x.textAlign='center'; x.textBaseline='middle'; lines.forEach((l,i)=>x.fillText(l,256,6+17+lh*(i+0.5)-2));
+  const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace; t.userData={aspect:c.height/512}; return bubbleTex[txt]=t;
 }
 function say(p,txt,t=1.4){
-  if (!p.bubble){ p.bubble=new THREE.Sprite(new THREE.SpriteMaterial({map:bubbleTexture(txt),transparent:true,toneMapped:false})); p.bubble.scale.set(2.9,0.5,1); p.bubble.position.y=2.35; p.mesh.add(p.bubble); }
-  else p.bubble.material.map=bubbleTexture(txt);
+  const tex=bubbleTexture(txt), asp=tex.userData.aspect||0.172;
+  if (!p.bubble){ p.bubble=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,toneMapped:false})); p.mesh.add(p.bubble); }
+  else if (p.bubble.parent!==p.mesh){ p.mesh.add(p.bubble); }
+  p.bubble.material.map=tex; p.bubble.scale.set(2.9,2.9*asp,1); p.bubble.position.y=2.1+1.45*asp;
   p.bubble.visible=true; p.bubbleT=t;
 }
 /* ---- choque jugador–peatón: el peatón cede y se aparta, el jugador nota resistencia pero no se queda bloqueado ---- */
@@ -5303,7 +5400,7 @@ function npcCrime(type,x,z,suspect,victim){
     if (p===victim || (d<30 && !losBlocked(p.x,p.z,x,z,1.5))){ if (Math.random()<(p===victim?0.9:0.35)){ p.report={t:now+mrand(2,5),id:true,npc:true,stars:0,x,z,car:null,type,suspect,cid}; if (++n>=3) break; } } }
 }
 function npcShot(from,to,dmg){   // disparo entre NPC (o de un NPC al jugador): trazadora, ruido, dispersión y daño por zona
-  const tx=to.x, tz=to.z, d=Math.hypot(tx-from.x,tz-from.z); tracer(from.x,from.z,tx+mrand(-1,1),tz+mrand(-1,1),'#ffe6a0'); noise(0.08,0.45,1800,'sfx',{x:from.x,z:from.z});
+  const tx=to.x, tz=to.z, d=Math.hypot(tx-from.x,tz-from.z); tracer(from.x,from.z,tx+mrand(-1,1),tz+mrand(-1,1),'#ffe6a0'); noise(0.08,0.45,1800,'sfx',{x:from.x,z:from.z}); if (d2(from.x,from.z,player.x,player.z)<90*90) lastShotAt=now;
   for (const q of peds) if (q!==from && q!==to && !q.cop && q.state==='walk' && d2(q.x,q.z,from.x,from.z)<30*30) q.scare(from.x,from.z,7);
   if (Math.random()>0.5*(1-d/34)) return;
   if (to===player){ if (player.inCar && !player.inCar.T.bike) damageCar(player.inCar,dmg*0.6,0); else { const r=Math.random(), zone=r<0.08?'head':r<0.35?'leg':'torso'; hurt(dmg*(zone==='head'?2.2:zone==='leg'?0.7:1),zone,{x:from.x,z:from.z}); } return; }
