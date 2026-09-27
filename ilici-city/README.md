@@ -173,6 +173,27 @@ El centro (La Glorieta – carrer Aspe) es real. El resto del mapa se basa en la
   - Acciones: fumar, sentarse, tumbarse, acostarse, bailar, gestos y otras.
   - Tiene en cuenta el contexto: bancos, sillas, sofás, camas y si llevas tabaco.
 
+## Vehículos propios, daño y conducción
+
+- **Concesionarios**:
+  - Hay dos: Elx Motor (coches) y Motos Vinalopó.
+  - El catálogo tiene 36 modelos en 7 categorías: utilitarios, berlinas, deportivos, SUV y 4x4, clásicos, furgonetas y pick-ups, y motos.
+  - Cada modelo tiene su precio, velocidad punta, aceleración, frenada, agarre y dirección, y se nota al conducir.
+  - La ficha muestra km/h, el 0-100, la frenada y el manejo. Puedes elegir color y el coche gira en la plataforma. Para añadir modelos basta con añadir una línea a `VEH_MODELS`.
+- **Casa propia con garaje**:
+  - Es refugio y punto de guardado, y se puede dormir.
+  - El garaje está cerrado y tiene 6 plazas físicas.
+  - Al subir a un vehículo guardado hay un fundido corto y apareces conduciendo en la calle. Para guardarlo, entras por la persiana.
+- **Un solo vehículo personal activo**: su posición se guarda siempre y aparece con un icono azul de coche en el mapa. Sacar o recibir otro devuelve el anterior al garaje.
+- **Alberto, el aparcacoches**:
+  - Su contacto llega al teléfono con tu primera compra.
+  - Por 50 € te trae el vehículo que elijas y te entrega las llaves.
+  - Si dejas tu vehículo abandonado, lo devuelve al garaje.
+- **Daño por zonas**:
+  - Depende de la velocidad del impacto, de la resistencia del vehículo y de dónde golpea (frontal, trasero o laterales). La chapa se abolla en el punto del golpe y las lunas se agrietan.
+  - Con el motor destrozado el coche deja de andar sin arder. El fuego solo llega con daño extremo.
+- **Conducción**: el volante se centra solo al soltarlo, así que el coche va recto. La cámara va fija detrás del vehículo (el ratón no la mueve al conducir) y con **B** miras hacia atrás.
+
 ## Cómo seguir en local
 
 Todo el juego está en `ilici-city/index.html`, un único archivo. Clona el repositorio, cambia a la rama `claude/gracious-babbage-rbramm` (o a `main` si ya has fusionado el PR) y abre el archivo en el navegador, o sirve la carpeta con `python -m http.server`. Necesita internet para cargar three.js desde el CDN.
