@@ -1860,6 +1860,41 @@ const peds=[];
 const SKIN=['#f1c9a5','#e0ac85','#c68863','#8d5a3b','#f6d7bd'], HAIR=['#2b1d14','#4a3121','#111','#b7884f','#d9d2c5','#6b3b22'];
 const SHIRT=['#e74c3c','#3498db','#f1c40f','#ecf0f1','#2c3e50','#e67e22','#9b59b6','#1abc9c','#f5b7b1','#7f8c8d','#c0392b'];
 const PANTS=['#2c3e50','#34495e','#1b1b1b','#5d6d7e','#7b5e3c','#1f3a5f'];
+/* ---- población: quién vive en cada barrio ----
+   El origen de cada vecino depende del barrio donde aparece (presencia gitana en El Palmeral y San Antón, magrebí en Carrús y El Toscar, y algo de
+   todo en el resto de Elche). Se nota en la apariencia, la ropa, el nombre y la forma de hablar. El comportamiento (carácter, si es delincuente…)
+   se decide por persona y por barrio, NUNCA por el origen. */
+const ORIGIN_MIX={'Los Palmerales':{gitano:0.42,magrebi:0.06,latino:0.05},'San Antón':{gitano:0.42,magrebi:0.06,latino:0.05},
+  'Carrús':{magrebi:0.4,gitano:0.05,latino:0.08},'El Toscar':{magrebi:0.4,gitano:0.05,latino:0.08}}, ORIGIN_DEF={magrebi:0.07,gitano:0.04,latino:0.07};
+function pickOrigin(x,z){ const m=ORIGIN_MIX[districtAt(x,z)]||ORIGIN_DEF; let r=Math.random(); for (const k in m){ r-=m[k]; if (r<0) return k; } return 'local'; }
+const NAMES={
+  local:{m:['Vicente','José','Antonio','Paco','Pepe','Juan','Toni','Sergio','Pablo','Javi','Rubén','Vicent','Xavi','Pere','Manolo','Álex','Adrián','Jordi','Quique','Rafa'],
+    f:['Carmen','María','Pilar','Rosa','Marta','Laura','Lucía','Alba','Maite','Neus','Amparo','Remei','Paula','Cristina','Encarna','Sara','Inma','Marisa','Elena','Noelia'],
+    s:['García','Martínez','Sánchez','Pérez','Ruiz','Mas','Pastor','Candela','Maciá','Ferrández','Agulló','Sempere','Boix','Pomares','Quiles','Guilabert','Serrano','Botella','Antón','Brotons']},
+  gitano:{m:['Antonio','José','Manuel','Juan','Rafael','Joaquín','Samuel','Yeray','Jonatan','Isaac','Moisés','Israel','Tomás','Enrique','Ramón','Paco','Rubén','Aarón'],
+    f:['Carmen','Rocío','Remedios','Dolores','Esperanza','Estrella','Saray','Soledad','Tamara','Rebeca','Pastora','Encarna','Montse','Loli','Rosario','Noemí','Aroa'],
+    s:['Heredia','Montoya','Fernández','Jiménez','Cortés','Amaya','Flores','Motos','Vargas','Carmona','Santiago','Moreno','Borja','Salazar','Maya','Hernández','Giménez','Silva']},
+  magrebi:{m:['Mohamed','Youssef','Ahmed','Hamza','Karim','Rachid','Said','Omar','Ilyas','Adam','Mustafa','Bilal','Anas','Nabil','Hassan','Mehdi','Ayoub','Samir'],
+    f:['Fátima','Khadija','Aicha','Salma','Nora','Yasmina','Meriem','Samira','Imane','Hanane','Zineb','Malika','Houda','Laila','Naima','Sara','Hiba','Ikram'],
+    s:['El Amrani','Benali','Bouzid','Haddad','El Idrissi','Ziani','Chaoui','Berrada','Alaoui','Tahiri','El Fassi','Bennani','Ouali','Mansouri','Azzouzi','Belhaj','Kaddouri','Rahmani']},
+  latino:{m:['Carlos','Luis','Andrés','Jhon','Diego','Brayan','Wilson','Fernando','Kevin','Mateo','Julián','Óscar'],f:['Valeria','Daniela','Yuliana','Gabriela','Andrea','Camila','Paola','Mariana','Luz','Karen','Tatiana'],
+    s:['Rodríguez','Gómez','López','Ramírez','Torres','Castillo','Vargas','Quintero','Mendoza','Ríos','Salazar','Cárdenas']}};
+function makeIdentity(origin,age){   // nombre y aspecto de una persona concreta
+  const N=NAMES[origin]||NAMES.local, fem=Math.random()<0.48, name=mpick(fem?N.f:N.m)+' '+mpick(N.s), look={fem}, dark=['#111','#1b1410','#2b1d14','#241812'];
+  let skin=mpick(['#f1c9a5','#e0ac85','#f6d7bd','#d9a47c','#c68863']), hair=mpick(HAIR), shirt=mpick(SHIRT), pants=mpick(PANTS);
+  if (origin==='gitano'){ skin=mpick(['#e0ac85','#c68863','#d4a276','#b88158']); hair=mpick(dark);
+    if (fem){ look.hairStyle=mpick(['long','long','pony','bob']); look.skirt=Math.random()<0.55; look.longSkirt=Math.random()<0.5; shirt=mpick(['#c0392b','#8e44ad','#16a085','#d35400','#2c3e50','#f39c12','#1abc9c','#1b1b1b']); pants=mpick(['#1b1b1b','#2c3e50','#6b2d4f','#34495e']); }
+    else { look.hairStyle=mpick(['short','side','side','buzz']); look.mustache=Math.random()<0.35; look.beard=!look.mustache&&Math.random()<0.2; if (age==='mayor'&&Math.random()<0.55){ look.head='flatcap'; look.headC=mpick(['#2b2b2b','#4a4036','#1f2a3a']); }
+      shirt=age==='mayor'?mpick(['#1b1b1b','#2c3e50','#ecf0f1','#4a4036']):mpick(['#ecf0f1','#2c3e50','#1b1b1b','#7a2d2d','#e74c3c','#f4f4f0','#34495e']); } }
+  else if (origin==='magrebi'){ skin=mpick(['#d9a77f','#c68863','#b77b52','#e0ac85']); hair=mpick(dark);
+    if (fem){ if (Math.random()<(age==='mayor'?0.8:age==='joven'?0.35:0.55)){ look.head='hijab'; look.headC=mpick(['#2c3e50','#8e44ad','#7a2d2d','#e8e2d0','#1f3a5f','#7a5c3e','#1b1b1b','#3e6b5a']); if (Math.random()<0.6){ look.skirt=true; look.longSkirt=true; } }
+      else look.hairStyle=mpick(['long','pony','long']); shirt=mpick(['#e8e2d0','#2c3e50','#8e44ad','#c0392b','#16a085','#7f8c8d','#f5b7b1']); }
+    else { look.beard=Math.random()<(age==='joven'?0.25:0.5); look.hairStyle=mpick(['short','buzz','side']);
+      if (Math.random()<(age==='mayor'?0.5:age==='adulto'?0.15:0.04)){ look.robe=mpick(['#e8e2d0','#6b5a45','#3d4a5c','#8a8f96','#f2efe6']); shirt=look.robe; if (Math.random()<0.6){ look.head='taqiyah'; look.headC=mpick(['#f2efe6','#e8e2d0','#3d4a5c']); } } } }
+  else if (origin==='latino'){ skin=mpick(['#e0ac85','#c68863','#8d5a3b','#d4a276']); hair=mpick(dark); }
+  if (age==='mayor') hair=mpick(['#b9b5ae','#d6d3cc','#8d8a85','#e4e1da']);
+  return {fem,name,skin,hair,shirt,pants,look};
+}
 // Cuerpos humanos modelados (geometría con colores por vértice; un solo material para todos)
 const pedMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.82,metalness:0});   // un solo material para todos: tela y piel responden a la luz
 const capCache={};
@@ -1899,14 +1934,14 @@ const TORSO_M=[[0.16,0],[0.155,0.08],[0.15,0.16],[0.175,0.28],[0.2,0.38],[0.205,
 const TORSO_F=[[0.17,0],[0.15,0.09],[0.128,0.17],[0.16,0.28],[0.168,0.35],[0.16,0.42],[0.13,0.48],[0.065,0.51]].map(p=>new THREE.Vector2(p[0],p[1]));
 const torsoGeoM=new THREE.LatheGeometry(TORSO_M,14), torsoGeoF=new THREE.LatheGeometry(TORSO_F,14);
 const shade=(hex,k)=>{ _c.set(hex); _c.multiplyScalar(k); return '#'+_c.getHexString(); };
-function makePedMesh(shirt,pants,skin,hair,extra){
-  const civ=!extra, fem=civ && Math.random()<0.45, shadow=extra==='elche', cop=extra==='cop';
-  const skirt=fem && Math.random()<0.35, shorts=civ&&!fem&&Math.random()<0.2;
-  const top=cop?'uniform':extra==='elche'?'tee':mpick(fem?['tee','tee','long','jacket','hoodie']:['tee','tee','long','jacket','hoodie','polo']);
+function makePedMesh(shirt,pants,skin,hair,extra,look={}){   // look: rasgos elegidos fuera (sexo, pañuelo, chilaba, gorra, barba…)
+  const civ=!extra, fem=look.fem ?? (civ && Math.random()<0.45), shadow=extra==='elche', cop=extra==='cop', robe=look.robe||null, hijab=look.head==='hijab';
+  const skirt=fem && !robe && (look.skirt ?? Math.random()<0.35), shorts=civ&&!fem&&!robe&&Math.random()<0.2;
+  const top=cop?'uniform':extra==='elche'?'tee':robe?'long':hijab?mpick(['long','jacket']):mpick(fem?['tee','tee','long','jacket','hoodie']:['tee','tee','long','jacket','hoodie','polo']);
   const longSleeve=cop||top==='long'||top==='jacket'||top==='hoodie';
   const jacket=top==='jacket'?mpick(['#2b2f36','#5a4632','#1f3a5f','#6b6f75','#7a2d2d']):null;
   const outer=jacket||shirt, shoes=cop?'#111':mpick(['#1b1b1b','#efefef','#e8e8e8','#5a3b22','#2c3e50','#8a1f1f']), sole=shoes==='#efefef'||shoes==='#e8e8e8'?'#9a9a9a':'#e6e1d6';
-  const style=cop?'cop':extra==='elche'?'side':fem?mpick(['long','long','bob','pony']):mpick(['short','short','buzz','side','cap','bald']);   // el protagonista siempre igual
+  const style=cop?'cop':extra==='elche'?'side':hijab?'hijab':look.hairStyle||(fem?mpick(['long','long','bob','pony']):mpick(['short','short','buzz','side','cap','bald']));   // el protagonista siempre igual
   const capC=mpick(['#1b1b1b','#c0392b','#1f3a5f','#f4f4f0','#2f7d4f']);
   const g=new THREE.Group(), body=[], sw=fem?0.9:1, LH=[], LL=[], bodyG=new THREE.Group(); g.add(bodyG); g.rotation.order='YXZ';   // inclinaciones en el eje del propio cuerpo
   const both=(parent,hi,lo)=>{ const h=pedMesh(hi,shadow), l=pedMesh(lo,shadow); l.visible=false; parent.add(h); parent.add(l); LH.push(h); LL.push(l); };
@@ -1917,10 +1952,11 @@ function makePedMesh(shirt,pants,skin,hair,extra){
   if (jacket) body.push(tintGeo(PG.box,shirt,0,1.2,0.108,0.1,0.4,0.03));   // camiseta que asoma por la chaqueta abierta
   if (top==='polo'||cop) body.push(tintGeo(PG.box,shade(outer,0.85),0,1.43,0.075,0.12,0.05,0.04));
   if (top==='hoodie') body.push(tintGeo(PG.sph,shade(outer,0.9),0,1.45,-0.085,0.14,0.08,0.07));   // capucha a la espalda
-  body.push(tintGeo(PG.cyl,cop?'#151515':shade(pants,0.6),0,0.965,0,0.162*sw,0.035,0.105));   // cinturón
+  if (!robe) body.push(tintGeo(PG.cyl,cop?'#151515':shade(pants,0.6),0,0.965,0,0.162*sw,0.035,0.105));   // cinturón
   body.push(tintGeo(PG.cyl,shade(outer,0.8),0,1.465,0,0.075,0.03,0.068));   // cuello de la prenda
   for (const sx of [-1,1]) body.push(tintGeo(PG.sph,outer,sx*0.16*sw,1.405,0,0.07,0.055,0.068));   // hombros (redondean la unión con el brazo)
-  if (skirt) body.push(tintGeo(new THREE.CylinderGeometry(0.16,0.27,0.42,16,1,true),pants,0,0.79,0,1,1,0.8,0,0.2));
+  if (skirt) body.push(tintGeo(new THREE.CylinderGeometry(0.16,0.27,look.longSkirt?0.7:0.42,16,1,true),pants,0,look.longSkirt?0.65:0.79,0,1,1,0.8,0,0.2));
+  if (robe) body.push(tintGeo(new THREE.CylinderGeometry(0.2,0.3,0.86,16,1,true),robe,0,0.52,0,1,1,0.82,0,0.22));   // chilaba hasta los tobillos
   // cuello y cabeza
   body.push(tintGeo(PG.cyl,skin,0,1.51,0.005,0.05,0.1,0.052,0,0.2));
   body.push(tintGeo(PG.sph,skin,0,1.66,0,0.098,0.118,0.108));
@@ -1939,19 +1975,26 @@ function makePedMesh(shirt,pants,skin,hair,extra){
     body.push(tintGeo(PG.box,'#e0b400',0.08,1.33,0.118,0.035,0.045,0.01)); body.push(tintGeo(PG.cyl,'#111',0,1.0,0,0.175,0.055,0.115));
     body.push(tintGeo(PG.box,'#1a1a1a',-0.1,1.36,0.1,0.035,0.06,0.03));   // radio
   } else {
-    if (style==='cap'){ const cc=capC; body.push(tintGeo(PG.cap,cc,0,1.685,0,0.11,0.1,0.118)); body.push(tintGeo(PG.cyl,cc,0,1.7,0.1,0.075,0.012,0.07)); }
+    if (style==='hijab'){ const hc=look.headC||'#2c3e50'; body.push(tintGeo(PG.cap,hc,0,1.655,-0.035,0.122,0.136,0.13)); body.push(tintGeo(PG.cyl,hc,0,1.53,-0.005,0.078,0.13,0.074)); body.push(tintGeo(PG.rbox,hc,0,1.5,-0.07,0.2,0.24,0.1)); }   // pañuelo: cubre pelo, orejas y cuello
+    else if (style==='cap'){ const cc=capC; body.push(tintGeo(PG.cap,cc,0,1.685,0,0.11,0.1,0.118)); body.push(tintGeo(PG.cyl,cc,0,1.7,0.1,0.075,0.012,0.07)); }
     else if (style!=='bald'){ const hh=style==='buzz'?0.09:0.105; body.push(tintGeo(PG.cap,hair,0,1.672,-0.008,0.108,hh,0.12));
       if (style==='side') body.push(tintGeo(PG.sph,hair,0.03,1.735,0.04,0.08,0.03,0.07));
       if (style==='long'){ body.push(tintGeo(PG.rbox,hair,0,1.56,-0.07,0.21,0.3,0.08)); for (const sx of [-1,1]) body.push(tintGeo(PG.rbox,hair,sx*0.095,1.6,0.0,0.035,0.2,0.09)); }
       if (style==='bob') body.push(tintGeo(PG.rbox,hair,0,1.63,-0.03,0.22,0.14,0.18));
       if (style==='pony') body.push(tintGeo(PG.sph,hair,0,1.6,-0.14,0.045,0.11,0.045)); }
-    if (!fem && extra!=='elche' && Math.random()<0.25) body.push(tintGeo(PG.sph,shade(hair,0.95),0,1.598,0.035,0.078,0.05,0.078));   // barba
+    if (look.beard ?? (!fem && extra!=='elche' && Math.random()<0.25)) body.push(tintGeo(PG.sph,shade(hair,0.95),0,1.598,0.035,0.078,0.05,0.078));   // barba
+    if (look.mustache) body.push(tintGeo(PG.box,shade(hair,0.9),0,1.618,0.106,0.052,0.013,0.014));   // bigote
+    if (look.head==='taqiyah') body.push(tintGeo(PG.cyl,look.headC||'#f2efe6',0,1.745,-0.01,0.092,0.05,0.098));
+    if (look.head==='flatcap'){ const fc=look.headC||'#3a3a3a'; body.push(tintGeo(PG.cap,fc,0,1.7,0,0.118,0.065,0.128)); body.push(tintGeo(PG.box,fc,0,1.703,0.112,0.1,0.012,0.06)); }   // gorra plana
   }
   if (extra==='elche'){ body.push(tintGeo(PG.cyl,'#1f8a4c',0,1.23,0,0.2,0.09,0.13)); body.push(tintGeo(PG.box,'#1f8a4c',-0.07,1.34,0.12,0.03,0.035,0.008)); }   // franja verde del Elche CF
   const bodyL=[tintGeo(PGL.sph,skirt?shirt:pants,0,0.95,0,fem?0.185:0.17,0.13,0.125,0,0.25), tintGeo(torsoL(fem),outer,0,0.95,0,1,1,0.62,0,0.18),
     tintGeo(PGL.cyl,skin,0,1.51,0.005,0.05,0.1,0.052), tintGeo(PGL.sph,skin,0,1.65,0.005,0.1,0.13,0.11)];
-  if (skirt) bodyL.push(tintGeo(new THREE.CylinderGeometry(0.16,0.27,0.42,7,1,true),pants,0,0.79,0,1,1,0.8,0,0.2));
+  if (skirt) bodyL.push(tintGeo(new THREE.CylinderGeometry(0.16,0.27,look.longSkirt?0.7:0.42,7,1,true),pants,0,look.longSkirt?0.65:0.79,0,1,1,0.8,0,0.2));
+  if (robe) bodyL.push(tintGeo(new THREE.CylinderGeometry(0.2,0.3,0.86,7,1,true),robe,0,0.52,0,1,1,0.82,0,0.22));
+  if (hijab) bodyL.push(tintGeo(PGL.cap,look.headC||'#2c3e50',0,1.655,-0.035,0.122,0.136,0.13), tintGeo(PGL.cyl,look.headC||'#2c3e50',0,1.53,-0.005,0.078,0.13,0.074));
   if (cop) bodyL.push(tintGeo(PGL.cyl,'#17234a',0,1.765,0,0.112,0.07,0.12));
+  else if (style==='hijab'){}
   else if (style==='cap') bodyL.push(tintGeo(PGL.cap,capC,0,1.685,0,0.11,0.1,0.118));
   else if (style!=='bald'){ bodyL.push(tintGeo(PGL.cap,hair,0,1.672,-0.008,0.108,style==='buzz'?0.09:0.105,0.12)); if (style==='long'||style==='bob') bodyL.push(tintGeo(PG.box,hair,0,style==='long'?1.56:1.63,-0.06,0.2,style==='long'?0.3:0.14,0.1)); }
   if (extra==='elche') bodyL.push(tintGeo(PGL.cyl,'#1f8a4c',0,1.23,0,0.2,0.09,0.13));
@@ -1979,7 +2022,7 @@ function makePedMesh(shirt,pants,skin,hair,extra){
     shin.push(tintGeo(PG.rbox,shoes,0,-0.448,0.035,0.105,0.075,0.235)); shin.push(tintGeo(PG.rbox,sole,0,-0.49,0.035,0.11,0.025,0.245)); shin.push(tintGeo(PG.box,shade(shoes,0.7),0,-0.43,0.1,0.07,0.012,0.06));
     both(kn,shin,[tintGeo(taperL(0.061,0.045,0.28),shinC,0,-0.2,0), tintGeo(PG.box,shoes,0,-0.46,0.035,0.105,0.09,0.24)]);
   }
-  g.userData={legs,arms,knees,elbows,wm:makeWeaponModels(wmHolder),lod:{hi:LH,lo:LL,on:false}}; if (cop) setWeaponModel(g,'pistol'); pedMeshes.add(g);
+  g.userData={legs,arms,knees,elbows,wm:makeWeaponModels(wmHolder),lod:{hi:LH,lo:LL,on:false},fem}; if (cop) setWeaponModel(g,'pistol'); pedMeshes.add(g);
   return g;
 }
 function disposePed(mesh){ pedMeshes.delete(mesh); mesh.traverse(o=>{ if (o.isMesh && o.geometry.userData.ped) o.geometry.dispose(); }); }
@@ -2039,7 +2082,8 @@ class Ped{
     { const r=Math.random(); this.age=cop?'adulto':r<0.28?'joven':r<0.8?'adulto':'mayor'; }   // edad y carácter propios: cada persona reacciona y habla a su manera
     this.pers={temper:Math.random(),brave:Math.random(),chat:Math.random(),mood:Math.random(),humor:Math.random(),wary:Math.random()};
     if (this.age==='mayor') this.pers.brave*=0.5;
-    this.mesh=makePedMesh(cop?'#1f3a8a':mpick(SHIRT),cop?'#1b2a4a':mpick(PANTS),mpick(SKIN),this.age==='mayor'?mpick(['#b9b5ae','#d6d3cc','#8d8a85','#e4e1da']):mpick(HAIR),cop?'cop':null);
+    this.origin=cop?'local':pickOrigin(x,z); const I=cop?null:makeIdentity(this.origin,this.age); this.idn=I; this.fem=I?I.fem:false; this.name=I?I.name:mpick(NAMES.local.m)+' '+mpick(NAMES.local.s);
+    this.mesh=cop?makePedMesh('#1f3a8a','#1b2a4a',mpick(SKIN),mpick(HAIR),'cop'):makePedMesh(I.shirt,I.pants,I.skin,I.hair,null,I.look);
     this.mesh.traverse(o=>{ if(o.isMesh) o.castShadow=false; });
     scene.add(this.mesh);
     this.x=x; this.z=z; this.y=0; this.h=mrand(0,6.28); this.state='walk'; this.speed=mrand(1.1,1.6);
@@ -2749,7 +2793,7 @@ function interactCandidates(){
   for (const c of clients){ if (inCar && !slow) continue; out.push({verb:'Vender',name:'Cliente',x:c.x,z:c.z,r:inCar?6:2.4,act:()=>sellTo(c)}); }
   if (!inCar){
     const c=nearestCar(4.2); if (c) out.push({verb:c.driver==='npc'||c.driver==='police'?'Robar':'Subir',name:c.k==='taxi'?'Taxi':c.T.bike?'Bici':'Coche',x:c.x,z:c.z,r:99,car:true,act:()=>enterCar(c)});
-    for (const p of peds){ if (p.state!=='walk' || p.cop) continue; const d=d2(p.x,p.z,player.x,player.z); if (d>2.4*2.4) continue; out.push({verb:'Hablar',name:'Vecino',x:p.x,z:p.z,r:2.4,act:()=>talkTo(p)}); }
+    for (const p of peds){ if (p.state!=='walk' || p.cop) continue; const d=d2(p.x,p.z,player.x,player.z); if (d>2.4*2.4) continue; out.push({verb:'Hablar',name:p.fem?'Vecina':'Vecino',talk:true,x:p.x,z:p.z,r:2.4,act:()=>talkTo(p)}); }
   }
   for (const f of INTERACT_SOURCES) f(out);   // ampliable: puertas, máquinas, objetos...
   return out;
@@ -2757,7 +2801,7 @@ function interactCandidates(){
 function bestInteraction(){
   const P=player.inCar||player, h=player.inCar?player.inCar.h:player.h, fx=Math.sin(h), fz=Math.cos(h); let best=null, bs=1e9;
   for (const o of interactCandidates()){ const dx=o.x-P.x, dz=o.z-P.z, d=Math.hypot(dx,dz); if (!o.car && d>o.r) continue;
-    const front=d<0.8?1:(dx*fx+dz*fz)/d, sc=(o.car?0.6:d)+(1-front)*1.6+(o.verb==='Hablar'&&o.name==='Vecino'?1.2:0);   // delante y cerca; charlar pesa menos que usar
+    const front=d<0.8?1:(dx*fx+dz*fz)/d, sc=(o.car?0.6:d)+(1-front)*1.6+(o.talk?1.2:0);   // delante y cerca; charlar pesa menos que usar
     if (sc<bs){ bs=sc; best=o; } }
   return best;
 }
@@ -5200,7 +5244,7 @@ function updateEMS(dt){
           for (const sg of [-1,1]){ const p=new Ped(c.x+(-fz)*sg*(c.T.w/2+0.7),c.z+fx*sg*(c.T.w/2+0.7),true); p.state='cop'; p.respond=call; p.target=call.suspect&&peds.includes(call.suspect)&&call.suspect.state!=='dead'?call.suspect:null; p.lookT2=now+mrand(8,14); call.medics.push(p); }
           call.victims=[]; continue; }
         for (const sg of [-1,1]){ const p=new Ped(c.x-fx*(c.T.len/2+0.8)+(-fz)*sg*0.7, c.z-fz*(c.T.len/2+0.8)+fx*sg*0.7); p.medic=true; p.state='medic'; p.mStep='go'; p.speed=2.2;
-          scene.remove(p.mesh); disposePed(p.mesh); p.mesh=makePedMesh('#dfe8ea','#2f7d4f',mpick(SKIN),mpick(HAIR)); p.mesh.traverse(o=>{ if(o.isMesh) o.castShadow=false; }); scene.add(p.mesh); call.medics.push(p); }
+          scene.remove(p.mesh); disposePed(p.mesh); p.mesh=makePedMesh('#dfe8ea','#2f7d4f',p.idn?p.idn.skin:mpick(SKIN),p.idn?p.idn.hair:mpick(HAIR),null,p.idn?{fem:p.fem,head:p.idn.look.head==='hijab'?'hijab':null,headC:p.idn.look.headC,skirt:false}:{}); p.mesh.traverse(o=>{ if(o.isMesh) o.castShadow=false; }); scene.add(p.mesh); call.medics.push(p); }
         call.victims=peds.filter(p=>(p.state==='dead'||p.state==='hit'||p.limp) && !p.medic && !p.cop && d2(p.x,p.z,call.x,call.z)<30*30).slice(0,4);
       }
     }
@@ -5243,7 +5287,7 @@ const THUG_SHIRT=['#1b1b1b','#26262e','#3a2a2a','#1f2b3a','#4a4a4a','#2e3b2a'], 
 const CRIME={t:15,scenes:[],tags:[]};
 function wpick(mix){ let r=Math.random()*mix.reduce((a,m)=>a+m[1],0); for (const [k,w] of mix){ if ((r-=w)<0) return k; } return mix[0][0]; }
 function makeCriminal(p,role){
-  p.role=role; scene.remove(p.mesh); disposePed(p.mesh); p.mesh=makePedMesh(mpick(THUG_SHIRT),mpick(THUG_PANTS),mpick(SKIN),mpick(HAIR)); p.mesh.traverse(o=>{ if(o.isMesh) o.castShadow=false; }); scene.add(p.mesh);
+  p.role=role; scene.remove(p.mesh); disposePed(p.mesh); p.mesh=makePedMesh(mpick(THUG_SHIRT),mpick(THUG_PANTS),p.idn?p.idn.skin:mpick(SKIN),p.idn?p.idn.hair:mpick(HAIR),null,p.idn?{...p.idn.look,robe:null,head:p.idn.look.head==='hijab'?'hijab':null,skirt:false}:{}); p.mesh.traverse(o=>{ if(o.isMesh) o.castShadow=false; }); scene.add(p.mesh);
   if (p.bubble){ p.bubble=null; }
   if (role==='thug' && Math.random()<0.6) p.gun=Math.random()<0.15?'smg':'pistol';
   return p;
