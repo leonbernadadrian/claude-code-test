@@ -177,6 +177,13 @@
   #vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 58%,rgba(0,0,0,.28) 100%)}
   #hurtfx{position:absolute;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,rgba(140,0,0,0) 45%,rgba(150,0,0,.55) 100%)}
   #fade.on{opacity:1}
+  #wheel{position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,rgba(0,0,0,.55),rgba(0,0,0,.2) 60%);z-index:30}
+  #wheel .wopt{position:absolute;transform:translate(-50%,-50%);width:104px;height:74px;border-radius:14px;border:2px solid rgba(255,255,255,.25);background:rgba(20,24,30,.85);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font:600 12px system-ui,sans-serif;cursor:pointer}
+  #wheel .wopt span{font-size:24px}
+  #wheel .wopt.sel{border-color:#ffd24f;background:rgba(60,50,20,.92);transform:translate(-50%,-50%) scale(1.08)}
+  #wheel .wopt.off{opacity:.45}
+  #wheel .wcenter{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:150px;text-align:center;color:#fff;font:600 14px system-ui,sans-serif;text-shadow:0 1px 3px #000}
+  #wheel .wcenter small{display:block;font-weight:400;font-size:11px;opacity:.85;margin-top:4px}
   @media (max-width:560px){ #maplegend{display:none} #mapinfo{max-width:calc(100% - 100px);font-size:16px} #nav{font-size:15px} }
   @media (max-width:560px){
     #mini{width:118px;height:118px}
@@ -217,6 +224,7 @@
     <div id="nav" class="outline" hidden><b id="navArrow">▲</b><span id="navTxt"></span></div>
     <button id="bCancel" type="button" hidden>✕ CANCELAR MISIÓN<small class="only-desk">Retroceso</small></button>
     <div id="fade"></div>
+    <div id="wheel" hidden></div>
     <div id="obj" class="outline"></div>
     <div id="keys"><div class="ctr">
       <kbd>W A S D</kbd><span>Andar / conducir</span>
@@ -229,6 +237,7 @@
       <kbd>Q · rueda · 1-7</kbd><span>Cambiar de arma</span>
       <kbd>H</kbd><span>Claxon (mantén) · silbar a pie</span>
       <kbd>T</kbd><span>Pedir un taxi libre</span>
+      <kbd>U</kbd><span>Ruleta de acciones (fumar, sentarse, bailar…)</span>
       <kbd>C · V</kbd><span>Cámara cenital · primera persona</span>
       <kbd>M</kbd><span>Mapa: zoom y destinos</span>
       <kbd>Tab</kbd><span>Teléfono móvil</span>
@@ -320,6 +329,7 @@
         <kbd>1-7</kbd><span>Puños, bate, Desert Eagle, pistola, subfusil, escopeta, granadas</span>
         <kbd>H</kbd><span>Claxon mientras lo mantienes (a pie, silbas)</span>
         <kbd>T</kbd><span>Pedir un taxi libre cercano; dentro, Espacio salta el trayecto y E te baja</span>
+        <kbd>U</kbd><span>Ruleta de acciones: fumar (con tabaco del estanco), sentarse en bancos, sillas o sofás, tumbarse, acostarse en una cama, bailar, gestos y más. Moverse, E o Espacio te levantan</span>
         <kbd>C</kbd><span>Cámara normal / cenital</span>
         <kbd>V</kbd><span>Primera o tercera persona (también en Pausa)</span>
         <kbd>M</kbd><span>Mapa: rueda o +/− para zoom, arrastra para moverte, clic para marcar destino (clic derecho lo quita)</span>
@@ -515,6 +525,9 @@ function styleKey(x,z){
   if (x<-660 && z>550) return 'industrial';   // naves al suroeste de Sector V, junto al Hospital del Vinalopó
   return DSTYLE[districtAt(x,z)]||'raval';
 }
+/* locales con interior (estancos, peluquerías, pensiones): se eligen solares a pie de calle al generar la ciudad y se construyen al final */
+const PREMISE_WANT=[{kind:'estanco',sk:'centro'},{kind:'barber',sk:'centro'},{kind:'estanco',sk:'altabix'},{kind:'barber',sk:'raval'},{kind:'hostal',sk:'centro'},{kind:'estanco',sk:'carrus'},{kind:'barber',sk:'toscar'},{kind:'hostal',sk:'pla'}];
+const PREMISE_LOTS=[], FURN=[];   // FURN: dónde sentarse o tumbarse (bancos, sillas, sofás, camas)
 const STYLE={
   centro:{n:3,gap:0.4,h:[2,5],cols:['#efe6d6','#e8d3a9','#d9b98a','#f2efe9','#cfa77a','#e6c9b5','#dcc7a1']},
   raval:{n:3,gap:0.6,h:[2,3],cols:['#f0d9a8','#e9b872','#efe7da','#d98f62','#f4e4c1','#c9d8c5']},
@@ -1129,8 +1142,17 @@ for (const b of blocks){
     const sk=styleKey(cx,cz), s2=STYLE[sk];
     if (sk!=='centro' && rnd()<0.08) continue;
     const floors=Math.round(R(s2.h[0],s2.h[1])), bc=pick(s2.cols);
-    addBuilding(lot.x0,lot.z0,lot.x1,lot.z1,floors*3.4+1.2,bc);
     const faces=[]; if (a===0) faces.push('W'); if (a===nx-1) faces.push('E'); if (c===0) faces.push('N'); if (c===nz-1) faces.push('S');
+    const pf=faces.filter(q=>!(q==='W'&&lot.x0<-800)&&!(q==='E'&&lot.x1>800)&&!(q==='N'&&lot.z0<-800)&&!(q==='S'&&lot.z1>800)).sort((p,q)=>'NSWE'.indexOf(p)-'NSWE'.indexOf(q));   // fachada a una calle interior, no al borde del mapa
+    const want=pf.length && Math.abs(cx)<640 && Math.abs(cz)<640 && lot.x1-lot.x0>=14 && lot.z1-lot.z0>=14 && PREMISE_WANT.find(w=>w.sk===sk && !w.used && PREMISE_LOTS.every(q=>Math.hypot(q.cx-cx,q.cz-cz)>(q.kind===w.kind?300:80)));
+    if (want){ want.used=true; const f=pf[0], W=10, D=8, ax=f==='N'||f==='S', mid=ax?cx:cz;   // local a pie de calle + edificios a los lados y detrás
+      const pr=f==='N'?{x0:mid-W/2,x1:mid+W/2,z0:lot.z0,z1:lot.z0+D}:f==='S'?{x0:mid-W/2,x1:mid+W/2,z0:lot.z1-D,z1:lot.z1}:f==='W'?{x0:lot.x0,x1:lot.x0+D,z0:mid-W/2,z1:mid+W/2}:{x0:lot.x1-D,x1:lot.x1,z0:mid-W/2,z1:mid+W/2};
+      PREMISE_LOTS.push({kind:want.kind,sk,face:f,...pr,cx:(pr.x0+pr.x1)/2,cz:(pr.z0+pr.z1)/2});
+      const rest=ax?[{x0:lot.x0,x1:pr.x0-0.6,z0:pr.z0,z1:pr.z1},{x0:pr.x1+0.6,x1:lot.x1,z0:pr.z0,z1:pr.z1},f==='N'?{x0:lot.x0,x1:lot.x1,z0:pr.z1+0.6,z1:lot.z1}:{x0:lot.x0,x1:lot.x1,z0:lot.z0,z1:pr.z0-0.6}]
+        :[{x0:pr.x0,x1:pr.x1,z0:lot.z0,z1:pr.z0-0.6},{x0:pr.x0,x1:pr.x1,z0:pr.z1+0.6,z1:lot.z1},f==='W'?{x0:pr.x1+0.6,x1:lot.x1,z0:lot.z0,z1:lot.z1}:{x0:lot.x0,x1:pr.x0-0.6,z0:lot.z0,z1:lot.z1}];
+      for (const r of rest) if (r.x1-r.x0>3.5 && r.z1-r.z0>3.5){ addBuilding(r.x0,r.z0,r.x1,r.z1,floors*3.4+1.2,bc); decorate(r,floors,sk,faces,bc); }
+      continue; }
+    addBuilding(lot.x0,lot.z0,lot.x1,lot.z1,floors*3.4+1.2,bc);
     decorate(lot,floors,sk,faces,bc);
   }
 }
@@ -1566,7 +1588,7 @@ const lampBulbMat=new THREE.MeshBasicMaterial({color:'#6b6555'}); let lampGlow=n
 const busStopMap=new Map(), BUS_STOPS=[];
 {
   const seats=[], backs=[], bins=[], trunks=[], crowns=[];
-  const bench=(x,z,ry)=>{ seats.push({x,y:0.72,z,sx:1.9,sy:0.12,sz:0.6,ry,c:'#8a5a34'}); const bx=x-Math.sin(ry)*0.28, bz=z-Math.cos(ry)*0.28; backs.push({x:bx,y:1.05,z:bz,sx:1.9,sy:0.5,sz:0.1,ry,c:'#8a5a34'}); addCollider(x-0.8,z-0.8,x+0.8,z+0.8,0.8); };
+  const bench=(x,z,ry)=>{ seats.push({x,y:0.72,z,sx:1.9,sy:0.12,sz:0.6,ry,c:'#8a5a34'}); FURN.push({type:'bench',x,z,ry,sy:0.78}); const bx=x-Math.sin(ry)*0.28, bz=z-Math.cos(ry)*0.28; backs.push({x:bx,y:1.05,z:bz,sx:1.9,sy:0.5,sz:0.1,ry,c:'#8a5a34'}); addCollider(x-0.8,z-0.8,x+0.8,z+0.8,0.8); };
   const ficus=(x,z,r=4)=>{ trunks.push({x,y:1.8,z,sx:0.7,sy:3.6,sz:0.7}); crowns.push({x,y:4.6+r*0.4,z,sx:r,sy:r*0.75,sz:r,c:pick(['#3f6b2e','#35602a','#4a7534'])}); addCollider(x-0.5,z-0.5,x+0.5,z+0.5,4); };
   for (const sp of SPECIAL){
     if (sp.type!=='plaza' && sp.type!=='park') continue;
@@ -2072,6 +2094,18 @@ const TORSO_M=[[0.16,0],[0.155,0.08],[0.15,0.16],[0.175,0.28],[0.2,0.38],[0.205,
 const TORSO_F=[[0.17,0],[0.15,0.09],[0.128,0.17],[0.16,0.28],[0.168,0.35],[0.16,0.42],[0.13,0.48],[0.065,0.51]].map(p=>new THREE.Vector2(p[0],p[1]));
 const torsoGeoM=new THREE.LatheGeometry(TORSO_M,14), torsoGeoF=new THREE.LatheGeometry(TORSO_F,14);
 const shade=(hex,k)=>{ _c.set(hex); _c.multiplyScalar(k); return '#'+_c.getHexString(); };
+const hairCone=new THREE.ConeGeometry(1,1,5);
+const HAIR_EXTRA={   // volumen propio de cada corte sobre la base (se suma al casquete de pelo)
+  fade:(h,G)=>[tintGeo(G.sph,h,0,1.745,0.02,0.086,0.045,0.092)],
+  quiff:(h,G)=>[tintGeo(G.sph,h,0,1.765,0.065,0.08,0.06,0.068),tintGeo(G.sph,h,0,1.735,0,0.095,0.04,0.105)],
+  slick:(h,G)=>[tintGeo(G.sph,h,0,1.725,-0.02,0.105,0.045,0.125),tintGeo(G.rbox||G.box,h,0,1.64,-0.085,0.19,0.12,0.08)],
+  spiky:(h,G)=>[tintGeo(G.sph,h,0,1.735,0,0.095,0.04,0.105),...[[0,0.05],[0.05,0.0],[-0.05,0],[0,-0.05],[0.035,0.07],[-0.035,0.07],[0,-0.1]].map(([x,z])=>tintGeo(hairCone,h,x,1.8,z,0.03,0.07,0.03))],
+  mohawk:(h,G)=>[tintGeo(G.rbox||G.box,h,0,1.77,-0.01,0.035,0.07,0.23)],
+  curly:(h,G)=>[tintGeo(G.sph,h,0,1.74,0,0.1,0.05,0.11),...[[0,0.07],[0.06,0.03],[-0.06,0.03],[0.05,-0.05],[-0.05,-0.05],[0,-0.09],[0.08,-0.01],[-0.08,-0.01]].map(([x,z])=>tintGeo(G.sph,h,x,1.765,z,0.038,0.035,0.038))],
+  afro:(h,G)=>[tintGeo(G.sph,h,0,1.735,-0.02,0.165,0.15,0.165)],
+  manbun:(h,G)=>[tintGeo(G.sph,h,0,1.735,-0.115,0.052,0.05,0.052)],
+  mullet:(h,G)=>[tintGeo(G.rbox||G.box,h,0,1.55,-0.09,0.17,0.2,0.06)],
+};
 function makePedMesh(shirt,pants,skin,hair,extra,look={}){   // look: rasgos elegidos fuera (sexo, pañuelo, chilaba, gorra, barba…)
   const civ=!extra, fem=look.fem ?? (civ && Math.random()<0.45), shadow=extra==='elche', cop=extra==='cop', robe=look.robe||null, hijab=look.head==='hijab';
   const skirt=fem && !robe && (look.skirt ?? Math.random()<0.35), shorts=civ&&!fem&&!robe&&Math.random()<0.2;
@@ -2079,7 +2113,7 @@ function makePedMesh(shirt,pants,skin,hair,extra,look={}){   // look: rasgos ele
   const longSleeve=cop||top==='long'||top==='jacket'||top==='hoodie';
   const jacket=top==='jacket'?mpick(['#2b2f36','#5a4632','#1f3a5f','#6b6f75','#7a2d2d']):null;
   const outer=jacket||shirt, shoes=cop?'#111':mpick(['#1b1b1b','#efefef','#e8e8e8','#5a3b22','#2c3e50','#8a1f1f']), sole=shoes==='#efefef'||shoes==='#e8e8e8'?'#9a9a9a':'#e6e1d6';
-  const style=cop?'cop':extra==='elche'?'side':hijab?'hijab':look.hairStyle||(fem?mpick(['long','long','bob','pony']):mpick(['short','short','buzz','side','cap','bald']));   // el protagonista siempre igual
+  const style=cop?'cop':extra==='elche'?(look.hairStyle||'side'):hijab?'hijab':look.hairStyle||(fem?mpick(['long','long','bob','pony']):mpick(['short','short','buzz','side','cap','bald']));   // el protagonista siempre igual
   const capC=mpick(['#1b1b1b','#c0392b','#1f3a5f','#f4f4f0','#2f7d4f']);
   const g=new THREE.Group(), body=[], sw=fem?0.9:1, LH=[], LL=[], bodyG=new THREE.Group(); g.add(bodyG); g.rotation.order='YXZ';   // inclinaciones en el eje del propio cuerpo
   const both=(parent,hi,lo)=>{ const h=pedMesh(hi,shadow), l=pedMesh(lo,shadow); l.visible=false; parent.add(h); parent.add(l); LH.push(h); LL.push(l); };
@@ -2115,6 +2149,7 @@ function makePedMesh(shirt,pants,skin,hair,extra,look={}){   // look: rasgos ele
   } else {
     if (style==='hijab'){ const hc=look.headC||'#2c3e50'; body.push(tintGeo(PG.cap,hc,0,1.655,-0.035,0.122,0.136,0.13)); body.push(tintGeo(PG.cyl,hc,0,1.53,-0.005,0.078,0.13,0.074)); body.push(tintGeo(PG.rbox,hc,0,1.5,-0.07,0.2,0.24,0.1)); }   // pañuelo: cubre pelo, orejas y cuello
     else if (style==='cap'){ const cc=capC; body.push(tintGeo(PG.cap,cc,0,1.685,0,0.11,0.1,0.118)); body.push(tintGeo(PG.cyl,cc,0,1.7,0.1,0.075,0.012,0.07)); }
+    else if (HAIR_EXTRA[style]){ if (style!=='afro') body.push(tintGeo(PG.cap,hair,0,1.678,-0.012,0.112,(style==='fade'||style==='mohawk'?0.088:0.1)+0.012,0.126,-0.24)); body.push(...HAIR_EXTRA[style](hair,PG)); }   // cortes de peluquería
     else if (style!=='bald'){ const hh=style==='buzz'?0.09:0.105; body.push(tintGeo(PG.cap,hair,0,1.678,-0.012,0.112,hh+0.012,0.126,-0.24));   // inclinado hacia atrás: frente despejada, nuca cubierta
       if (style==='side') body.push(tintGeo(PG.sph,hair,0.03,1.735,0.04,0.08,0.03,0.07));
       if (style==='long'){ body.push(tintGeo(PG.rbox,hair,0,1.56,-0.07,0.21,0.3,0.08)); for (const sx of [-1,1]) body.push(tintGeo(PG.rbox,hair,sx*0.095,1.6,0.0,0.035,0.2,0.09)); }
@@ -2134,6 +2169,7 @@ function makePedMesh(shirt,pants,skin,hair,extra,look={}){   // look: rasgos ele
   if (cop) bodyL.push(tintGeo(PGL.cyl,'#17234a',0,1.765,0,0.112,0.07,0.12));
   else if (style==='hijab'){}
   else if (style==='cap') bodyL.push(tintGeo(PGL.cap,capC,0,1.685,0,0.11,0.1,0.118));
+  else if (HAIR_EXTRA[style]){ if (style!=='afro') bodyL.push(tintGeo(PGL.cap,hair,0,1.678,-0.012,0.112,0.112,0.126,-0.24)); bodyL.push(...HAIR_EXTRA[style](hair,PGL).slice(0,2)); }
   else if (style!=='bald'){ bodyL.push(tintGeo(PGL.cap,hair,0,1.678,-0.012,0.112,(style==='buzz'?0.09:0.105)+0.012,0.126,-0.24)); if (style==='long'||style==='bob') bodyL.push(tintGeo(PG.box,hair,0,style==='long'?1.56:1.63,-0.06,0.2,style==='long'?0.3:0.14,0.1)); }
   if (extra==='elche') bodyL.push(tintGeo(PGL.cyl,'#1f8a4c',0,1.23,0,0.2,0.09,0.13));
   both(bodyG,body,bodyL);
@@ -2815,6 +2851,9 @@ const SPAWN={x:GLORIETA.x-14,z:GLORIETA.z-6}, HOSPITAL_SPAWN={x:495,z:545};
 const POLICE_SPAWN=(()=>{ const q=snapStreet(-60,110,true); return {x:q[0],z:q[1]}; })();
 const player={x:SPAWN.x,z:SPAWN.z,y:0,vy:0,crouch:false,h:Math.PI,inCar:null,health:100,money:150,stars:0,phase:0,punchT:0,lastHurt:0,vx:0,vz:0};
 player.mesh=makePedMesh('#f4f4f0','#26313d','#e0ac85','#2b1d14','elche'); scene.add(player.mesh);
+function setPlayerHair(id){   // rehace el cuerpo del protagonista con otro peinado (misma ropa y rasgos)
+  const old=player.mesh, m=makePedMesh('#f4f4f0','#26313d','#e0ac85','#2b1d14','elche',{hairStyle:id}); m.position.copy(old.position); m.quaternion.copy(old.quaternion); m.visible=old.visible;
+  scene.remove(old); disposePed(old); scene.add(m); player.mesh=m; player.helmet=null; player.hair=id; }
 
 /* ================= partículas ================= */
 function makePool(n,blend){
@@ -2912,7 +2951,7 @@ MISSIONS[4].start=MISSIONS[4].steps[1].p=snapStreet(-72,-205,false);
 for (let i=0;i<DATES.length;i++) DATES[i]=snapIfReal(DATES[i],false);
 let save={money:150,done:[],dates:[]};
 try{ const s=JSON.parse(localStorage.getItem('ilici-city-v1')||'null'); if (s) save=Object.assign(save,s); }catch(e){}
-function persist(){ save.money=player.money; save.owned=player.owned; save.ammo=player.ammo; save.armor=Math.round(player.armor||0); save.drugs=player.drugs||0; try{ localStorage.setItem('ilici-city-v1',JSON.stringify(save)); }catch(e){} }
+function persist(){ save.money=player.money; save.owned=player.owned; save.ammo=player.ammo; save.armor=Math.round(player.armor||0); save.drugs=player.drugs||0; save.cigs=player.cigs||0; save.hair=player.hair||'side'; try{ localStorage.setItem('ilici-city-v1',JSON.stringify(save)); }catch(e){} }
 
 /* ---- partidas guardadas: ranura automática + 3 manuales (amplía el guardado de siempre, 'ilici-city-v1', que sigue siendo el perfil vivo) ---- */
 const SLOT_IDS=['auto','1','2','3'], slotKey=id=>'ilici-city-slot-'+id;
@@ -2939,7 +2978,7 @@ function saveSlot(id,quiet){
 function applyProfile(){
   player.money=save.money; shownMoney=player.money;
   player.owned=(save.owned||['fist']).filter(id=>W_BY[id]); if (!player.owned.includes('fist')) player.owned.unshift('fist');
-  player.ammo=Object.assign({},save.ammo||{}); player.armor=save.armor||0; player.drugs=save.drugs||0;
+  player.ammo=Object.assign({},save.ammo||{}); player.armor=save.armor||0; player.drugs=save.drugs||0; player.cigs=save.cigs||0; if ((save.hair||'side')!==player.hair) setPlayerHair(save.hair||'side');
   save.biz=save.biz||[]; save.bizAcc=save.bizAcc||0;
   dateMeshes.forEach((m,i)=>m.visible=!save.dates.includes(i));
 }
@@ -2994,14 +3033,95 @@ const mission={cur:null,step:0,timer:0,got:[],car:null,leaveReq:null,stopT:0};
 const shopMat=new THREE.MeshBasicMaterial({color:'#b36bff',transparent:true,opacity:0.45,depthWrite:false,side:THREE.DoubleSide});
 const shopState={cur:null,leave:null};
 function buildPlace(sh){
+  if (sh.premise){ const P=sh.premise; sh.mx=P.ix[0]; sh.mz=P.ix[1]; sh.marker=new THREE.Mesh(markerGeo,new THREE.MeshBasicMaterial({color:sh.color,transparent:true,opacity:0.3,depthWrite:false,side:THREE.DoubleSide})); sh.marker.scale.set(0.35,0.12,0.35); sh.marker.position.set(sh.mx,P.G+0.06,sh.mz); scene.add(sh.marker); sh.dealer=P.clerk; return; }   // local con interior: dependiente dentro
   sh.mx=sh.pos[0]; sh.mz=sh.pos[1]+3;
   sh.marker=new THREE.Mesh(markerGeo,sh.id==='droga'?shopMat:new THREE.MeshBasicMaterial({color:sh.id==='bicis'?'#39d353':sh.color,transparent:true,opacity:0.45,depthWrite:false,side:THREE.DoubleSide})); sh.marker.position.set(sh.mx,1.5,sh.mz); scene.add(sh.marker);
   sh.dealer=makePedMesh(sh.shirt||(sh.id==='armas'?'#2b2b2b':sh.id==='bicis'?'#2f8a4c':'#6b2fa3'),'#1b1b1b','#c68863','#111'); sh.dealer.position.set(sh.pos[0],0.27,sh.pos[1]-1.5); scene.add(sh.dealer);
 }
 function removePlace(sh){ scene.remove(sh.marker); scene.remove(sh.dealer); disposePed(sh.dealer); const i=SHOPS.indexOf(sh); if (i>=0) SHOPS.splice(i,1); }
+/* ---- locales con interior: estanco, peluquería y pensión ----
+   Módulo común: paredes con puerta y escaparate (con colisiones), suelo, techo, rótulo y mobiliario por tipo.
+   Coordenadas locales: u a lo largo de la calle, n hacia la calle (n>0 = fachada). */
+const PREMISES=[];
+const PREM_INFO={estanco:{title:'Estanco',color:'#b5452f',sign:'ESTANCO',signBg:'#7a1f1f',signFg:'#f2c230',wall:'#efe4cf',floor:'#b89a74'},
+  barber:{title:'Peluquería',color:'#3fa7d6',sign:'PELUQUERÍA',signBg:'#1f3b5a',signFg:'#ffffff',wall:'#f4f1ea',floor:'#e8e8e8'},
+  hostal:{title:'Pensión',color:'#8e6bd1',sign:'PENSIÓN',signBg:'#3d2f5a',signFg:'#ffe9a8',wall:'#e9dccb',floor:'#8a6a4a'}};
+const PREM_NAMES={estanco:['Estanco Nº 3','Estanco La Glorieta','Expendeduría Nº 12','Estanco de Carrús'],barber:['Barbería Paco','Peluquería Lola','Barber Shop Elx','Peluquería Los Arcos'],hostal:['Pensión La Palmera','Hostal Candalix']};
+function buildPremise(L,idx){
+  const I=PREM_INFO[L.kind], f=L.face, n=f==='N'?[0,-1]:f==='S'?[0,1]:f==='W'?[-1,0]:[1,0], u=[-n[1],n[0]], W=10, D=8, H=3.4, T=0.25, cx=L.cx, cz=L.cz, ry=Math.atan2(n[0],n[1]);
+  const at=(uu,nn)=>[cx+u[0]*uu+n[0]*nn, cz+u[1]*uu+n[1]*nn];
+  const lit=c=>new THREE.MeshLambertMaterial({color:c,emissive:c,emissiveIntensity:0.28});   // interior iluminado por la lámpara del techo
+  const wallMat=lit(I.wall), trim=lambert('#5a5048');
+  // pieza alineada con los ejes (las fachadas son N/S/E/O): caja en coordenadas locales, con colisión opcional
+  const piece=(uu,nn,wu,wn,h,y,mat,col)=>{ const [x,z]=at(uu,nn), sx=Math.abs(u[0])*wu+Math.abs(n[0])*wn, sz=Math.abs(u[1])*wu+Math.abs(n[1])*wn;
+    const m=new THREE.Mesh(boxGeo,mat); m.scale.set(sx,h,sz); m.position.set(x,y+h/2,z); m.castShadow=true; m.receiveShadow=true; scene.add(m); if (col) addCollider(x-sx/2,z-sz/2,x+sx/2,z+sz/2,y+h); return m; };
+  const G=0.25, door=L.kind==='barber'?-2.6:2.6, dw=1.9;   // suelo de la acera y posición de la puerta
+  piece(0,0,W,D,0.04,G,lit(I.floor),false);                                   // suelo
+  piece(0,-D/2+T/2,W,T,H,G,wallMat,true);                                           // fondo
+  piece(-W/2+T/2,0,T,D,H,G,wallMat,true); piece(W/2-T/2,0,T,D,H,G,wallMat,true);   // laterales
+  const fl=door-dw/2-(-W/2), fr=W/2-(door+dw/2);                                    // fachada: a los lados de la puerta, zócalo + escaparate
+  for (const [c0,w0] of [[-W/2+fl/2,fl],[door+dw/2+fr/2,fr]]){ piece(c0,D/2-T/2,w0,T,0.8,G,trim,true); piece(c0,D/2-T/2,w0,0.08,1.9,G+0.8,glassMat,true); piece(c0,D/2-T/2,w0,T,H-2.7,G+2.7,wallMat,false); }
+  piece(door,D/2-T/2,dw,T,H-2.5,G+2.5,wallMat,false);                              // dintel
+  piece(0,0,W+0.3,D+0.3,0.3,G+H,lambert('#8f8a82'),false);                          // techo (sin colisión de suelo: por dentro se anda)
+  piece(0,0,W-1,D-1,0.03,G+H-0.03,new THREE.MeshBasicMaterial({color:'#fff6e0'}),false);   // luz del techo
+  { const [x,z]=at(0,D/2+0.02), m=new THREE.Mesh(decalGeo,decalMat(I.sign,I.signBg,I.signFg,512,96)); m.scale.set(4.2,0.75,1); m.position.set(x,G+3.0,z); m.rotation.y=ry; scene.add(m); }   // rótulo
+  const name=PREM_NAMES[L.kind][idx%PREM_NAMES[L.kind].length], P={...L,name,title:I.title+' · '+name,at,n,u,ry,G,furn:[]};
+  const staff=(uu,nn,face,shirt)=>{ const [x,z]=at(uu,nn), I2=makeIdentity('local','adulto'), m=makePedMesh(shirt||I2.shirt,I2.pants,I2.skin,I2.hair,null,I2.look); m.position.set(x,G+0.02,z); m.rotation.y=ry+face; scene.add(m); return m; };
+  if (L.kind==='estanco'){
+    piece(-1,-1.3,5,0.7,1.05,G,lambert('#6b4a2e'),true); piece(-1,-1.3,5.1,0.8,0.05,G+1.05,lambert('#d8c7a4'),false);   // mostrador
+    piece(0,-D/2+0.45,W-1,0.5,2.4,G,lambert('#4a3a2a'),false);                                                      // estantería del fondo
+    const packs=[], cols=['#c0392b','#f4f4f0','#2d6cdf','#e8c547','#1b1b1b','#2f8a4c','#d35400','#7f8c8d'];
+    for (let r=0;r<4;r++) for (let k=0;k<26;k++){ const [x,z]=at(-4.3+k*0.34,-D/2+0.72); packs.push({x,y:G+0.5+r*0.5,z,sx:Math.abs(u[0])*0.22+Math.abs(n[0])*0.1,sy:0.3,sz:Math.abs(u[1])*0.22+Math.abs(n[1])*0.1,c:cols[(k*3+r)%cols.length]}); }
+    instanced(boxGeo,new THREE.MeshLambertMaterial({color:0xffffff}),packs,false);
+    piece(W/2-0.6,0.6,0.7,0.6,1.8,G,lambert('#8a1f1f'),true);                                                        // máquina de tabaco
+    P.clerk=staff(-1,-2.4,Math.PI,'#8a6a3a'); P.ix=at(-1,-0.4); P.clerkAt=at(-1,-2.4);
+  } else if (L.kind==='barber'){
+    piece(0,-D/2+0.29,W-1.2,0.04,1.4,G+0.95,new THREE.MeshLambertMaterial({color:'#bcd6e2',emissive:'#1c2a30'}),false);   // espejo
+    piece(0,-D/2+0.55,W-1.4,0.45,0.9,G,lambert('#f4f4f0'),false);                                                    // encimera con botes
+    for (const cu of [-2,1.6]){ const [x,z]=at(cu,-1.7);                                                             // sillones de barbero mirando al espejo
+      addCyl(0.28,0.34,0.5,'#8a8f96',x,G+0.25,z,12); piece(cu,-1.7,0.7,0.7,0.14,G+0.5,lambert('#2a2a2a'),false); piece(cu,-2.0,0.7,0.12,0.8,G+0.62,lambert('#2a2a2a'),false);
+      addCollider(x-0.3,z-0.3,x+0.3,z+0.3,0.9); FURN.push({type:'chair',x,z,ry:ry+Math.PI,sy:G+0.64,barber:cu===-2}); }
+    piece(1.8,D/2-1.1,3.2,0.8,0.45,G,lambert('#8a3a2a'),true); piece(1.8,D/2-0.72,3.2,0.2,0.9,G,lambert('#7a3024'),false);   // sofá de espera junto al escaparate
+    { const [x,z]=at(1.8,D/2-1.2); FURN.push({type:'sofa',x,z,ry:ry+Math.PI,sy:G+0.5,len:3}); }   // respaldo hacia el escaparate: se mira hacia dentro
+    { const [x,z]=at(door-dw/2-0.35,D/2+0.25), pole=new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,1.1,12),barberPoleMat); pole.position.set(x,G+2.1,z); scene.add(pole); P.pole=pole; }   // poste de barbero
+    P.clerk=staff(-2.9,-1.1,Math.PI,'#f4f4f0'); P.ix=at(-2,-0.8); P.chair=at(-2,-1.7); P.clerkAt=at(-2.9,-1.1);
+  } else {
+    piece(-3.2,-2.6,2.1,2.6,0.55,G,lambert('#6b4a2e'),true); piece(-3.2,-2.4,2.0,2.3,0.12,G+0.55,lambert('#f4f1ea'),false); piece(-3.2,-3.75,2.0,0.4,0.25,G+0.62,lambert('#e8e2d0'),false);   // cama
+    { const [x,z]=at(-3.2,-2.5); FURN.push({type:'bed',x,z,ry:ry+Math.PI,sy:G+0.72,len:2.2}); }
+    piece(-1.7,-3.5,0.5,0.5,0.6,G,lambert('#5a4030'),false);                                                        // mesilla
+    piece(3.2,-2.9,2.6,0.8,0.45,G,lambert('#4a6a8a'),true); piece(3.2,-3.3,2.6,0.2,0.9,G,lambert('#3d5a78'),false);   // sofá
+    { const [x,z]=at(3.2,-2.8); FURN.push({type:'sofa',x,z,ry,sy:G+0.5,len:2.6}); }
+    piece(1.5,0.6,2.2,0.7,1.05,G,lambert('#6b4a2e'),true);                                                          // recepción
+    P.clerk=staff(1.5,-0.3,Math.PI,'#3d2f5a'); P.ix=at(1.5,1.3); P.clerkAt=at(1.5,-0.3);
+  }
+  PREMISES.push(P); return P;
+}
+const barberPoleMat=(()=>{ const c=document.createElement('canvas'); c.width=64; c.height=128; const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,64,128);
+  for (let i=-4;i<8;i++){ x.fillStyle=i%2?'#d9282f':'#1f4fa3'; x.beginPath(); x.moveTo(0,i*24); x.lineTo(64,i*24+32); x.lineTo(64,i*24+44); x.lineTo(0,i*24+12); x.fill(); }
+  const t=new THREE.CanvasTexture(c); t.wrapT=THREE.RepeatWrapping; t.colorSpace=THREE.SRGBColorSpace; return new THREE.MeshBasicMaterial({map:t}); })();
+PREMISE_LOTS.forEach((L,i)=>{ const P=buildPremise(L,i);
+  SHOPS.push({id:'prem_'+i,premise:P,name:P.name,title:P.title,pos:[P.ix[0],P.ix[1]],color:PREM_INFO[L.kind].color,kind:L.kind}); });
 for (const sh of SHOPS) buildPlace(sh);
 function openShop(sh){ try{ document.exitPointerLock?.(); }catch(e){} state='shop'; shopState.cur=sh; renderShop(); $('shop').hidden=false; hud.hint.hidden=true; }
 function closeShop(){ $('shop').hidden=true; shopState.leave=shopState.cur; shopState.cur=null; state='play'; persist(); requestLock(true); }
+const HAIRCUTS=[{id:'side',n:'Raya al lado',d:'El de siempre'},{id:'short',n:'Corto clásico',d:'Limpio y cómodo'},{id:'buzz',n:'Rapado',d:'Al uno'},{id:'bald',n:'Afeitado',d:'Cabeza lisa'},
+  {id:'fade',n:'Degradado',d:'Lados cortos, arriba con volumen'},{id:'quiff',n:'Tupé',d:'Alto y peinado hacia arriba'},{id:'slick',n:'Engominado',d:'Todo hacia atrás'},{id:'spiky',n:'Pinchos',d:'De punta con gomina'},
+  {id:'mohawk',n:'Cresta',d:'Laterales rapados'},{id:'curly',n:'Rizos',d:'Rizado arriba'},{id:'afro',n:'Afro',d:'Mucho volumen'},{id:'manbun',n:'Moño',d:'Recogido atrás'},
+  {id:'mullet',n:'Mullet',d:'Corto delante, largo detrás'},{id:'long',n:'Melena',d:'Por los hombros'},{id:'pony',n:'Coleta',d:'Pelo largo recogido'}];
+function premiseMenu(sh,items){
+  const P=sh.premise;
+  if (sh.kind==='estanco'){
+    items.push({label:'Paquete de tabaco',sub:`20 cigarrillos. Llevas ${player.cigs||0}. Se fuma desde la ruleta (U)`,price:5,buy:()=>{ player.cigs=(player.cigs||0)+20; toast('Compras un paquete de tabaco',1.4); persist(); },dis:(player.cigs||0)>=200});
+    items.push({label:'Cartón (10 paquetes)',sub:'Sale algo más barato',price:45,buy:()=>{ player.cigs=(player.cigs||0)+200; persist(); },dis:(player.cigs||0)>0});
+    $('shopWho').textContent=`«${P.name}»: el estanquero te atiende tras el mostrador.`;
+  } else if (sh.kind==='barber'){
+    for (const H of HAIRCUTS){ const cur=(player.hair||'side')===H.id; items.push({label:H.n+(cur?' (actual)':''),sub:H.d,price:12,btn:cur?'Actual':null,dis:cur,buy:()=>{ closeShop(); startHaircut(P,H); }}); }
+    $('shopWho').textContent=`«${P.name}»: siéntate en el sillón y elige el corte.`;
+  } else {
+    items.push({label:'Dormir en una habitación',sub:'Pasan 8 horas, recuperas toda la salud y se guarda la partida',price:20,dis:player.stars>0,buy:()=>{ closeShop(); sleepAt(P); }});
+    $('shopWho').textContent=player.stars>0?`«${P.name}»: con la policía buscándote no te dan habitación.`:`«${P.name}»: habitaciones limpias y baratas. También puedes tumbarte en el sofá o la cama (U).`;
+  }
+}
 function renderShop(){
   const sh=shopState.cur, items=[];
   if (sh.id==='armas'){
@@ -3017,6 +3137,7 @@ function renderShop(){
   } else if (sh.id==='bicis'){
     items.push({label:'Bicicleta urbana',sub:'Sales montado. Unos 40 km/h, sin gasolina y sin ruido',price:10,buy:()=>{ closeShop(); const b=new Car('bike'); b.x=sh.mx+2.5; b.z=sh.mz; b.h=0; b.sync(); player.x=b.x+0.8; player.z=b.z; enterExit(); toast('¡Bici nueva! Pedalea con W y frena con S',3); }});
     $('shopWho').textContent='En «Bicis Elx» tienen bicis de paseo para moverse por Elche. Te la llevas puesta.';
+  } else if (sh.premise){ premiseMenu(sh,items);
   } else if (sh.job || sh.rob || sh.errand){ placeMenu(sh,items);
   } else {
     items.push({label:'1 paquete',sub:`Llevas ${player.drugs}/10`,price:50,buy:()=>{ player.drugs++; },dis:player.drugs>=10});
@@ -3038,6 +3159,7 @@ function updateShops(dt){
   if (shopState.leave && d2(player.x,player.z,shopState.leave.mx,shopState.leave.mz)>36) shopState.leave=null;
   for (const sh of SHOPS.slice()){
     if (sh.until && now>sh.until){ removePlace(sh); continue; }
+    if (sh.premise){ const P=sh.premise; if (P.pole) P.pole.material.map.offset.y=(now*0.4)%1; if (!P.busy && d2(player.x,player.z,P.clerkAt[0],P.clerkAt[1])<100){ const want=Math.atan2(player.x-P.clerkAt[0],player.z-P.clerkAt[1]); sh.dealer.rotation.y+=wrapA(want-sh.dealer.rotation.y)*Math.min(1,dt*4); } continue; }   // el dependiente te sigue con la mirada
     sh.marker.scale.y=1+Math.sin(now*3)*0.08;
     if (d2(player.x,player.z,sh.pos[0],sh.pos[1])<400) sh.dealer.rotation.y=Math.atan2(player.x-sh.pos[0],player.z-sh.pos[1]+1.5);
   }
@@ -3078,7 +3200,7 @@ function interactCandidates(){
   const out=[], P=player.inCar||player, inCar=!!player.inCar, slow=!inCar || player.inCar.speed<2;
   if (state!=='play' || jack || player.downT>0 || taxiRide) return out;
   for (const sh of SHOPS){ const carOk=(sh.job||sh.errand) && !mission.cur; if (inCar && !(carOk && slow)) continue;
-    out.push({verb:sh.rob?'Atracar':sh.job||sh.errand?'Hablar':'Entrar',name:sh.title||sh.name,x:sh.mx,z:sh.mz,r:inCar?6:2.6,act:()=>openShop(sh)}); }
+    out.push({verb:sh.kind==='estanco'?'Comprar':sh.kind==='barber'?'Cortarse el pelo':sh.kind==='hostal'?'Recepción':sh.rob?'Atracar':sh.job||sh.errand?'Hablar':'Entrar',name:sh.title||sh.name,x:sh.mx,z:sh.mz,r:inCar?6:2.6,act:()=>openShop(sh)}); }
   if (!mission.cur) for (const ms of MISSIONS){ if (inCar && !slow) continue; out.push({verb:'Empezar misión',name:ms.name,x:ms.start[0],z:ms.start[1],r:inCar?7:3,act:()=>startMission(ms)}); }
   for (const c of clients){ if (inCar && !slow) continue; out.push({verb:'Vender',name:'Cliente',x:c.x,z:c.z,r:inCar?6:2.4,act:()=>sellTo(c)}); }
   if (!inCar){
@@ -3088,6 +3210,119 @@ function interactCandidates(){
   for (const f of INTERACT_SOURCES) f(out);   // ampliable: puertas, máquinas, objetos...
   return out;
 }
+/* ---- actividades del jugador (sentarse, tumbarse, fumar, bailar, gestos…) y ruleta de interacciones (U) ----
+   Cada acción es una entrada del registro ACTIONS: {id,label,icon,ok()→null|motivo,run()} o un submenú {sub:[…]}.
+   Añadir una acción nueva es añadir una entrada: la ruleta, el contexto y el bloqueo de controles salen solos. */
+const nearFurn=(types,r=2.2)=>{ let best=null,bd=r*r; for (const f of FURN){ if (!types.includes(f.type)) continue; const d=d2(f.x,f.z,player.x,player.z); if (d<bd){ bd=d; best=f; } } return best; };
+const cigMesh=(()=>{ const g=new THREE.Group(), w=new THREE.Mesh(new THREE.CylinderGeometry(0.006,0.006,0.075,6),lambert('#f4f1ea')), t=new THREE.Mesh(new THREE.CylinderGeometry(0.0065,0.0065,0.012,6),new THREE.MeshBasicMaterial({color:'#ff6a1a'}));
+  t.position.y=0.043; g.add(w); g.add(t); g.rotation.x=Math.PI/2; g.position.set(0,-0.33,0.05); return g; })();
+function startAct(a){   // a: {id,dur,lock,seat,lie,pose,end,onStart}
+  if (player.act) endAct(true); player.act=Object.assign({t:0},a); setCrouch(false); aiming=false;
+  if (a.seat){ player.act.px=player.x; player.act.pz=player.z; player.x=a.seat.x; player.z=a.seat.z; player.h=a.seat.face; }
+  a.onStart&&a.onStart();
+}
+function endAct(cancel){ const a=player.act; if (!a) return; player.act=null;
+  if (a.seat && a.px!=null){ const fx=Math.sin(a.seat.face), fz=Math.cos(a.seat.face); let x=a.seat.x+fx*0.75, z=a.seat.z+fz*0.75; if (pointBlocked(x,z)||playerBlockedAt(x,z)){ x=a.px; z=a.pz; } player.x=x; player.z=z; }   // se levanta hacia delante
+  if (cigMesh.parent) cigMesh.parent.remove(cigMesh); player.mesh.rotation.x=0; player.mesh.rotation.z=0; resetPlayerLimbs();
+  a.end&&a.end(cancel); }
+function resetPlayerLimbs(){ const u=player.mesh.userData; for (const l of u.legs) l.rotation.z=0; for (const q of u.arms){ q.rotation.z=0; q.rotation.y=0; } torsoPose(player.mesh,0,0); }
+function actTick(dt,ax){   // en update: avanza la acción; moverse, saltar, apuntar o subir a un coche la terminan
+  const a=player.act; if (!a) return; a.t+=dt;
+  if (player.inCar || player.health<=0 || player.downT>0 || jack){ endAct(true); return; }
+  const moving=Math.hypot(ax.x,ax.y)>0.2;
+  if (a.lock){ player.vx=player.vz=0; if (moving && a.t>(a.minT??0.4) && !a.noCancel){ endAct(true); return; } }
+  else if (aiming || meleeCharge!==null || player.punchT>0){ endAct(true); return; }
+  if (a.dur && a.t>=a.dur) endAct(false);
+}
+function actPose(m,a,dt){   // en frame, después de la pose normal
+  const u=m.userData, t=a.t, S=a.seat;
+  setWeaponModel(m,null);   // el arma se guarda mientras dura la actividad
+  if (S && a.lie){ const f=S.lieYaw, k=Math.min(1,t*2.5);   // tumbado a lo largo del mueble, boca arriba
+    const hx=S.x+Math.sin(f)*0.87, hz=S.z+Math.cos(f)*0.87; m.position.set(lerp(m.position.x,hx,k),S.sy+0.1*k+0.02,lerp(m.position.z,hz,k)); m.rotation.set(-Math.PI/2*k,f,0);
+    u.legs[0].rotation.x=u.legs[1].rotation.x=0; u.knees[0].rotation.x=0.1; u.knees[1].rotation.x=a.id==='sleep'?0.1:0.5; u.legs[1].rotation.x=a.id==='sleep'?0:-0.25;
+    u.arms[0].rotation.x=-0.2; u.arms[1].rotation.x=a.id==='sleep'?-0.2:-2.6; u.elbows[0].rotation.x=-0.3; u.elbows[1].rotation.x=a.id==='sleep'?-0.3:-2.2; torsoPose(m,0,0); return; }
+  if (S){ const k=Math.min(1,t*3);   // sentado: cadera sobre el asiento, muslos horizontales, pies al suelo
+    m.position.set(S.x,lerp(m.position.y,S.sy-0.93+0.06,k),S.z); m.rotation.set(0,S.face,0);
+    u.legs[0].rotation.x=u.legs[1].rotation.x=-1.5*k; u.knees[0].rotation.x=u.knees[1].rotation.x=1.5*k; u.legs[0].rotation.z=-0.06; u.legs[1].rotation.z=0.06;
+    if (a.id==='haircut'){ u.arms[0].rotation.x=u.arms[1].rotation.x=-0.5; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-0.9; }
+    else { u.arms[0].rotation.x=u.arms[1].rotation.x=-0.45*k; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-0.8*k; } torsoPose(m,0,-0.04); }
+  const P=a.pose; if (P) P(m,u,t,dt);
+}
+// animaciones por fases (brazos y cuerpo); t en segundos
+const ss=x=>x*x*(3-2*x);
+const DANCES=[(m,u,t)=>{ const b=Math.sin(t*7), c=Math.sin(t*3.5); m.position.y+=Math.abs(b)*0.06; torsoPose(m,c*0.35,0.05); u.arms[0].rotation.x=-1.6+b*0.9; u.arms[1].rotation.x=-1.6-b*0.9; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-1.2; u.legs[0].rotation.x=-0.3*Math.max(0,b); u.legs[1].rotation.x=-0.3*Math.max(0,-b); u.knees[0].rotation.x=0.5*Math.max(0,b); u.knees[1].rotation.x=0.5*Math.max(0,-b); },
+  (m,u,t)=>{ const b=Math.sin(t*5); m.rotation.y+=0; torsoPose(m,Math.sin(t*2.5)*0.5,0); u.arms[0].rotation.x=u.arms[1].rotation.x=-2.8; u.arms[0].rotation.z=-0.5+b*0.3; u.arms[1].rotation.z=0.5+b*0.3; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-0.4; u.knees[0].rotation.x=u.knees[1].rotation.x=0.25+Math.abs(b)*0.25; m.position.y-=Math.abs(b)*0.06; },
+  (m,u,t)=>{ const b=Math.sin(t*8); m.position.x+=0; torsoPose(m,0,0.1*b); u.arms[0].rotation.x=-0.9+b*0.5; u.arms[1].rotation.x=-0.9-b*0.5; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-1.9; u.legs[0].rotation.x=b>0?-0.9*b:0; u.knees[0].rotation.x=b>0?1.4*b:0; u.legs[1].rotation.x=b<0?0.9*b:0; u.knees[1].rotation.x=b<0?-1.4*b:0; }];
+const GESTURES={
+  wave:{label:'Saludar',icon:'👋',dur:2.4,pose:(m,u,t)=>{ const k=ss(Math.min(1,t*4))*(1-ss(Math.max(0,(t-2)*2.5))); u.arms[1].rotation.x=-2.9*k; u.arms[1].rotation.z=0.35*k+Math.sin(t*11)*0.35*k; u.elbows[1].rotation.x=-0.5*k; }},
+  clap:{label:'Aplaudir',icon:'👏',dur:3,pose:(m,u,t)=>{ const k=ss(Math.min(1,t*4)), c=Math.abs(Math.sin(t*9)); u.arms[0].rotation.x=u.arms[1].rotation.x=-1.25*k; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-1.1*k; u.arms[0].rotation.z=(-0.45+c*0.45)*k; u.arms[1].rotation.z=(0.45-c*0.45)*k; }},
+  shrug:{label:'Encogerse de hombros',icon:'🤷',dur:1.8,pose:(m,u,t)=>{ const k=Math.sin(Math.min(1,t/1.8)*Math.PI); u.arms[0].rotation.x=u.arms[1].rotation.x=-0.5*k; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-1.6*k; u.arms[0].rotation.z=-0.6*k; u.arms[1].rotation.z=0.6*k; torsoPose(m,0,-0.06*k); }},
+  point:{label:'Señalar',icon:'👉',dur:2,pose:(m,u,t)=>{ const k=ss(Math.min(1,t*5))*(1-ss(Math.max(0,(t-1.6)*2.5))); u.arms[1].rotation.x=-1.55*k; u.elbows[1].rotation.x=-0.05; torsoPose(m,-0.2*k,0); }},
+  thumbs:{label:'Pulgar arriba',icon:'👍',dur:1.8,pose:(m,u,t)=>{ const k=ss(Math.min(1,t*5))*(1-ss(Math.max(0,(t-1.4)*2.5))); u.arms[1].rotation.x=-1.1*k; u.elbows[1].rotation.x=-1.4*k; }},
+  facepalm:{label:'Llevarse la mano a la cara',icon:'🤦',dur:2.2,pose:(m,u,t)=>{ const k=ss(Math.min(1,t*4))*(1-ss(Math.max(0,(t-1.8)*2.5))); u.arms[0].rotation.x=-1.25*k; u.elbows[0].rotation.x=-2.45*k; u.arms[0].rotation.z=0.25*k; torsoPose(m,0,0.12*k); }},
+};
+const OTHERS={
+  pushups:{label:'Hacer flexiones',icon:'💪',dur:8,pose:(m,u,t)=>{ const k=Math.min(1,t*2), b=(Math.sin(t*3.2)+1)/2; m.rotation.x=1.35*k; m.position.y=0.25+0.12*k+b*0.18*k; u.arms[0].rotation.x=u.arms[1].rotation.x=-1.55*k+ -0.3*b; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-(1-b)*1.2*k; u.legs[0].rotation.x=u.legs[1].rotation.x=0; }},
+  stretch:{label:'Estirarse',icon:'🙆',dur:3,pose:(m,u,t)=>{ const k=Math.sin(Math.min(1,t/3)*Math.PI); u.arms[0].rotation.x=u.arms[1].rotation.x=-3.0*k; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-0.2*k; torsoPose(m,0,-0.12*k); m.position.y+=0.03*k; }},
+  watch:{label:'Mirar la hora',icon:'⌚',dur:2.2,pose:(m,u,t)=>{ const k=ss(Math.min(1,t*4))*(1-ss(Math.max(0,(t-1.8)*2.5))); u.arms[0].rotation.x=-1.3*k; u.elbows[0].rotation.x=-1.6*k; u.arms[0].rotation.z=0.5*k; torsoPose(m,0,0.08*k); },onStart:()=>toast(`Son las ${String(Math.floor(gameMin/60)).padStart(2,'0')}:${String(Math.floor(gameMin%60)).padStart(2,'0')}`,1.6)},
+};
+const simpleAct=(id,o)=>()=>startAct({id,dur:o.dur,lock:true,pose:o.pose,onStart:o.onStart});
+const ACTIONS=[
+  {id:'smoke',label:'Fumar',icon:'🚬',ok:()=>(player.cigs||0)>0?null:'No tienes tabaco: cómpralo en un estanco',run:startSmoke},
+  {id:'sit',label:'Sentarse',icon:'🪑',ok:()=>nearFurn(['bench','chair','sofa'],2)?null:'Acércate a un banco, una silla o un sofá',run:()=>{ const f=nearFurn(['bench','chair','sofa'],2); sitOn(f); }},
+  {id:'lie',label:'Tumbarse',icon:'🛋️',ok:()=>nearFurn(['sofa','bed','bench'],2.4)?null:'Acércate a un sofá, una cama o un banco',run:()=>lieOn(nearFurn(['sofa','bed','bench'],2.4),'lie')},
+  {id:'sleep',label:'Acostarse',icon:'🛏️',ok:()=>nearFurn(['bed'],2.6)?null:'Necesitas una cama (en una pensión)',run:()=>lieOn(nearFurn(['bed'],2.6),'sleep')},
+  {id:'dance',label:'Bailar',icon:'💃',ok:()=>null,run:()=>{ const v=Math.floor(Math.random()*DANCES.length); startAct({id:'dance',lock:true,minT:0.6,pose:DANCES[v]}); }},
+  {id:'gest',label:'Gestos',icon:'👋',sub:Object.entries(GESTURES).map(([id,o])=>({id,label:o.label,icon:o.icon,ok:()=>null,run:simpleAct(id,o)}))},
+  {id:'other',label:'Otras',icon:'✨',sub:Object.entries(OTHERS).map(([id,o])=>({id,label:o.label,icon:o.icon,ok:()=>null,run:simpleAct(id,o)}))},
+];
+function sitOn(f){ if (!f) return; const face=f.ry, fx=Math.sin(face), fz=Math.cos(face), off=f.type==='bench'?0.05:f.type==='sofa'?0.05:0.05;
+  let x=f.x+fx*off, z=f.z+fz*off; if (f.type==='sofa'||f.type==='bench'){ const lx=Math.cos(face), lz=-Math.sin(face), L=(f.len||1.9)/2-0.4, along=clamp((player.x-f.x)*lx+(player.z-f.z)*lz,-L,L); x+=lx*along; z+=lz*along; }   // en el sitio del banco más cercano
+  startAct({id:'sit',lock:true,minT:0.6,seat:{x,z,face,sy:f.sy}}); }
+function lieOn(f,id){ if (!f) return; const lieYaw=f.type==='bed'?f.ry+Math.PI:f.ry+Math.PI/2;
+  if (id==='sleep'){ sleepIn(f); return; }
+  startAct({id,lock:true,minT:0.8,lie:true,seat:{x:f.x,z:f.z,face:f.ry,sy:f.sy,lieYaw}}); }
+function startSmoke(){ player.cigs=Math.max(0,(player.cigs||0)-1); persist();
+  startAct({id:'smoke',dur:14,lock:false,onStart:()=>{ player.mesh.userData.elbows[1].add(cigMesh); toast(`Te enciendes un cigarro · te quedan ${player.cigs}`,1.4); },
+    pose:(m,u,t)=>{ const c=t%4.2, k=c<0.5?ss(c/0.5):c<1.4?1:c<1.9?1-ss((c-1.4)/0.5):0;   // cada 4 s se lo lleva a la boca y suelta el humo
+      u.arms[1].rotation.x=lerp(u.arms[1].rotation.x,-0.35,1-k)*(1-k)+(-1.3)*k; u.elbows[1].rotation.x=lerp(-0.3,-2.35,k); u.arms[1].rotation.z=0.2*k;
+      if (c>1.95 && c<2.05 && Math.random()<0.6){ const fx=Math.sin(player.h), fz=Math.cos(player.h); for (let i=0;i<5;i++) emit(smokeP||glowP,player.x+fx*0.25,1.72+(player.y||0),player.z+fz*0.25,fx*0.6+mrand(-0.2,0.2),mrand(0.2,0.5),fz*0.6+mrand(-0.2,0.2),1.6,0.18,'#dcdcdc'); } } }); }
+function sleepIn(f){ if (player.stars>0){ toast('Con la policía detrás no puedes dormir',1.8); return; }
+  startAct({id:'sleep',lock:true,noCancel:true,dur:3.2,lie:true,seat:{x:f.x,z:f.z,face:f.ry,sy:f.sy,lieYaw:f.ry+Math.PI},
+    onStart:()=>{ setTimeout(()=>$('fade').classList.add('on'),600); setTimeout(()=>{ gameMin=(gameMin+480)%1440; player.health=100; updateLighting(); saveSlot('auto',true); toast('Has dormido 8 horas: salud completa y partida guardada',2.5); $('fade').classList.remove('on'); },1900); } }); }
+function sleepAt(P){ const f=FURN.find(q=>q.type==='bed' && d2(q.x,q.z,P.cx,P.cz)<100); if (f){ player.x=f.x; player.z=f.z; sleepIn(f); } }
+// peluquería: te sientas, el barbero corta (tijeras, pelo que cae) y al final tienes el corte nuevo
+function startHaircut(P,H){
+  const f=FURN.find(q=>q.barber && d2(q.x,q.z,P.chair[0],P.chair[1])<1); if (!f) return; P.busy=true;
+  const B=P.clerk, bx0=B.position.x, bz0=B.position.z, face=f.ry, fx=Math.sin(face), fz=Math.cos(face), rx=Math.cos(face), rz=-Math.sin(face);
+  startAct({id:'haircut',lock:true,noCancel:true,dur:5,seat:{x:f.x,z:f.z,face,sy:f.sy},
+    pose:(m,u,t)=>{ const k=Math.min(1,t*1.5), side=Math.sin(t*0.9);   // el barbero se coloca detrás, rodea la cabeza y mueve las tijeras
+      B.position.x=lerp(bx0,f.x-fx*0.6+rx*side*0.35,k); B.position.z=lerp(bz0,f.z-fz*0.6+rz*side*0.35,k); B.rotation.y=Math.atan2(f.x-B.position.x,f.z-B.position.z);
+      const U=B.userData, sn=Math.sin(t*16); U.arms[1].rotation.x=-1.9; U.elbows[1].rotation.x=-1.3+sn*0.12; U.arms[1].rotation.z=0.15; U.arms[0].rotation.x=-1.7; U.elbows[0].rotation.x=-1.6; torsoPose(B,0,0.12);
+      if (Math.random()<0.25) emit(glowP,f.x+mrand(-0.15,0.15),f.sy+1.1,f.z+mrand(-0.15,0.15),mrand(-0.2,0.2),-0.6,mrand(-0.2,0.2),0.7,0.05,'#3a2a1f');
+      if (t>3.6 && player.hair!==H.id){ setPlayerHair(H.id); persist(); sfxPick(); toast(`Nuevo corte: <em>${H.n}</em>`,2); } },
+    end:()=>{ P.busy=false; const U=B.userData; U.arms[0].rotation.set(0,0,0); U.arms[1].rotation.set(0,0,0); U.elbows[0].rotation.x=U.elbows[1].rotation.x=0; torsoPose(B,0,0); B.position.x=bx0; B.position.z=bz0; } });
+}
+// ruleta (U): sectores en círculo; se elige con el ratón (dirección) o haciendo clic; Esc o U la cierran
+let wheel=null;
+function openWheel(list,title){
+  if (state!=='play' || player.inCar || player.inAir || player.health<=0 || jack) { if (player.inCar) toast('Bájate del vehículo para usar la ruleta',1.4); return; }
+  const el=$('wheel'); el.innerHTML=''; wheel={list,sel:-1,vx:0,vy:0,title};
+  const N=list.length, R0=isTouch?120:130;
+  list.forEach((a,i)=>{ const ang=-Math.PI/2+i/N*Math.PI*2, why=a.sub?null:a.ok(), b=document.createElement('button'); b.type='button'; b.className='wopt'+(why?' off':'');
+    b.style.left=`calc(50% + ${Math.cos(ang)*R0}px)`; b.style.top=`calc(50% + ${Math.sin(ang)*R0}px)`; b.innerHTML=`<span>${a.icon}</span><b>${a.label}</b>`; b.title=why||'';
+    b.addEventListener('click',e=>{ e.stopPropagation(); wheelPick(i); }); b.addEventListener('mouseenter',()=>wheelHover(i)); el.appendChild(b); a.why=why; });
+  const c=document.createElement('div'); c.className='wcenter'; c.innerHTML=`<b>${title||'Acciones'}</b><small id="wwhy">Mueve el ratón y haz clic · U o Esc para cerrar</small>`; el.appendChild(c);
+  el.hidden=false; keys.clear();
+}
+function closeWheel(){ wheel=null; $('wheel').hidden=true; }
+function wheelHover(i){ if (!wheel) return; wheel.sel=i; [...$('wheel').querySelectorAll('.wopt')].forEach((b,j)=>b.classList.toggle('sel',j===i)); const a=wheel.list[i]; $('wwhy').textContent=a.why||a.label; }
+function wheelMouse(dx,dy){ if (!wheel) return; wheel.vx=clamp(wheel.vx+dx,-120,120); wheel.vy=clamp(wheel.vy+dy,-120,120); if (Math.hypot(wheel.vx,wheel.vy)<30) return;
+  const N=wheel.list.length, ang=Math.atan2(wheel.vy,wheel.vx)+Math.PI/2, i=((Math.round(ang/(Math.PI*2)*N)%N)+N)%N; if (i!==wheel.sel) wheelHover(i); }
+function wheelPick(i){ if (!wheel) return; const a=wheel.list[i??wheel.sel]; if (!a) return;
+  if (a.sub){ openWheel(a.sub,a.label); return; }
+  if (a.why){ toast(a.why,1.6); return; }
+  closeWheel(); a.run(); }
 function bestInteraction(){
   const P=player.inCar||player, h=player.inCar?player.inCar.h:player.h, fx=Math.sin(h), fz=Math.cos(h); let best=null, bs=1e9;
   for (const o of interactCandidates()){ const dx=o.x-P.x, dz=o.z-P.z, d=Math.hypot(dx,dz); if (!o.car && d>o.r) continue;
@@ -3754,6 +3989,9 @@ addEventListener('keydown',e=>{
   if (state==='phone'){ if (e.code==='Escape'||e.code==='Tab'){ e.preventDefault(); closePhone(); } else if (e.code==='Backspace') phoneBack(); return; }
   if (state==='help' && (e.code==='Escape'||e.code==='KeyI')) { closeHelp(); return; }
   if (state!=='play') return;
+  if (wheel){ if (e.code==='KeyU'||e.code==='Escape') closeWheel(); else if (e.code==='Enter'||e.code==='Space') wheelPick(); else if (/^Digit[1-9]$/.test(e.code)) wheelPick(+e.code.slice(5)-1); return; }   // ruleta abierta: se come el teclado
+  if (e.code==='KeyU'){ openWheel(ACTIONS,'Acciones'); return; }
+  if (player.act && player.act.lock && (e.code==='KeyE'||e.code==='Space')){ if (!player.act.noCancel) endAct(true); return; }   // levantarse
   if (e.code==='KeyE') enterExit(false); else if (e.code==='Enter') enterExit(true);   // en coche: E usa lo que haya al lado, Intro siempre baja
   if (e.code==='Space' && !player.inCar) jump();
   if (e.code==='Space' && taxiRide) taxiSkip();
@@ -3776,6 +4014,7 @@ addEventListener('keyup',e=>{ keys.delete(e.code); if (e.code==='KeyH') hornUp()
 addEventListener('blur',()=>{ keys.clear(); aiming=false; mouseHeld=false; });
 renderer.domElement.addEventListener('mousedown',e=>{ if (state!=='play') return;
   if (needLock()){ e.preventDefault(); lockSwallow=true; requestLock(); return; }   // el clic que captura el ratón no dispara ni golpea
+  if (wheel){ if (e.button===0) wheelPick(); else closeWheel(); return; }
   if (e.button===0){ fireEdge=true; mouseHeld=true; } else if (e.button===2){ aiming=true; if (player.inCar){ if (carAimK<0.05){ carAimRel=wrapA(camYaw-player.inCar.h); aimPitch=0; } } else if (!aimK){ aimPitch=0; camYaw=player.h+wrapA(camYaw-player.h)*0.3; } } });
 addEventListener('mouseup',e=>{ if (lockSwallow){ lockSwallow=false; mouseHeld=false; return; } if (e.button===2) aiming=false; else mouseHeld=false; });
 let wheelT=0; renderer.domElement.addEventListener('wheel',e=>{ if (state!=='play'||performance.now()-wheelT<180) return; wheelT=performance.now(); selectWeapon(player.w+(e.deltaY>0?1:-1)); },{passive:true});
@@ -3797,7 +4036,7 @@ let wheelT=0; renderer.domElement.addEventListener('wheel',e=>{ if (state!=='pla
   ba.addEventListener('touchend',aend); ba.addEventListener('touchcancel',aend);
 }
 function axis(){
-  let x=0,y=0;
+  let x=0,y=0; if (wheel) return {x,y};
   const arrows=!fp||player.inCar;
   if (keys.has('KeyA')||(arrows&&keys.has('ArrowLeft'))) x-=1;
   if (keys.has('KeyD')||(arrows&&keys.has('ArrowRight'))) x+=1;
@@ -3882,6 +4121,7 @@ lockEl.addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('mousemove',e=>{ if (state!=='play') return;
   const locked=document.pointerLockElement===lockEl; if (!locked && !(e.buttons&2)) return;
   const dx=e.movementX||0, dy=e.movementY||0; if (Math.abs(dx)>300||Math.abs(dy)>300) return;   // pico espurio del navegador al capturar: se ignora
+  if (wheel){ wheelMouse(dx,dy); return; }   // con la ruleta abierta el ratón elige, no mueve la cámara
   if (fp){ lookDelta(dx,dy,MOUSE_K); return; }
   if (player.inAir) return;
   if (carAim()){ carAimRel=wrapA(carAimRel-dx*MOUSE_K*0.7); aimPitch=clamp(aimPitch-dy*MOUSE_K*0.7,-0.35,0.45); }   // relativo al coche
@@ -4285,7 +4525,7 @@ const W_BY=Object.fromEntries(WEAPONS.map(w=>[w.id,w]));
 const wOrder=id=>WEAPONS.findIndex(w=>w.id===id);
 player.owned=(save.owned||['fist']).filter(id=>W_BY[id]); if (!player.owned.includes('fist')) player.owned.unshift('fist');
 if (!save.deagleGift){ if (!player.owned.includes('deagle')) player.owned.push('deagle'); player.owned.sort((a,b)=>WEAPONS.findIndex(w=>w.id===a)-WEAPONS.findIndex(w=>w.id===b)); save.ammo=Object.assign({},save.ammo||{}); save.ammo.deagle=(save.ammo.deagle||0)+35; save.deagleGift=true; save.owned=player.owned; }
-player.ammo=Object.assign({},save.ammo||{}); player.armor=save.armor||0; player.drugs=save.drugs||0; player.w=Math.max(0,player.owned.indexOf('deagle'));
+player.ammo=Object.assign({},save.ammo||{}); player.armor=save.armor||0; player.drugs=save.drugs||0; player.cigs=save.cigs||0; player.hair='side'; if (save.hair && save.hair!=='side') setPlayerHair(save.hair); player.w=Math.max(0,player.owned.indexOf('deagle'));
 let fireCd=0, fireEdge=false, fireHeld=false, mouseHeld=false, aimT=0, shotAlertT=0, lastShotAt=-999;   // lastShotAt: último disparo oído cerca del jugador
 const curW=()=>W_BY[player.owned[player.w]]||WEAPONS[0];
 function selectWeapon(i){
@@ -5472,6 +5712,8 @@ function update(dt){
     if (g.car && player.y<=g.h+0.02){ player.x+=g.car.vx*dt; player.z+=g.car.vz*dt; }   // encima de un coche en marcha, se mueve con él
     if (player.y>g.h+0.001 || player.vy>0){ player.vy-=20*dt; player.y+=player.vy*dt; if (player.y<=g.h){ player.y=g.h; if (player.vy<-11){ const f=-player.vy-11; hurt(f*f*0.9+f*3); knockDown(Math.min(2.5,0.5+f*0.12)); shake(Math.min(1,f*0.08)); } player.vy=0; } }   // caída desde altura: daño según la velocidad de impacto
     else { player.y=g.h; player.vy=0; } }
+  if (player.act) actTick(dt,wheel?{x:0,y:0}:axis());
+  if (wheel || (player.act && player.act.lock)){ fireEdge=false; mouseHeld=false; }
   if (fireEdge){ fireEdge=false; tryFire(); } else if ((fireHeld||mouseHeld||keys.has('KeyF')) && curW().auto) tryFire();
   updateMelee(dt);
 
@@ -5492,6 +5734,7 @@ function update(dt){
       if (Math.hypot(S.vx,S.vz)<0.3) player.slide=null; }
     else if (player.rollA!=null){ const T=Math.round(player.rollA/6.2832)*6.2832, d=T-player.rollA; player.rollA+=Math.sign(d)*Math.min(Math.abs(d),dt*6); if (Math.abs(d)<0.01) player.rollA=null; else player.downT=Math.max(player.downT,0.45); }   // termina de rodar hasta quedar tumbado
     pushCircle(player,0.42,player.y+0.001);
+  } else if (player.act && player.act.lock){ player.vx=player.vz=0;   // sentado, tumbado, bailando…: quieto hasta que acabe o te muevas
   } else if (state==='play' && fp){
     if (keys.has('ArrowLeft')) player.h+=2.2*dt; if (keys.has('ArrowRight')) player.h-=2.2*dt;
     const mag=Math.min(1,Math.hypot(ax.x,ax.y));
@@ -6188,7 +6431,8 @@ function frame(t){
       if (player.exitA){ const k=1-Math.min(1,player.exitA.t/0.55); u.legs[0].rotation.x=-1.1*k; u.legs[1].rotation.x=-0.5*k; u.knees[0].rotation.x=1.3*k; u.knees[1].rotation.x=0.6*k; player.mesh.position.y-=0.35*k; }   // se incorpora al salir del coche
       if (player.death) deathPose(dt);
       else if (player.downT>0){ const k=player.downT>0.4?1:player.downT/0.4; player.mesh.rotation.x=-1.45*k; player.mesh.rotation.z=0; if (player.rollA){ _rq.setFromAxisAngle(_ax.set(0,1,0),player.rollA); player.mesh.quaternion.multiply(_rq); } player.mesh.position.y=0.25+0.12*k+(player.y||0); if (player.rollA){ player.mesh.position.y+=(player.y||0)+0.01-bodyMinY(player.mesh); } /* al rodar, lo más bajo del cuerpo va sobre el suelo */ u.arms[0].rotation.x=u.arms[1].rotation.x=-2.6*k; setWeaponModel(player.mesh,null); }
-      else { player.rollA=null; player.mesh.rotation.x=0; player.mesh.rotation.z=0; const u2=player.mesh.userData; u2.legs[0].rotation.z=u2.legs[1].rotation.z=0; } }
+      else { player.rollA=null; player.mesh.rotation.x=0; player.mesh.rotation.z=0; const u2=player.mesh.userData; u2.legs[0].rotation.z=u2.legs[1].rotation.z=0; }
+      if (player.act && !player.death && !(player.downT>0)) actPose(player.mesh,player.act,dt); }   // actividad (sentado, fumando, bailando…)
     if (keysT>0){ keysT-=dt; if (keysT<=0) $('keys').classList.remove('show'); }
     updateCamera(dt); updateViewmodel(dt); updateHUD(dt); updateMarkers(); updateAudio();
   } else if (state==='title'){
