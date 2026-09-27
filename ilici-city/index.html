@@ -1547,7 +1547,7 @@ const lampBulbMat=new THREE.MeshBasicMaterial({color:'#6b6555'}); let lampGlow=n
 }
 
 /* ---- mobiliario urbano ---- */
-const busStopMap=new Map();
+const busStopMap=new Map(), BUS_STOPS=[];
 {
   const seats=[], backs=[], bins=[], trunks=[], crowns=[];
   const bench=(x,z,ry)=>{ seats.push({x,y:0.72,z,sx:1.9,sy:0.12,sz:0.6,ry,c:'#8a5a34'}); const bx=x-Math.sin(ry)*0.28, bz=z-Math.cos(ry)*0.28; backs.push({x:bx,y:1.05,z:bz,sx:1.9,sy:0.5,sz:0.1,ry,c:'#8a5a34'}); addCollider(x-0.8,z-0.8,x+0.8,z+0.8,0.8); };
@@ -1579,7 +1579,7 @@ const busStopMap=new Map();
     const x=A.x+ux*e.len*0.5-uz*9.6, z=A.z+uz*e.len*0.5+ux*9.6; if (Math.abs(x-riverX(z))<RHz(z)+4||inRZ(x,z)||NOROAD.some(r=>inRect(r,x,z))||query(x,z,3).length) continue;
     const ry=Math.atan2(ux,uz)+Math.PI/2;
     addBox(4.2,0.15,1.7,'#e8e2d0',x,2.6,z,{ry}); addBox(4.2,2.1,0.08,'#9fc3d6',x-Math.sin(ry)*0.8,1.4,z-Math.cos(ry)*0.8,{ry,shadow:false}); addBox(3,0.1,0.5,'#555',x,0.75,z,{ry,shadow:false});
-    addBox(0.12,2.8,0.12,'#d9282f',x+ux*2.6,1.4,z+uz*2.6,{shadow:false}); busStopMap.set(e.a+'_'+e.b,e.len*0.5); }
+    addBox(0.12,2.8,0.12,'#d9282f',x+ux*2.6,1.4,z+uz*2.6,{shadow:false}); busStopMap.set(e.a+'_'+e.b,e.len*0.5); BUS_STOPS.push({key:e.a+'_'+e.b,x,z,ux,uz,ry,waiting:[]}); }
 }
 // La Dama de Elche (réplica) en La Glorieta, donde está la real
 {
@@ -1672,6 +1672,7 @@ function carCircles(c){ const T=c.T, n=T.len>7?4:T.len>5.5?3:2, span=T.len/2-T.w
 const wheelGeo=new THREE.CylinderGeometry(0.36,0.36,0.26,12); wheelGeo.rotateZ(Math.PI/2);
 const paintCache={}, paint=hex=>paintCache[hex]||(paintCache[hex]=new THREE.MeshStandardMaterial({color:hex,metalness:0.3,roughness:0.34}));   // pintura con reflejo del cielo
 const trimMat=lambert('#1e1f22');
+const busGlassMat=new THREE.MeshStandardMaterial({color:'#20343f',metalness:0.1,roughness:0.06,envMapIntensity:1.2,transparent:true,opacity:0.42,depthWrite:false});   // el autobús deja ver a los pasajeros
 const glassMat=new THREE.MeshStandardMaterial({color:'#0f1a22',metalness:0.1,roughness:0.06,envMapIntensity:1.6}), wheelMat=lambert('#161616'), charMat=lambert('#1c1b1a');
 const headMat=new THREE.MeshBasicMaterial({color:'#fff4cc'}), tailMat=new THREE.MeshBasicMaterial({color:'#ff2a2a'});
 const sirenR=new THREE.MeshBasicMaterial({color:'#ff2020'}), sirenB=new THREE.MeshBasicMaterial({color:'#2050ff'});
@@ -1679,8 +1680,8 @@ function part(g,mat,sx,sy,sz,x,y,z,shadow=true){ const m=new THREE.Mesh(boxGeo,m
 // Carrocerías con silueta real: perfiles laterales extruidos con bisel
 const carVCMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.6,metalness:0.2}), carLightMat=new THREE.MeshBasicMaterial({vertexColors:true}); carLightMat.toneMapped=false;
 const brakeMat=new THREE.MeshBasicMaterial({color:'#ff1a10'}), blinkMat=new THREE.MeshBasicMaterial({color:'#ffae1a'}); brakeMat.toneMapped=blinkMat.toneMapped=false;
-function extrudeSide(pts,width,bevel=0.06){
-  const sh=new THREE.Shape(pts.map(p=>new THREE.Vector2(p[0],p[1])));
+function extrudeSide(pts,width,bevel=0.06,hole=null){   // hole: hueco (p. ej. la banda de ventanas del autobús, para ver a los pasajeros)
+  const sh=new THREE.Shape(pts.map(p=>new THREE.Vector2(p[0],p[1]))); if (hole) sh.holes.push(new THREE.Path(hole.map(p=>new THREE.Vector2(p[0],p[1]))));
   const depth=Math.max(0.01,width-2*bevel);
   const g=new THREE.ExtrudeGeometry(sh,{depth,bevelEnabled:bevel>0,bevelThickness:bevel,bevelSize:bevel,bevelSegments:2,curveSegments:6});
   g.rotateY(-Math.PI/2); g.translate(depth/2,0,0); g.computeVertexNormals(); return g;
@@ -1689,7 +1690,7 @@ function carProfiles(k,T){
   const L=T.len, H=T.h, h2=L/2;
   if (k==='bus') return {
     body:[[-h2,0.48],[h2,0.48],[h2,H-0.3],[h2-0.25,H],[-h2+0.15,H],[-h2,H-0.2]],
-    glass:[[h2+0.06,1.25],[h2+0.06,H-0.4],[-h2+0.35,H-0.4],[-h2+0.35,1.25]], gw:1.02, roof:null };
+    glass:[[h2+0.06,1.25],[h2+0.06,H-0.4],[-h2+0.35,H-0.4],[-h2+0.35,1.25]], gw:1.02, roof:null, hole:[[h2-0.12,1.3],[-h2+0.4,1.3],[-h2+0.4,H-0.45],[h2-0.12,H-0.45]] };
   if (k==='boxvan'||k==='ambulance') return {
     body:[[-h2,0.42],[h2,0.42],[h2,1.0],[h2-0.25,1.25],[h2-0.62,2.1],[h2-1.3,2.12],[h2-1.3,H],[-h2,H]],
     glass:[[h2-0.28,1.3],[h2-0.6,2.02],[h2-0.95,2.02],[h2-0.95,1.3]], gw:0.94, roof:null };
@@ -1717,7 +1718,7 @@ const carGeoCache={};
 function carGeos(k){
   if (carGeoCache[k]) return carGeoCache[k];
   const T=TYPES[k], L=T.len, W=T.w, P=carProfiles(k,T), out={};
-  out.body=extrudeSide(P.body,W,0.07);
+  out.body=extrudeSide(P.body,W,0.07,P.hole);
   out.glass=extrudeSide(P.glass,W*P.gw,0.04);
   if (P.roof) out.roof=extrudeSide(P.roof,W*P.gw+0.04,0.03);
   if (P.cargo) out.cargo=extrudeSide(P.cargo,W,0.05);
@@ -1807,11 +1808,12 @@ function buildCarMesh(k,color){
   if (k==='tank') return buildTankMesh(color);
   const T=TYPES[k], G=carGeos(k), g=new THREE.Group(), cm=paint(color), painted=[];
   const add=(geo,mat,shadow=true)=>{ const m=new THREE.Mesh(geo,mat); m.castShadow=shadow; g.add(m); return m; };
-  painted.push(add(G.body,cm)); add(G.glass,glassMat,false); if (G.roof) painted.push(add(G.roof,cm,false));
+  painted.push(add(G.body,cm)); add(G.glass,k==='bus'?busGlassMat:glassMat,false); if (G.roof) painted.push(add(G.roof,cm,false));
   add(G.trim,carVCMat,false); add(G.lights,carLightMat,false);
   const fx={brake:add(G.brake,brakeMat,false), indR:add(G.ind[1],blinkMat,false), indL:add(G.ind[0],blinkMat,false)}; fx.brake.visible=fx.indR.visible=fx.indL.visible=false;
   if (G.cargo) add(G.cargo,paint('#d6d9dc'));
-  if (k==='bus'){ const dm=new THREE.Mesh(boxGeo,lambert('#1b1b1b')); dm.scale.set(0.05,2.0,1.1); dm.position.set(T.w/2+0.03,1.5,T.len*0.18); g.add(dm); const dm2=dm.clone(); dm2.position.z=-T.len*0.12; g.add(dm2);
+  if (k==='bus'){ for (let z=-T.len/2+1.6;z<T.len/2-0.4;z+=1.55) for (const sx of [-1,1]){ const pl=new THREE.Mesh(boxGeo,cm); pl.scale.set(0.1,T.h-1.75,0.14); pl.position.set(sx*(T.w/2+0.02),1.3+(T.h-1.75)/2,z); g.add(pl); painted.push(pl); }   // montantes entre ventanas
+    const dm=new THREE.Mesh(boxGeo,lambert('#1b1b1b')); dm.scale.set(0.05,2.0,1.1); dm.position.set(T.w/2+0.03,1.5,T.len*0.18); g.add(dm); const dm2=dm.clone(); dm2.position.z=-T.len*0.12; g.add(dm2);
     const sgn=new THREE.Mesh(boxGeo,new THREE.MeshBasicMaterial({color:'#ffb000'})); sgn.scale.set(1.6,0.28,0.05); sgn.position.set(0,T.h-0.2,T.len/2+0.09); g.add(sgn); }
   if (k==='van'){ for (const sg of [-1,1]){ const m=new THREE.Mesh(boxGeo,glassMat); m.scale.set(0.04,0.42,0.7); m.position.set(sg*(T.w/2+0.01),1.55,T.len*0.2); g.add(m); } }
   const wheels=[];
@@ -2149,7 +2151,7 @@ class Ped{
     b.corners.forEach((c,i)=>{ const d=d2(c[0],c[1],this.x,this.z); if(d<bd){bd=d;best=i;} });
     this.k=best; [this.tx,this.tz]=b.corners[best]; this.cross=false;
   }
-  scare(fx,fz,t=6){ if (this.medic) return; if (this.state==='call') this.endCall(false); if (this.state==='dead' || this.state==='cop' || this.state==='stagger' || this.state==='dragged') return; if (this.state==='cower'||this.state==='backoff') this.resetPose(); this.lookT=0; if (this.state!=='hit'){ this.state='flee'; } this.fx=fx; this.fz=fz; this.t=t; }
+  scare(fx,fz,t=6){ if (this.medic||this.state==='inBus'||this.state==='busBoard') return; if (this.state==='call') this.endCall(false); if (this.state==='dead' || this.state==='cop' || this.state==='stagger' || this.state==='dragged') return; if (this.state==='cower'||this.state==='backoff') this.resetPose(); this.lookT=0; if (this.state!=='hit'){ this.state='flee'; } this.fx=fx; this.fz=fz; this.t=t; }
   startCall(){   // el testigo saca el móvil y llama a la policía
     this.resetPose(); this.state='call'; this.ct=0; this.callDur=mrand(3.5,5.2); this.lookT=0; this.bumpT=0;
     if (!this.phone){ this.phone=new THREE.Mesh(phoneGeo,phoneMat); this.phone.position.set(0,-0.33,0.03); this.mesh.userData.elbows[0].add(this.phone); }
@@ -2162,8 +2164,8 @@ class Ped{
     if (done && r){ policeCall(r,false); say(this,mpick(['Ya vienen...','Dense prisa, por favor','Sí, ha sido aquí']),1.6); this.home(); }
   }
   look(t){ if (this.state==='walk'){ this.lookT=t; if (Math.random()<0.3) say(this,mpick(['¿Eh?','¿Qué...?','Uy...']),1.2); } }
-  cower(mode,t=2.5){ if (this.medic) return; if (this.state==='call') this.endCall(false); if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return; this.resetPose(); this.state='cower'; this.cmode=mode; this.t=t; this.lookT=0; this.bumpT=0; }
-  backoff(t,handsUp){ if (this.medic) return; if (this.state==='call') this.endCall(false); if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return; this.resetPose(); this.state='backoff'; this.t=t; this.handsUp=handsUp; this.lookT=0; this.bumpT=0; }
+  cower(mode,t=2.5){ if (this.medic||this.state==='inBus'||this.state==='busBoard') return; if (this.state==='call') this.endCall(false); if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return; this.resetPose(); this.state='cower'; this.cmode=mode; this.t=t; this.lookT=0; this.bumpT=0; }
+  backoff(t,handsUp){ if (this.medic||this.state==='inBus'||this.state==='busBoard') return; if (this.state==='call') this.endCall(false); if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return; this.resetPose(); this.state='backoff'; this.t=t; this.handsUp=handsUp; this.lookT=0; this.bumpT=0; }
   meleeHit(dmg,dx,dz,power,bat){
     if (this.state==='dead') return false; this.wasHit=true;   // se acordará
     if (this.state==='guard' && !bat && power<1.8){ this.hp-=dmg*0.4; this.t=Math.min(this.t,0.6); say(this,mpick(['¡Ugh!','¡Para ya!','¡Eh!']),0.8); if (this.hp<=0){ this.knock(dx*3,dz*3,true); return true; } return false; }   // se cubre: encaja mejor el golpe
@@ -2236,6 +2238,21 @@ class Ped{
   update(dt){
     const m=this.mesh;
     if (this.bubbleT>0){ this.bubbleT-=dt; if (this.bubbleT<=0) this.bubble.visible=false; }
+    if (this.state==='busWait'){   // esperando el autobús en la marquesina: de pie, mira el móvil o hacia donde viene el bus
+      const S=this.stop, u=m.userData, tx=S.x+Math.sin(S.ry)*0.1+(-S.uz)*0+S.ux*this.slot, tz=S.z+Math.cos(S.ry)*0.1+S.uz*this.slot, d=Math.hypot(tx-this.x,tz-this.z);
+      if (d>0.4){ crimWalk(this,tx,tz,dt,1.3); animPed(m,this.phase,0.8); } else { animPed(m,0,0); const look=Math.sin(now*0.2+this.slot*3)>0.3; this.h+=wrapA((look?Math.atan2(-S.ux,-S.uz):S.ry+Math.PI)-this.h)*Math.min(1,dt*2);
+        if (this.phoneUse){ u.arms[1].rotation.x=-1.1; u.elbows[1].rotation.x=-1.4; } }
+      m.position.set(this.x,0.27,this.z); m.rotation.y=this.h; return; }
+    if (this.state==='busBoard'){   // va hacia la puerta y sube
+      const c=this.bus; if (!c||!cars.includes(c)||c.exploded||c.speed>1.5){ this.state='busWait'; this.bus=null; return; }
+      const fx=Math.sin(c.h), fz=Math.cos(c.h), rx=-fz, rz=fx, tx=c.x+rx*(c.T.w/2+0.5)+fx*c.T.len*0.32, tz=c.z+rz*(c.T.w/2+0.5)+fz*c.T.len*0.32;
+      if (crimWalk(this,tx,tz,dt,1.6)) busSeat(this,c); animPed(m,this.phase,0.8); m.position.set(this.x,0.27,this.z); m.rotation.y=this.h; return; }
+    if (this.state==='inBus'){   // sentado dentro: va con el autobús (visible por las ventanas)
+      const c=this.bus; if (!c||!cars.includes(c)){ this.state='walk'; this.home(); return; }
+      const fx=Math.sin(c.h), fz=Math.cos(c.h), rx=-fz, rz=fx, sx=this.seat%2?0.62:-0.62, sz=c.T.len*0.3-Math.floor(this.seat/2)*1.35;
+      this.x=c.x+rx*sx+fx*sz; this.z=c.z+rz*sx+fz*sz; this.h=c.h; const u=m.userData; animPed(m,0,0);
+      u.legs[0].rotation.x=u.legs[1].rotation.x=-1.5; u.knees[0].rotation.x=u.knees[1].rotation.x=1.5; u.arms[0].rotation.x=u.arms[1].rotation.x=-0.35; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-0.9;
+      m.position.set(this.x,0.62,this.z); m.rotation.y=this.h; return; }
     if (this.state==='dragged'){ if (!jack||jack.p!==this){ this.knock(0,0,false); } return; }   // lo mueve el robo del coche
     if (this.state==='crim'){ const u=m.userData; m.position.set(this.x,0.02,this.z); m.rotation.y=this.h;   // escena delictiva: la mueve updateCrime
       u.knees[0].rotation.x=u.knees[1].rotation.x=0; animPed(m,this.phase,this.walking?0.9:0);
@@ -3820,6 +3837,7 @@ function carAbandon(c){
   if (c===player.inCar || c.occ) return; const d=c.driver;
   if (d!=='npc' && d!=='police' && d!=='taxi'){ c.occ=[]; return; }
   c.occ=[{cop:d==='police',t:now+mrand(0.6,2.2)}]; for (let k=0;k<(c.pass||0);k++) c.occ.push({cop:d==='police',t:now+mrand(1,3)});
+  if (c.passengers) for (const q of c.passengers.slice()) busAlight(q,c,true);
   c.byPlayer=now-(c.hitByPlayer??-99)<10; if (c.byPlayer && d==='police') addCrime('copCarDestroyed',c.k==='tank'?'¡Has destruido un blindado de la policía!':'¡Has destrozado un coche patrulla!','cd:'+cars.indexOf(c)+':'+Math.round(c.x));
   resvDropAll(c); c.driver=null; c.ai=null; if (taxiCall&&taxiCall.car===c) taxiCall=null;
 }
@@ -4232,12 +4250,12 @@ function blockedAhead(c,range){
   const hl=c.T.len/2; const chk=(x,z,w)=>{ const dx=x-c.x, dz=z-c.z, f=dx*fx+dz*fz; if (f<=hl*0.4||f>range+hl) return false; const l=dx*(-fz)+dz*fx; return Math.abs(l)<w; };
   for (const o of cars) if (o!==c && chk(o.x,o.z,2.0)) return o;   // devuelve quién estorba
   if (!player.inCar && chk(player.x,player.z,1.8)) return player;
-  for (const p of peds) if (p.state!=='dead' && chk(p.x,p.z,1.6)) return p;
+  for (const p of peds) if (p.state!=='dead' && p.state!=='inBus' && chk(p.x,p.z,1.6)) return p;
   return null;
 }
 function shooPeds(c){   // el que pita aparta a los peatones que tiene delante (si no, coche y peatón se esperaban para siempre)
   const fx=Math.sin(c.h), fz=Math.cos(c.h), hl=c.T.len/2;
-  for (const p of peds){ if (p.state==='dead'||p.cop) continue; const dx=p.x-c.x, dz=p.z-c.z, f=dx*fx+dz*fz, l=dx*(-fz)+dz*fx;
+  for (const p of peds){ if (p.state==='dead'||p.cop||p.state==='inBus') continue; const dx=p.x-c.x, dz=p.z-c.z, f=dx*fx+dz*fz, l=dx*(-fz)+dz*fx;
     if (f>hl*0.3 && f<hl+13 && Math.abs(l)<2.2){ if (p.state==='call') continue; const s=l>=0?1:-1; p.scare(p.x+fz*s*-6,p.z-fx*s*-6,1.6); } }
 }
 /* ---- conducción del tráfico ----
@@ -4372,7 +4390,7 @@ function cruise(c,dt){
     let vt=clamp(base*(1-th/2.2)+1.5,3,base); if (c.T.len>7) vt*=0.8; desired=Math.min(desired,Math.sqrt(vt*vt+2*4.5*Math.max(0,d-1))); }
   // paradas de autobús (sobre el tramo actual)
   const ux=(B.x-A.x), uz=(B.z-A.z), Le=Math.hypot(ux,uz)||1, te=((c.x-A.x)*ux+(c.z-A.z)*uz)/Le;
-  if (c.k==='bus'){ const key=ai.a+'_'+ai.b, st=busStopMap.get(key); if (st!==undefined && c.lastStop!==key && te>st-18 && te<st-4){ desired=0; if (c.speed<0.6){ c.busWait=(c.busWait||0)+dt; if (c.busWait>4){ c.lastStop=key; c.busWait=0; } } } }
+  if (c.k==='bus'){ const key=ai.a+'_'+ai.b, st=busStopMap.get(key); if (st!==undefined && c.lastStop!==key && te>st-18 && te<st-4){ desired=0; if (c.speed<0.6){ c.busWait=(c.busWait||0)+dt; c.atStop=key; if (c.busWait>(c.boarding?9:4)){ c.lastStop=key; c.busWait=0; c.atStop=null; } } } }
   // semáforo en el próximo nodo
   const dB=ai.cum[1]-s;
   if (B.light && dB>3 && dB<26 && lightState(Math.abs(ux)>Math.abs(uz)?'H':'V')!=='green') desired=Math.min(desired,Math.sqrt(2*6*Math.max(0,dB-5)));
@@ -4382,7 +4400,7 @@ function cruise(c,dt){
   if (ai.byp && (!cars.includes(ai.byp.car) || now>ai.byp.until || pathProj(ai,ai.byp.car.x,ai.byp.car.z)[0]<s-ai.byp.car.T.len/2-c.T.len/2-1)) ai.byp=null;
   for (const o of cars) if (o!==c && !(ai.byp && ai.byp.car===o)){ const ca=Math.abs(Math.cos(o.h-c.h)), sa=Math.abs(Math.sin(o.h-c.h));   // un coche cruzado ocupa su largo a lo ancho de la trayectoria
     test(o,o.x,o.z,ca*o.T.w/2+sa*o.T.len/2+c.T.w/2+0.15,ca*o.T.len/2+sa*o.T.w/2); }
-  for (const p of peds) if (p.state!=='dead') test(p,p.x,p.z,c.T.w/2+0.55,0.3);
+  for (const p of peds) if (p.state!=='dead' && p.state!=='inBus') test(p,p.x,p.z,c.T.w/2+0.55,0.3);   // los pasajeros de un autobús no son obstáculos
   if (!player.inCar) test(player,player.x,player.z,c.T.w/2+0.6,0.3);
   if (who){ const vf=Math.max(0,(gap-2.2)*0.95); desired=Math.min(desired,vf); }
   ai.dbg={who:who?(who.k||(who===player?'player':'ped')):null,gap:+gap.toFixed(1),yieldAt:ai.yieldKey||null};
@@ -4503,7 +4521,7 @@ function spawnCarNear(mode,kind){
     const k = kind && !parked ? kind : mode==='police' ? 'police' : parked ? mpick(['compact','sedan','sedan','van','pickup','sports']) : e.real&&e.w<8 ? mpick(['compact','compact','sedan','taxi','sports']) : mpick(['compact','compact','sedan','sedan','sedan','van','taxi','sports','bus','boxvan','boxvan','truck','pickup','pickup']);
     const c=new Car(k); c.x=x; c.z=z; c.h=Math.atan2(ux,uz);
     if (parked){ c.driver=null; }
-    else { c.driver = mode==='police'?'police':'npc'; c.ai={mode:mode==='police'?'chase':'cruise',a:a.id,b:b.id,stuck:0,rev:0,repath:0,path:null,pi:0,wait:0}; c.pass=k==='bus'?Math.floor(mrand(1,6)):k==='police'?(Math.random()<0.5?1:0):Math.random()<0.25?1:0; const v=mode==='police'?14:9; c.vx=ux*v; c.vz=uz*v; }
+    else { c.driver = mode==='police'?'police':'npc'; c.ai={mode:mode==='police'?'chase':'cruise',a:a.id,b:b.id,stuck:0,rev:0,repath:0,path:null,pi:0,wait:0}; c.pass=k==='bus'?0:k==='police'?(Math.random()<0.5?1:0):Math.random()<0.25?1:0; const v=mode==='police'?14:9; c.vx=ux*v; c.vz=uz*v; }
     c.sync(); return c;
   }
   return null;
@@ -4795,7 +4813,7 @@ function manage(dt){
   const cops=cars.filter(c=>c.driver==='police' && c.ai && c.ai.mode==='chase');
   policeSpawnT-=dt;
   if (cops.length<want && policeSpawnT<=0){ policeSpawnT=2.5; spawnCarNear('police'); }
-  updateHeavy(dt); updateGuards(dt);
+  updateHeavy(dt); updateGuards(dt); updateBuses(dt);
   if (player.stars===0 && !intel.inv) for (const c of cops) assignEdge(c);
   for (const c of cops) if (c.ai.slowT>8 && d2(c.x,c.z,player.x,player.z)>90*90){ c.remove(); }   // patrulla atascada lejos: se sustituye por otra
   if (player.stars>=1){   // se bajan del coche: para detenerte o para buscarte a pie por plazas y callejones
@@ -4835,6 +4853,28 @@ function updateHeavy(dt){
       for (let i=0;i<14;i++) emit(smokeP,mx,2.1,mz,Math.sin(a)*mrand(2,6)+mrand(-1,1),mrand(0.5,2),Math.cos(a)*mrand(2,6)+mrand(-1,1),mrand(0.8,1.6),mrand(0.5,1),'#8a8a88',0,0.8);
       emit(glowP,mx,2.1,mz,0,0,0,0.12,1.4,'#ffd27a'); tracer(mx,mz,ex,ez,'#ffcf6a'); noise(0.6,0.7,300,'boom',{x:c.x,z:c.z}); shake(0.3);
       setTimeout(()=>{ if (state==='play') explode(ex,ez,0.7,false); },Math.min(600,d*8)); } }
+}
+/* ---- autobuses y paradas ----
+   Cerca del jugador, en cada parada esperan de 0 a 3 vecinos. Cuando llega un autobús y para, suben por la puerta delantera y se sientan
+   (son los mismos peatones, siguen existiendo dentro y se ven por las ventanas). En cada parada se bajan los que han llegado a su destino.
+   Si robas el autobús, los pasajeros siguen dentro. */
+function busSeat(p,c){ c.passengers=c.passengers||[]; const used=new Set(c.passengers.map(q=>q.seat)), free=[...Array(12).keys()].filter(i=>!used.has(i)); if (!free.length){ p.state='walk'; p.home(); return; } const seat=mpick(free);   // se sienta donde hay sitio
+  p.state='inBus'; p.bus=c; p.seat=seat; p.rideStops=Math.floor(mrand(1,5)); c.passengers.push(p); const S=p.stop; if (S) S.waiting=S.waiting.filter(q=>q!==p); p.stop=null; }
+function busAlight(p,c,panic){ const fx=Math.sin(c.h), fz=Math.cos(c.h), rx=-fz, rz=fx; c.passengers=c.passengers.filter(q=>q!==p); p.bus=null;
+  p.x=c.x+rx*(c.T.w/2+0.8)+fx*mrand(-2,3); p.z=c.z+rz*(c.T.w/2+0.8)+fz*mrand(-2,3); p.h=Math.atan2(rx,rz); p.state='walk'; p.home(); if (panic){ p.scare(c.x,c.z,mrand(6,10)); } }
+let busT=0;
+function updateBuses(dt){
+  busT-=dt; const P=player.inCar||player;
+  if (busT<=0){ busT=1;
+    for (const S of BUS_STOPS){ S.waiting=S.waiting.filter(q=>peds.includes(q)&&(q.state==='busWait'||q.state==='busBoard'));
+      const d=Math.hypot(S.x-P.x,S.z-P.z); if (d>150 || d<30) continue;   // aparecen fuera de la vista inmediata
+      if (S.refillT && now<S.refillT) continue; S.want=S.want??Math.floor(Math.random()*4); if (S.waiting.length<S.want && peds.length<MAX_PEDS+12){ const p=new Ped(S.x+S.ux*mrand(-1.5,1.5),S.z+S.uz*mrand(-1.5,1.5)); p.state='busWait'; p.stop=S; p.slot=mrand(-1.6,1.6); p.phoneUse=Math.random()<0.4; S.waiting.push(p); } } }
+  for (const c of cars){ if (c.k!=='bus' || c.exploded) continue; c.passengers=(c.passengers||[]).filter(q=>peds.includes(q)&&q.state==='inBus'&&q.bus===c);
+    if (c.atStop && c.speed<0.6){ const S=BUS_STOPS.find(s=>s.key===c.atStop); c.boarding=false;
+      if (!c.served || c.served!==c.atStop){ c.served=c.atStop; for (const q of c.passengers.slice()) if (--q.rideStops<=0) busAlight(q,c,false); }   // bajan los que llegan
+      if (S) for (const q of S.waiting) if (q.state==='busWait' && d2(q.x,q.z,c.x,c.z)<26*26){ q.state='busBoard'; q.bus=c; } 
+      if (S && S.waiting.some(q=>q.state==='busBoard')) c.boarding=true; if (S){ S.refillT=now+mrand(40,90); S.want=Math.floor(Math.random()*3); } }   // la parada se vuelve a llenar poco a poco
+  }
 }
 /* ---- misiones ---- */
 function startMission(ms){
@@ -5190,7 +5230,7 @@ function update(dt){
     const sp=c.speed; const fx=Math.sin(c.h), fz=Math.cos(c.h);
     const test=(px,pz)=>{ const dx=px-c.x, dz=pz-c.z, lon=dx*fx+dz*fz, lat=dx*(-fz)+dz*fx; return (Math.abs(lon)<c.T.len/2+0.35 && Math.abs(lat)<c.T.w/2+0.35) ? {lon,lat} : null; };
     for (const p of peds){
-      if (p.state==='dead' || p.state==='dragged' || d2(p.x,p.z,c.x,c.z)>16) continue;
+      if (p.state==='dead' || p.state==='dragged' || p.state==='inBus' || d2(p.x,p.z,c.x,c.z)>16) continue;
       const h=test(p.x,p.z); if (!h) continue;
       const I=impact(c,p.x,p.z), s=h.lat>=0?1:-1;
       if (I.sev<1.6 || (now-(p.hitCarT||-9)<0.6)){ p.x+=(-fz)*s*0.12; p.z+=fx*s*0.12; if (I.sev>0.6 && p.state==='walk') p.scare(c.x,c.z,2); continue; }
