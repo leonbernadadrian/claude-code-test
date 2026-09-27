@@ -106,6 +106,27 @@ Los controles aparecen en pantalla al empezar (tecla I) y en el menú de pausa. 
   - **Monumentos** con sillería y saeteras (Calaforra, Basílica, Mercé, Salvador), edificios nobles sin tiendas (Ajuntament, Gran Teatre) y el **Palau d'Altamira** recuperado con su torreón y almenas.
   - **Cielo con nubes** que se mueven y dejan ver las estrellas de noche.
   - **Rendimiento**: la mitad de triángulos en pantalla gracias al troceado de mallas por zonas, al recorte de palmeras fuera de cámara y al LOD de peatones.
+- **Helicóptero en tejados**: se posa sobre la superficie real de los patines, sin hundirse, rebotar ni deslizarse, aunque quede al borde. Al bajar apareces en el tejado, no en la calle. El rotor no atraviesa paredes y el despegue es normal.
+- **Mezcla de audio**: cada categoría de sonido tiene su bus (interfaz, efectos, explosiones, sirenas, vehículos) y hay un limitador final.
+  - Hay un máximo de voces simultáneas por categoría, y las explosiones y los disparos bajan un momento sirenas y motores.
+  - Sirenas: suenan como mucho 3, con prioridad para la más cercana, y cada una tiene su tono y su ritmo. Si hay muchas patrullas juntas, cada una suena más baja: ya no se satura.
+  - Los disparos de la policía y de los NPC suenan desde donde se disparan.
+- **Cámara y ratón**: el ratón queda capturado (sin cursor) en primera y en tercera persona, y la cámara gira con el movimiento del ratón.
+  - En tercera persona se orbita e inclina, y la cámara no se recoloca sola mientras mueves el ratón.
+  - El primer clic solo captura: no dispara.
+  - Esc pausa y muestra el cursor. Al volver del menú, el mapa o el teléfono, se recaptura.
+- **Muerte y heridas**:
+  - Al morir, el cuerpo se dobla y cae con gravedad (de espaldas o de bruces, según el disparo), con una cámara que se aleja alrededor del cuerpo.
+  - La sangre es moderada, y cada herida da un destello rojo en pantalla; con poca vida, la pantalla late.
+  - Los NPC reaccionan según la zona y su aguante (se doblan, se agarran el brazo, hincan la rodilla o caen) y dejan un charco al morir.
+- **Peatones con carácter**: cada persona tiene edad y personalidad. Si les pegas, pueden contraatacar, cubrirse, huir, llamar a la policía, pedir ayuda (y acuden vecinos) o apartarse.
+- **Población por barrios**: hay presencia gitana en El Palmeral y San Antón y magrebí en Carrús y El Toscar, con nombres, aspecto y ropa propias. El comportamiento de cada uno se decide por persona y barrio, nunca por su origen.
+- **Conversaciones**: lo que dice cada vecino depende de:
+  - su carácter y su edad;
+  - su forma de hablar;
+  - la hora y el barrio;
+  - lo que pasa (sirenas, disparos, si te busca la policía, si vas armado o herido);
+  - vuestra relación: se acuerda de si le pegaste, se cansa si insistes y algunos te cuentan historias en varias veces y se presentan.
 - **Gráficos**: cielo con sol y estrellas, corrección de color cinematográfica, asfalto y aceras con textura, fachadas con persianas y marcos, cornisas, coches con pintura brillante y halos de luz de farolas y faros por la noche. El menú de pausa permite elegir calidad alta, media o baja.
 - **Ciclo de día y noche**: amanece a las 7:00 y anochece hacia las 21:00. De noche se iluminan ventanas, farolas y faros.
 - **Interacción con E**: un único sistema muestra «[E] Verbo · Nombre» para lo que tengas delante (entrar, hablar, atracar, empezar misión, vender, robar, pilotar…) y nada se activa por pisar un círculo.
