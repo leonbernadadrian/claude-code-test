@@ -1697,6 +1697,9 @@ const TYPES={
   truck:{len:8.2,w:2.45,h:3.4,max:22,acc:5.5,grip:5,cols:['#c0392b','#2d6cdf','#f0efe8','#2f7d4f'],ws:1.35,eye:2.35,mirrorY:2.2},
   bus:{len:11,w:2.5,h:3.1,max:18,acc:5,grip:5,cols:['#d7262e','#1f6fb2','#2f8a4c'],ws:1.35,eye:2.3,mirrorY:2.2},
   bike:{len:1.8,w:0.6,h:1.1,max:11,acc:5,grip:10,cols:['#e1261c','#2d6cdf','#1b1b1b','#f2c230','#2f8a4c','#f4f4f0'],eye:1.75,bike:true},
+  scooter:{len:1.8,w:0.7,h:1.15,max:17,acc:7,grip:9,cols:['#f4f4f0','#8fc9d9','#e8c547','#c0392b','#2c3e50','#9aa5a8'],eye:1.6,bike:true,moto:'scooter',name:'Scooter'},   // motos: misma base que la bici (subir, robar, caerse) con motor propio
+  moto:{len:2.05,w:0.8,h:1.15,max:31,acc:14,grip:9,cols:['#1b1b1b','#c0392b','#2d6cdf','#e67e22','#7f8c8d','#2f8a4c'],eye:1.62,bike:true,moto:'naked',name:'Moto'},
+  sportbike:{len:2.1,w:0.75,h:1.1,max:42,acc:15,grip:8.5,cols:['#e1261c','#1f5fbf','#f2c230','#1b1b1b','#2f8a4c','#f4f4f0'],eye:1.5,bike:true,moto:'sport',name:'Moto deportiva',wheelie:true},
 };
 function carCircles(c){ const T=c.T, n=T.len>7?4:T.len>5.5?3:2, span=T.len/2-T.w*0.5, fx=Math.sin(c.h), fz=Math.cos(c.h), out=[];
   for (let i=0;i<n;i++){ const o=-span+2*span*i/(n-1); out.push([c.x+fx*o,c.z+fz*o]); } return out; }
@@ -1799,6 +1802,68 @@ function decals(g,k,T){
   else if (k==='taxi'){ side(decalMat('TAXI · ELX',null,'#1b1b1b'),1.1,0.26,0.72,-0.3); const r=new THREE.Mesh(boxGeo,decalMat('TAXI','#f4f4f0','#1b1b1b',256,96)); r.scale.set(0.62,0.2,0.14); r.position.set(0,T.h+0.13,-T.len*0.12); g.add(r); }
   else if (k==='bus') side(decalMat('AUTOBUSES URBANOS · ELX',null,'#f4f4f0',1024,128),4.2,0.45,2.3,-0.8);
 }
+// motos: scooter (carenado y plataforma), naked (depósito, motor a la vista) y deportiva (carenado completo, semimanillares)
+const motoLightMat=new THREE.MeshBasicMaterial({color:'#fff4d6'}); motoLightMat.toneMapped=false;
+function buildMotoMesh(k,color){
+  const T=TYPES[k], st=T.moto, g=new THREE.Group(), fm=paint(color), blk=lambert('#18191b'), met=lambert('#9aa1a8'), dk=lambert('#2a2c30'), painted=[];
+  const box=(mat,sx,sy,sz,x,y,z,rx=0)=>{ const m=new THREE.Mesh(boxGeo,mat); m.scale.set(sx,sy,sz); m.position.set(x,y,z); m.rotation.x=rx; m.castShadow=true; g.add(m); if (mat===fm) painted.push(m); return m; };
+  const cyl=(mat,r0,r1,l,x,y,z,rx=0,rz=0)=>{ const m=new THREE.Mesh(new THREE.CylinderGeometry(r0,r1,l,10),mat); m.position.set(x,y,z); m.rotation.set(rx,0,rz); m.castShadow=true; g.add(m); if (mat===fm) painted.push(m); return m; };
+  const wr=st==='scooter'?0.25:0.32, wb=st==='scooter'?0.62:0.72, tire=st==='scooter'?0.11:0.14;
+  const mkW=z=>{ const w=new THREE.Group(); w.position.set(0,wr,z); w.rotation.order='YXZ';
+    const t=new THREE.Mesh(new THREE.TorusGeometry(wr-tire*0.45,tire*0.5,8,22).rotateY(Math.PI/2),blk); t.castShadow=true; w.add(t);
+    const rim=new THREE.Mesh(new THREE.CylinderGeometry(wr-tire,wr-tire,0.06,14).rotateZ(Math.PI/2),met); w.add(rim);
+    for (let i=0;i<3;i++){ const sp=new THREE.Mesh(boxGeo,dk); sp.scale.set(0.07,(wr-tire)*1.9,0.035); sp.rotation.x=i*Math.PI/3; w.add(sp); } g.add(w); return w; };
+  const fw=mkW(wb), rw=mkW(-wb);
+  const light=new THREE.Mesh(new THREE.CylinderGeometry(0.075,0.075,0.05,12).rotateX(Math.PI/2),motoLightMat);
+  const brake=new THREE.Mesh(boxGeo,brakeMat); brake.scale.set(0.14,0.05,0.03);
+  if (st==='scooter'){
+    box(fm,0.36,0.62,0.12,0,0.62,0.5,-0.22);                      // escudo delantero
+    box(dk,0.3,0.07,0.62,0,0.3,0.12);                             // plataforma para los pies
+    box(fm,0.36,0.34,0.72,0,0.52,-0.36); box(fm,0.3,0.18,0.5,0,0.72,-0.32);   // carrocería trasera (motor debajo)
+    box(blk,0.3,0.09,0.6,0,0.8,-0.3);                             // asiento
+    cyl(met,0.022,0.022,0.62,0,0.66,0.6,-0.32);                   // horquilla
+    box(fm,0.2,0.12,0.14,0,1.0,0.5); cyl(blk,0.014,0.014,0.6,0,1.02,0.46,0,Math.PI/2);   // cúpula y manillar
+    light.position.set(0,1.0,0.64); brake.position.set(0,0.66,-0.73); box(met,0.06,0.06,0.3,0.12,0.3,-0.55); }
+  else {
+    const sport=st==='sport';
+    cyl(met,0.028,0.028,0.78,-0.07,0.66,wb-0.16,-0.4); cyl(met,0.028,0.028,0.78,0.07,0.66,wb-0.16,-0.4);   // horquilla
+    box(dk,0.26,0.3,0.42,0,0.47,-0.02);                                   // motor
+    for (const sx of [-0.08,0,0.08]) cyl(met,0.02,0.02,0.34,sx,0.4,0.2,0.9);   // colectores
+    cyl(met,0.05,0.06,0.5,0.14,0.4,-0.5,1.4);                               // escape
+    box(dk,0.12,0.08,0.95,0,0.48,-0.2,0.1);                                 // basculante / chasis
+    if (sport){
+      box(fm,0.42,0.42,0.62,0,0.78,0.34,-0.25); box(fm,0.34,0.18,0.5,0,0.62,0.05);   // carenado frontal y lateral
+      box(glassMat,0.28,0.16,0.04,0,1.08,0.6,-0.7);                                   // cúpula
+      box(fm,0.32,0.18,0.42,0,0.93,-0.05); box(blk,0.26,0.07,0.34,0,0.9,-0.36); box(fm,0.2,0.16,0.44,0,0.98,-0.62,0.25);   // depósito, asiento, colín
+      cyl(blk,0.014,0.014,0.46,0,0.93,0.46,0,Math.PI/2);                               // semimanillares
+      light.position.set(0,0.86,0.66); brake.position.set(0,0.98,-0.86); }
+    else {
+      box(fm,0.32,0.22,0.46,0,0.92,0.1); box(blk,0.28,0.08,0.52,0,0.9,-0.3); box(fm,0.2,0.1,0.32,0,0.9,-0.6);   // depósito, asiento, colín
+      box(met,0.05,0.4,0.05,0,1.0,0.5,-0.35); cyl(blk,0.016,0.016,0.72,0,1.14,0.44,0,Math.PI/2);                 // manillar ancho
+      box(dk,0.16,0.05,0.4,0,0.62,0.66,-0.3);                                        // guardabarros
+      light.position.set(0,0.98,0.62); light.scale.set(1.2,1.2,1); brake.position.set(0,0.86,-0.78); } }
+  g.add(light); g.add(brake); brake.visible=false;
+  return {g,wheels:[fw,new THREE.Object3D(),rw,new THREE.Object3D()],painted,lights:null,fx:{brake,indR:new THREE.Object3D(),indL:new THREE.Object3D()}};
+}
+// postura sobre la moto o la bici: cadera sobre el asiento, pies en estriberas o plataforma, manos al manillar; se inclina desde la cadera
+const RIDE={bike:{sy:0.93,sz:-0.18,lean:0.18,th:-1.0,kn:1.2,arm:-0.75,el:-0.4},scooter:{sy:0.82,sz:-0.2,lean:0.05,th:-1.5,kn:1.5,arm:-1.05,el:-0.35},   // arm: ángulo del brazo en el mundo (hombro → puño del manillar)
+  naked:{sy:0.95,sz:-0.25,lean:0.2,th:-1.15,kn:1.75,arm:-0.95,el:-0.45},sport:{sy:0.99,sz:-0.34,lean:0.55,th:-0.9,kn:2.15,arm:-0.6,el:-0.4}};
+function ridePose(m,c,phase){   // devuelve [y,z] del origen del cuerpo respecto a la moto (la cadera cae justo sobre el asiento)
+  const R=RIDE[c.T.moto||'bike'], a=R.lean, u=m.userData, stop=c.speed<0.6 && !c.fallen;
+  if (u.arms[0].rotation.z) u.arms[0].rotation.z=u.arms[1].rotation.z=0; torsoPose(m,0,0);
+  if (!c.T.moto){ const sn=Math.sin(phase); u.legs[0].rotation.x=R.th+sn*0.45-a; u.legs[1].rotation.x=R.th-sn*0.45-a; u.knees[0].rotation.x=R.kn-sn*0.35; u.knees[1].rotation.x=R.kn+sn*0.35; }
+  else { u.legs[0].rotation.x=u.legs[1].rotation.x=R.th-a; u.knees[0].rotation.x=u.knees[1].rotation.x=R.kn; }
+  if (stop){ u.legs[0].rotation.x=-0.15-a; u.knees[0].rotation.x=0.15; u.legs[0].rotation.z=-0.28; } else u.legs[0].rotation.z=u.legs[1].rotation.z=0;   // parado: pie izquierdo al suelo
+  u.arms[0].rotation.x=u.arms[1].rotation.x=R.arm-a; u.elbows[0].rotation.x=u.elbows[1].rotation.x=R.el;
+  return [R.sy-0.93*Math.cos(a), R.sz-0.93*Math.sin(a), a];
+}
+function addRider(c){   // piloto de una moto de la IA: con casco, va sentado en ella
+  if (c.rider || !c.T.bike) return; const I=makeIdentity('local','adulto'), m=makePedMesh(I.shirt,I.pants,I.skin,I.hair,null,I.look);
+  m.traverse(o=>{ if (o.isMesh) o.castShadow=false; }); if (c.T.moto) addHelmet(m,mpick(['#1b1b1b','#f4f4f0','#c0392b','#2d6cdf','#e8c547']));
+  c.mesh.add(m); c.rider=m; m.rotation.order='YXZ'; const [y,z,a]=ridePose(m,c,0); m.position.set(0,y,z); m.rotation.x=a;
+}
+function addHelmet(m,col){ const B=m.children[0]; const h=new THREE.Mesh(new THREE.SphereGeometry(1,12,9),lambert(col)); h.scale.set(0.138,0.142,0.152); h.position.set(0,1.675,0); B.add(h);
+  const v=new THREE.Mesh(new THREE.SphereGeometry(1,10,6,-0.9,1.8,1.1,0.75),lambert('#111418')); v.scale.set(0.142,0.146,0.156); v.position.set(0,1.675,0.005); B.add(v); m.userData.helmet=[h,v]; return h; }
 function buildBikeMesh(color){
   const g=new THREE.Group(), fm=paint(color), blk=lambert('#1a1a1a'), met=lambert('#a4aab0'), painted=[];
   const V=(x,y,z)=>new THREE.Vector3(x,y,z);
@@ -1835,6 +1900,7 @@ function buildTankMesh(color){   // blindado: casco inclinado, orugas con ruedas
   return {g,wheels,painted:[hb,glacis,tb,mantle],lights:lb,fx:{brake:fxo(),indR:fxo(),indL:fxo()}};
 }
 function buildCarMesh(k,color){
+  if (TYPES[k].moto) return buildMotoMesh(k,color);
   if (TYPES[k].bike) return buildBikeMesh(color);
   if (k==='tank') return buildTankMesh(color);
   const T=TYPES[k], G=carGeos(k), g=new THREE.Group(), cm=paint(color), painted=[];
@@ -1881,7 +1947,7 @@ class Car{
   get speed(){ return Math.hypot(this.vx,this.vz); }
   fwd(){ return this.vx*Math.sin(this.h)+this.vz*Math.cos(this.h); }
   drive(dt,thr,steer,hb){
-    const T=this.T; this.braking=(thr<-0.05&&this.fwd()>0.4)||(hb&&this.speed>0.5);
+    const T=this.T; this.thr=thr; this.hb=hb; this.braking=(thr<-0.05&&this.fwd()>0.4)||(hb&&this.speed>0.5);
     if (this.dead){ thr=0; steer=0; hb=true; }
     this.steerV += (steer-this.steerV)*Math.min(1,dt*7);
     let fx=Math.sin(this.h), fz=Math.cos(this.h);
@@ -1903,6 +1969,10 @@ class Car{
   }
   sync(){
     this.mesh.position.set(this.x,0,this.z); this.mesh.rotation.y=this.h;
+    if (this.T.bike && !this.fallen){ const sp=this.speed, m=this.T.moto;   // se inclina en las curvas según velocidad y giro; al acelerar fuerte levanta el morro y al frenar lo hunde
+      this.mesh.rotation.order='YXZ'; const leanT=-this.steerV*Math.min(1,sp/(m?9:7))*(m?0.62:0.35)*(sp<1.5?sp/1.5:1)+(sp<0.6&&m?0.1:0); this.leanV=(this.leanV||0)+(leanT-(this.leanV||0))*0.25; this.mesh.rotation.z=this.leanV;
+      const pT=m? (this.thr>0.5&&sp<14&&this.T.wheelie? -0.22*this.thr*(1-sp/14) : this.thr>0.5&&sp<8? -0.04 : this.braking? 0.05 : 0) : 0; this.pitchV=(this.pitchV||0)+(pT-(this.pitchV||0))*0.15; this.mesh.rotation.x=this.pitchV; }
+    if (this.rider){ const on=this.driver==='npc'||this.driver==='police'; this.rider.visible=on; if (on && ((this.speed<0.6)!==this.riderStop)){ this.riderStop=this.speed<0.6; const [y,z,a]=ridePose(this.rider,this,0); this.rider.position.set(0,y,z); this.rider.rotation.x=a; } }
     for (let i=0;i<4;i++){ this.wheels[i].rotation.x=this.spin; if (i<2) this.wheels[i].rotation.y=this.steerV*0.45; }
     if (this.fx){ const on=!this.dead; this.fx.brake.visible=on&&!!this.braking; const bl=on&&this.blink&&Math.floor(now*3)%2===0; this.fx.indR.visible=bl&&this.blink>0; this.fx.indL.visible=bl&&this.blink<0; }   // luces de freno e intermitentes
   }
@@ -3012,7 +3082,7 @@ function interactCandidates(){
   if (!mission.cur) for (const ms of MISSIONS){ if (inCar && !slow) continue; out.push({verb:'Empezar misión',name:ms.name,x:ms.start[0],z:ms.start[1],r:inCar?7:3,act:()=>startMission(ms)}); }
   for (const c of clients){ if (inCar && !slow) continue; out.push({verb:'Vender',name:'Cliente',x:c.x,z:c.z,r:inCar?6:2.4,act:()=>sellTo(c)}); }
   if (!inCar){
-    const c=nearestCar(4.2); if (c && c.k!=='tank') out.push({verb:c.driver==='npc'||c.driver==='police'?'Robar':'Subir',name:c.k==='taxi'?'Taxi':c.T.bike?'Bici':'Coche',x:c.x,z:c.z,r:99,car:true,act:()=>enterCar(c)});
+    const c=nearestCar(4.2); if (c && c.k!=='tank') out.push({verb:c.driver==='npc'||c.driver==='police'?'Robar':'Subir',name:c.k==='taxi'?'Taxi':c.T.name||(c.T.bike?'Bici':'Coche'),x:c.x,z:c.z,r:99,car:true,act:()=>enterCar(c)});
     for (const p of peds){ if (p.state!=='walk' || p.cop) continue; const d=d2(p.x,p.z,player.x,player.z); if (d>2.4*2.4) continue; out.push({verb:'Hablar',name:p.fem?'Vecina':'Vecino',talk:true,x:p.x,z:p.z,r:2.4,act:()=>talkTo(p)}); }
   }
   for (const f of INTERACT_SOURCES) f(out);   // ampliable: puertas, máquinas, objetos...
@@ -3888,7 +3958,9 @@ function hurt(n,zone='torso',from=null){   // from: {x,z} de quien dispara o gol
 let hurtFx=0;
 function damageCar(c,n,imp){
   if (c.exploded) return;
-  if (c.T.bike){ if (c===player.inCar && imp){ sfxCrash(imp*0.5); if (imp>6.5) bikeFall(-c.vx||1,-c.vz,imp); else if (imp>4) hurt(imp*0.8); } return; }
+  if (c.T.bike){ if (c===player.inCar && imp){ sfxCrash(imp*0.5); if (imp>(c.T.moto?5.5:6.5)) bikeFall(-c.vx||1,-c.vz,imp); else if (imp>4) hurt(imp*0.8); }
+    else if (c.driver==='npc' && imp>3.5) bikeRiderFall(c,-c.vx||1,-c.vz||0);   // el piloto de la IA también se cae
+    if (!c.T.moto) return; }
   c.health-=n;
   if (c===player.inCar){ if (imp) sfxCrash(imp); shake(Math.min(1,n/40)); }
   if (c.health<=0 && !c.dead){ c.dead=true; c.burn=c.health<-45 ? mrand(0.3,0.9) : mrand(3,6);   // destrozado de golpe: apenas hay tiempo
@@ -4269,7 +4341,7 @@ function rayShot(ox,oz,a,range,dmg,oy=1.35,pitch=0){
     damageCar(best,dmg*0.3,0); best.hitByPlayer=now;
     for (let i=0;i<4;i++) emit(glowP,ex,1,ez,mrand(-3,3),mrand(1,4),mrand(-3,3),0.2,0.12,'#ffd27a',10);
     if (best.driver==='police'){ if (now-lastPoliceHit>3){ lastPoliceHit=now; addCrime('copShot','¡Has disparado a la policía!'); } }
-    else if (best.driver==='npc') carAttacked(best,'shot',1);
+    else if (best.driver==='npc'){ if (best.T.bike){ const p=bikeRiderFall(best,dx,dz); if (p) p.gunHit(dmg*0.8,'torso',dx,dz); } else carAttacked(best,'shot',1); }   // en moto el disparo alcanza al piloto
   } else if (bt<range){ for (let i=0;i<3;i++) emit(glowP,ex,1.3,ez,mrand(-2,2),mrand(0,3),mrand(-2,2),0.15,0.1,'#ffe6a0',8); }
 }
 function shoot(W){
@@ -4742,10 +4814,10 @@ function spawnCarNear(mode,kind){
     if (cars.some(c=>d2(c.x,c.z,x,z)<196)) continue;
     if (Math.abs(x-riverX(z))<RHz(z)+4 && !onBridge(x,z)) continue;
     if (pointBlocked(x,z) || circleBlocked(x+ux*1.5,z+uz*1.5,1.1) || circleBlocked(x-ux*1.5,z-uz*1.5,1.1)) continue;   // la carrocería entera, no solo el centro
-    const k = kind && !parked ? kind : mode==='police' ? 'police' : parked ? mpick(['compact','sedan','sedan','van','pickup','sports']) : e.real&&e.w<8 ? mpick(['compact','compact','sedan','taxi','sports']) : mpick(['compact','compact','sedan','sedan','sedan','van','taxi','sports','bus','boxvan','boxvan','truck','pickup','pickup']);
+    const k = kind && !parked ? kind : mode==='police' ? 'police' : parked ? mpick(['compact','sedan','sedan','van','pickup','sports','scooter','moto']) : e.real&&e.w<8 ? mpick(['compact','compact','sedan','taxi','sports','scooter','scooter','moto']) : mpick(['compact','compact','sedan','sedan','sedan','van','taxi','sports','bus','boxvan','boxvan','truck','pickup','pickup','scooter','moto','sportbike']);
     const c=new Car(k); c.x=x; c.z=z; c.h=Math.atan2(ux,uz);
     if (parked){ c.driver=null; }
-    else { c.driver = mode==='police'?'police':'npc'; c.ai={mode:mode==='police'?'chase':'cruise',a:a.id,b:b.id,stuck:0,rev:0,repath:0,path:null,pi:0,wait:0}; c.pass=k==='bus'?0:k==='police'?(Math.random()<0.5?1:0):Math.random()<0.25?1:0; const v=mode==='police'?14:9; c.vx=ux*v; c.vz=uz*v; }
+    else { c.driver = mode==='police'?'police':'npc'; c.ai={mode:mode==='police'?'chase':'cruise',a:a.id,b:b.id,stuck:0,rev:0,repath:0,path:null,pi:0,wait:0}; c.pass=k==='bus'||TYPES[k].bike?0:k==='police'?(Math.random()<0.5?1:0):Math.random()<0.25?1:0; const v=mode==='police'?14:9; c.vx=ux*v; c.vz=uz*v; if (c.T.bike) addRider(c); }
     c.sync(); return c;
   }
   return null;
@@ -4977,21 +5049,24 @@ function bumpPeds(dt){
   if (hit) pushCircle(player,0.42,player.y+0.001);
 }
 /* ---- impactos de vehículos: dependen de la velocidad, el ángulo y el peso ---- */
-const MASS={tank:8,bike:0.28,compact:0.9,sedan:1,taxi:1,sports:1,police:1.05,van:1.3,boxvan:1.5,pickup:1.3,truck:1.9,bus:2};
+const MASS={tank:8,bike:0.28,scooter:0.36,moto:0.5,sportbike:0.5,compact:0.9,sedan:1,taxi:1,sports:1,police:1.05,van:1.3,boxvan:1.5,pickup:1.3,truck:1.9,bus:2};
 function impact(c,x,z){
   let nx=x-c.x, nz=z-c.z; const L=Math.hypot(nx,nz)||1; nx/=L; nz/=L;
   const vn=Math.max(0,c.vx*nx+c.vz*nz), mass=MASS[c.k]||1;   // solo cuenta la velocidad hacia el peatón (de frente > de refilón)
   return { sev:vn*Math.sqrt(mass), vn, mass, nx, nz };
 }
 function knockDown(t){ if (player.inCar||player.health<=0) return; player.downT=Math.max(player.downT||0,t); player.vx=player.vz=0; setCrouch(false); aiming=false; }
-function bikeFall(dx,dz,f){   // salir despedido de la bici
+function bikeFall(dx,dz,f){   // salir despedido de la moto o la bici: sales con la inercia, ruedas por el suelo y el daño depende de la velocidad
   const c=player.inCar; if (!c || !c.T.bike || player.health<=0) return;
-  const L=Math.hypot(dx,dz)||1, ux=dx/L, uz=dz/L, sp=c.speed;
-  exitCar(true,true); player.x=c.x+ux*1.2; player.z=c.z+uz*1.2; if (pointBlocked(player.x,player.z)||blockedAt(player.x,player.z)){ player.x=c.x; player.z=c.z; }
+  const L=Math.hypot(dx,dz)||1, ux=dx/L, uz=dz/L, sp=c.speed, v={x:c.vx,z:c.vz};
+  exitCar(true,true); player.x=c.x+ux*0.8; player.z=c.z+uz*0.8; if (pointBlocked(player.x,player.z)||blockedAt(player.x,player.z)){ player.x=c.x; player.z=c.z; }
   pushCircle(player,0.42); player.h=Math.atan2(ux,uz);
-  c.vx*=0.3; c.vz*=0.3; c.fallen=true; c.mesh.rotation.z=Math.PI/2*0.92;
-  hurt(Math.min(40,4+f*2+sp*0.8)); shake(0.7); sfxCrash(3); knockDown(1.6);
-  toast('¡Te has caído de la bici!',1.5);
+  c.vx*=0.45; c.vz*=0.45; c.fallen=true; c.leanV=0; c.pitchV=0; c.mesh.rotation.set(0,c.h,(Math.random()<0.5?1:-1)*Math.PI/2*0.92); c.driverless=now;
+  player.slide={vx:v.x*0.8+ux*f*0.3,vz:v.z*0.8+uz*f*0.3,t:0}; player.vy=Math.min(3,0.8+sp*0.05); player.y=Math.max(player.y||0,0.2); player.rollA=0; if (sp>3) player.h=Math.atan2(v.x,v.z)+Math.PI/2;
+  knockDown(Math.min(3.2,1.2+sp*0.07));
+  const dmg=(c.T.moto?0.8:0.6)*(sp<5?3+f:sp<14?(sp-5)*2.4+6:sp<30?28+(sp-14)*3.4:190)+f*1.5;   // con casco algo menos que saltando de un coche; >110 km/h suele ser mortal
+  hurt(dmg,'torso'); shake(Math.min(1,0.4+sp*0.03)); sfxCrash(Math.min(5,2+sp*0.15));
+  toast(c.T.moto?(sp*3.6>70?'¡Caída brutal de la moto!':'¡Te has caído de la moto!'):'¡Te has caído de la bici!',1.6);
 }
 function carAt(x,z,pad){ for (const c of cars){ const dx=x-c.x, dz=z-c.z; if (dx*dx+dz*dz>64) continue; const fx=Math.sin(c.h), fz=Math.cos(c.h), lon=dx*fx+dz*fz, lat=-dx*fz+dz*fx; if (Math.abs(lon)<c.T.len/2+pad && Math.abs(lat)<c.T.w/2+pad) return c; } return null; }
 function wgStep(p){ const edgesAt=WG.adj[p.wgB]; if (!edgesAt || !edgesAt.length){ p.wgA=null; return; }
@@ -5406,9 +5481,10 @@ function update(dt){
   else if (player.inCar){
     const c=player.inCar;
     if (taxiRide) showHint(isTouch?'ENTRAR: bajarte · SALTAR: saltar trayecto':`🚕 Hacia ${taxiRide.dest.name} · E: bajarte · Espacio: saltar el trayecto`);   // de pasajero: conduce el taxista
-    else c.drive(dt, c.dead?0:ax.y, ax.x, handbrake());
+    else { c.drive(dt, c.dead?0:ax.y, ax.x, handbrake());
+      if (c.T.moto && handbrake() && c.speed>16 && Math.abs(c.steerV)>0.6 && Math.random()<dt*1.6) bikeFall(c.vx,c.vz,c.speed*0.25); }   // frenazo tumbado a mucha velocidad: la moto se va al suelo
     if (!taxiRide && c.speed<2){ const o=bestInteraction(); if (o) showHint(isTouch?`ENTRAR: ${o.verb} · ${o.name}`:`[E] ${o.verb} · ${o.name}  ·  Intro: bajarse`); }   // parado junto a una actividad
-    player.x=c.x; player.z=c.z; player.vx=c.vx; player.vz=c.vz;
+    if (player.inCar){ player.x=c.x; player.z=c.z; player.vx=c.vx; player.vz=c.vz; }
   } else if (jack){ updateJack(dt);
   } else if (player.downT>0){ player.downT-=dt; player.vx=player.vz=0;
     if (player.slide){ const S=player.slide, ox=player.x, oz=player.z; player.x+=S.vx*dt; player.z+=S.vz*dt; const f=Math.exp(-dt*(player.y>0.05?0.6:2.6)); S.vx*=f; S.vz*=f; player.rollA=(player.rollA||0)+Math.hypot(S.vx,S.vz)*dt*1.6;   // rueda por el suelo
@@ -5493,6 +5569,7 @@ function update(dt){
       const vn=(a.vx-b.vx)*nx+(a.vz-b.vz)*nz;
       if (vn>0){ a.vx-=nx*vn*0.8*wa; a.vz-=nz*vn*0.8*wa; b.vx+=nx*vn*0.8*wb; b.vz+=nz*vn*0.8*wb;
         if (a.k==='tank'||b.k==='tank'){ const o=a.k==='tank'?b:a; if (vn>1.5 && o.k!=='tank') damageCar(o,vn*9,vn); }   // un blindado aplasta lo que embiste
+        else if (vn>3.5 && vn<=5 && (a.T.bike||b.T.bike)){ if (a.T.bike) damageCar(a,0,vn); if (b.T.bike) damageCar(b,0,vn); }   // en moto un golpe menor ya tira al piloto
         else if (vn>5){ damageCar(a,(vn-5)*1.6,vn); damageCar(b,(vn-5)*1.6,vn); if (a===player.inCar) carAttacked(b,'ram',vn/8); else if (b===player.inCar) carAttacked(a,'ram',vn/8); }
         const pc=taxiRide?null:a===player.inCar?b:b===player.inCar?a:null; if (pc) pc.hitByPlayer=now;
         if (pc && pc.driver==='police' && vn>4 && now-lastPoliceHit>4){ lastPoliceHit=now; addCrime('copRam','¡Has embestido a la policía!'); }
@@ -5740,7 +5817,7 @@ function updateAudio(){
   updateListener(); updateRotors();
   const t=AC.currentTime;
   if (eng && player.inAir){ const a=player.inAir, on=soundOn&&state==='play'; eng.g.gain.setTargetAtTime(on?0.06:0,t,0.1); const f=a.kind==='jet'?90+a.rpm*160:a.kind==='plane'?45+a.rpm*70:22+a.rpm*18; eng.o.frequency.setTargetAtTime(f,t,0.08); eng.f.frequency.setTargetAtTime(a.kind==='plane'?500+a.rpm*900:260+a.rpm*200,t,0.1); }
-  else if (eng){ const c=player.inCar, on=soundOn&&c&&!c.dead&&!c.T.bike&&state==='play'; eng.g.gain.setTargetAtTime(on?0.05:0,t,0.1); if (c){ const f=38+c.speed*3.2+Math.abs(axis().y)*12; eng.o.frequency.setTargetAtTime(f,t,0.05); eng.f.frequency.setTargetAtTime(300+c.speed*25,t,0.1); } }
+  else if (eng){ const c=player.inCar, on=soundOn&&c&&!c.dead&&(!c.T.bike||c.T.moto)&&state==='play'; eng.g.gain.setTargetAtTime(on?0.05:0,t,0.1); if (c){ const mo=c.T.moto, f=(mo==='scooter'?70:mo?55:38)+c.speed*(mo?(mo==='sport'?5.5:4.6):3.2)+Math.abs(axis().y)*(mo?20:12); /* motos: motor más agudo */ eng.o.frequency.setTargetAtTime(f,t,0.05); eng.f.frequency.setTargetAtTime(300+c.speed*25,t,0.1); } }
   updateSirens();
 }
 
@@ -6098,11 +6175,11 @@ function frame(t){
     now+=dt; update(dt);
     player.mesh.position.set(player.x,0.25+player.y-(player.crouch&&!player.inCar?0.42:0),player.z); player.mesh.rotation.y=player.h; player.mesh.visible=!player.inCar && !fp;
     { const bk=player.inCar&&player.inCar.T.bike?player.inCar:null;
-      if (bk){ const fx=Math.sin(bk.h), fz=Math.cos(bk.h), lean=-bk.steerV*Math.min(1,bk.speed/7)*0.35; bk.mesh.rotation.z=lean;
-        player.mesh.visible=!fp; player.mesh.position.set(bk.x-fx*0.18,0.1,bk.z-fz*0.18); player.mesh.rotation.set(0,bk.h,lean);
-        player.phase+=dt*bk.fwd()*2.4; const u=player.mesh.userData, sn=Math.sin(player.phase);
-        u.legs[0].rotation.x=-1.0+sn*0.45; u.legs[1].rotation.x=-1.0-sn*0.45; u.knees[0].rotation.x=1.2-sn*0.35; u.knees[1].rotation.x=1.2+sn*0.35;
-        u.arms[0].rotation.x=u.arms[1].rotation.x=-1.05; u.arms[0].rotation.z=u.arms[1].rotation.z=0; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-0.25; setWeaponModel(player.mesh,null); } }
+      if (bk){ player.phase+=dt*bk.fwd()*2.4; const [y,z,a]=ridePose(player.mesh,bk,player.phase);   // misma postura que los pilotos de la IA: cadera en el asiento, pies y manos en su sitio
+        const A=bk.anchor||(bk.anchor=new THREE.Object3D()); if (A.parent!==bk.mesh) bk.mesh.add(A); A.position.set(0,y,z); A.rotation.set(a,0,0); A.updateMatrixWorld(true);
+        A.getWorldPosition(player.mesh.position); A.getWorldQuaternion(player.mesh.quaternion); player.mesh.visible=!fp; setWeaponModel(player.mesh,null);
+        if (bk.T.moto && !player.helmet) player.helmet=addHelmet(player.mesh,'#1b1b1b'); if (player.mesh.userData.helmet) player.mesh.userData.helmet.forEach(h=>h.visible=!!bk.T.moto); } }
+    if (!player.inCar && player.mesh.userData.helmet && player.mesh.userData.helmet[0].visible) player.mesh.userData.helmet.forEach(h=>h.visible=false);
     if (!player.inCar){ const sp=Math.hypot(player.vx,player.vz); animPed(player.mesh,player.phase,sp>0.3?Math.min(0.9,sp*0.14):0);
       const u=player.mesh.userData;
       if (player.crouch){ const w=Math.sin(player.phase)*(sp>0.3?0.25:0); u.legs[0].rotation.x=-1.2+w; u.legs[1].rotation.x=-1.2-w; u.knees[0].rotation.x=u.knees[1].rotation.x=2.0; }
