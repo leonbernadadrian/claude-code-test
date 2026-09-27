@@ -136,6 +136,7 @@
   .mlist li b{color:var(--palm);font-weight:700;white-space:nowrap}
   .mlist li i{font-style:normal;color:var(--mute);white-space:nowrap}
   .prow{display:flex;flex-wrap:wrap;gap:10px}
+  body.playing canvas{cursor:none}
   #bigmap{background:#12161b;padding:0;cursor:grab}
   #bigmap.drag{cursor:grabbing}
   #bigc{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
@@ -2580,7 +2581,7 @@ function buildPlace(sh){
 function removePlace(sh){ scene.remove(sh.marker); scene.remove(sh.dealer); disposePed(sh.dealer); const i=SHOPS.indexOf(sh); if (i>=0) SHOPS.splice(i,1); }
 for (const sh of SHOPS) buildPlace(sh);
 function openShop(sh){ try{ document.exitPointerLock?.(); }catch(e){} state='shop'; shopState.cur=sh; renderShop(); $('shop').hidden=false; hud.hint.hidden=true; }
-function closeShop(){ $('shop').hidden=true; shopState.leave=shopState.cur; shopState.cur=null; state='play'; persist(); }
+function closeShop(){ $('shop').hidden=true; shopState.leave=shopState.cur; shopState.cur=null; state='play'; persist(); requestLock(true); }
 function renderShop(){
   const sh=shopState.cur, items=[];
   if (sh.id==='armas'){
@@ -2824,7 +2825,7 @@ function openMap(opts={}){
   mapCenter(); MV.pois=mapPOIs(); buildLegend(); updateMapInfo(); drawMapView(); $('mClear').hidden=MV.mode==='taxi';
   $('maphelp').textContent=MV.mode==='taxi'?'Rueda o +/−: zoom · Arrastra: mover · Clic en un icono o en cualquier sitio: destino del taxi · Enter: pagar y subir · Esc: cancelar':'Rueda o +/−: zoom · Arrastra: mover · Clic en un icono o en cualquier sitio: destino · Clic derecho: quitarlo · M: cerrar';
 }
-function closeMap(){ $('bigmap').hidden=true; state='play'; MV.mode=null; MV.onPick=null; MV.ptr.clear(); }
+function closeMap(){ $('bigmap').hidden=true; state='play'; MV.mode=null; MV.onPick=null; MV.ptr.clear(); requestLock(true); }
 function buildLegend(){
   const types=['mision','trabajo','tienda','atraco','poi','waypoint'];
   $('maplegend').innerHTML=types.map(t=>`<span><i style="background:${POI_TYPES[t].col};border-radius:${POI_TYPES[t].shape==='c'?'50%':'2px'}"></i>${POI_TYPES[t].label}</span>`).join('')+'<span><i style="background:#fff"></i>Tú</span>';
@@ -3318,7 +3319,7 @@ function setCrouch(v){ player.crouch=v; $('bCrouch').classList.toggle('on',v); }
 let keysT=0;
 function toggleKeys(force){ const k=$('keys'); const on=force??!k.classList.contains('show'); k.classList.toggle('show',on); keysT=on&&force?25:0; }
 function openHelp(){ state='help'; $('help').hidden=false; $('pause').hidden=true; }
-function closeHelp(){ $('help').hidden=true; state='play'; }
+function closeHelp(){ $('help').hidden=true; state='play'; requestLock(true); }
 
 /* ================= primera persona ================= */
 let fp=false; try{ fp=localStorage.getItem('ilici-fp')==='1'; }catch(e){}
@@ -3343,25 +3344,40 @@ const vmWM=makeWeaponModels(vmHolder);
 function setFP(v,quiet){
   fp=v; try{ localStorage.setItem('ilici-fp',v?'1':'0'); }catch(e){}
   camera.near=v?0.2:0.4; camera.updateProjectionMatrix(); fpPitch=0; fpCarLook=0;
-  if (!v){ camYaw=player.inCar?player.inCar.h:player.h; camPos.set(player.x-Math.sin(camYaw)*6,3,player.z-Math.cos(camYaw)*6); try{ document.exitPointerLock?.(); }catch(e){} }
+  if (!v){ camYaw=player.inCar?player.inCar.h:player.h; tpPitch=0; camPos.set(player.x-Math.sin(camYaw)*6,3,player.z-Math.cos(camYaw)*6); }
   $('bView').textContent='Vista: '+(v?'primera persona':'tercera persona');
-  if (!quiet) toast(v?`Primera persona. ${isTouch?'Arrastra en la pantalla para mirar.':'Haz clic para mirar con el ratón (Esc lo suelta).'}`:'Tercera persona',3);
+  if (!quiet) toast(v?`Primera persona${isTouch?'. Arrastra en la pantalla para mirar.':''}`:'Tercera persona',2);
 }
 function lookDelta(dx,dy,k){ if (player.inCar) fpCarLook=clamp(fpCarLook-dx*k,-2.2,2.2); else player.h-=dx*k; fpPitch=clamp(fpPitch-dy*k,-1.25,1.25); }
 const lockEl=renderer.domElement;
-// Captura del ratón en primera persona: el primer clic solo captura (no dispara); Esc la suelta y abre la pausa.
-// Si el navegador no deja capturar (p. ej. un iframe sin permiso), se mira arrastrando con el botón derecho y el clic dispara.
-let lockFails=0, lockFailT=0, unlockT=-1e9, lockSwallow=false;
+// Captura del ratón (primera y tercera persona): el primer clic solo captura (no dispara); Esc la suelta y abre la pausa; al volver de un menú se recaptura.
+// La cámara se mueve con el desplazamiento relativo del ratón (movementX/Y), nunca con la posición del cursor. Si el navegador no deja capturar
+// (p. ej. un iframe sin permiso), se mira arrastrando con el botón derecho y el clic dispara.
+let lockFails=0, lockFailT=0, unlockT=-1e9, lockSwallow=false, softLockT=-1e9, mouseLookT=-1e9, tpPitch=0;
+const MOUSE_K=0.0024;   // sensibilidad única (radianes por píxel)
 const lockOK=()=>!!lockEl.requestPointerLock && lockFails<2;
-function needLock(){ return fp && !isTouch && lockOK() && document.pointerLockElement!==lockEl; }
-function lockFailed(){ const t=performance.now(); if (t-lockFailT<150 || t-unlockT<2000) return; lockFailT=t;   // justo después de soltarlo el navegador puede negarlo: no cuenta
+function needLock(){ return !isTouch && lockOK() && document.pointerLockElement!==lockEl; }
+function lockFailed(){ const t=performance.now(); if (t-lockFailT<150 || t-unlockT<2000 || t-softLockT<800) return; lockFailT=t;   // justo después de soltarlo, o en una recaptura automática, no cuenta
   if (++lockFails>=2) toast('Este navegador no deja capturar el ratón: mira arrastrando con el botón derecho y dispara con el izquierdo',4); }
-function requestLock(){ try{ const r=lockEl.requestPointerLock(); if (r&&r.catch) r.catch(lockFailed); }catch(err){ lockFailed(); } }
+function requestLock(soft){   // soft: recaptura al volver de un menú (si el navegador no la permite, bastará un clic)
+  if (soft){ if (isTouch || !lockOK() || document.pointerLockElement===lockEl) return; softLockT=performance.now(); }
+  const fail=()=>{ if (!soft) lockFailed(); };
+  try{ const r=lockEl.requestPointerLock({unadjustedMovement:true});   // movimiento sin la aceleración del sistema
+    if (r&&r.catch) r.catch(err=>{ if (err&&err.name==='NotSupportedError'){ try{ const r2=lockEl.requestPointerLock(); if (r2&&r2.catch) r2.catch(fail); }catch(e){ fail(); } } else fail(); });
+  }catch(err){ try{ const r2=lockEl.requestPointerLock(); if (r2&&r2.catch) r2.catch(fail); }catch(e){ fail(); } }
+}
 document.addEventListener('pointerlockerror',lockFailed);
 lockEl.addEventListener('contextmenu',e=>e.preventDefault());
-addEventListener('mousemove',e=>{ if (state!=='play') return; if (!fp){ if (tpAim() && (e.buttons&2)){ camYaw-=(e.movementX||0)*0.0032; aimPitch=clamp(aimPitch-(e.movementY||0)*0.0026,-0.55,0.75); } return; } if (document.pointerLockElement!==lockEl && !(e.buttons&2)) return; lookDelta(e.movementX||0,e.movementY||0,0.0024); });
-document.addEventListener('pointerlockchange',()=>{ if (document.pointerLockElement===lockEl){ lockFails=0; return; }
-  unlockT=performance.now(); mouseHeld=false; if (fp && state==='play') pause(); });
+addEventListener('mousemove',e=>{ if (state!=='play') return;
+  const locked=document.pointerLockElement===lockEl; if (!locked && !(e.buttons&2)) return;
+  const dx=e.movementX||0, dy=e.movementY||0; if (Math.abs(dx)>300||Math.abs(dy)>300) return;   // pico espurio del navegador al capturar: se ignora
+  if (fp){ lookDelta(dx,dy,MOUSE_K); return; }
+  if (player.inAir) return;
+  if (tpAim()){ camYaw-=dx*MOUSE_K*0.75; aimPitch=clamp(aimPitch-dy*MOUSE_K*0.75,-0.55,0.75); }   // apuntando: algo más fino
+  else { camYaw-=dx*MOUSE_K; tpPitch=clamp(tpPitch+dy*MOUSE_K,-0.3,0.85); }   // derecha → gira a la derecha; abajo → la cámara sube y mira hacia abajo
+  mouseLookT=now; });
+document.addEventListener('pointerlockchange',()=>{ document.body.classList.toggle('locked',document.pointerLockElement===lockEl); if (document.pointerLockElement===lockEl){ lockFails=0; return; }
+  unlockT=performance.now(); mouseHeld=false; aiming=false; if (state==='play') pause(); });
 { let lt=null;
   lockEl.addEventListener('touchstart',e=>{ if (!fp||lt) return; const t=e.changedTouches[0]; lt={id:t.identifier,x:t.clientX,y:t.clientY}; },{passive:true});
   lockEl.addEventListener('touchmove',e=>{ if (!lt) return; for (const t of e.changedTouches) if (t.identifier===lt.id){ lookDelta(t.clientX-lt.x,t.clientY-lt.y,0.0065); lt.x=t.clientX; lt.y=t.clientY; } },{passive:true});
@@ -4856,7 +4872,7 @@ function updateCamera(dt){
   let tYaw=P.h;
   const aimOn=tpAim(); aimK+=((aimOn?1:0)-aimK)*Math.min(1,dt*(aimOn?11:8)); if (aimK<0.01) aimK=0;
   const rate=(player.inCar?(moving?3.5:0.8):(moving?1.6:0.25))*(moving&&camDist!==null&&camDist<2?2.5:1);   // encajonada: gira antes para salir
-  if (!aimOn) camYaw+=wrapA(tYaw-camYaw)*(1-Math.exp(-dt*rate));
+  if (!aimOn && now-mouseLookT>(player.inCar?1.2:2.5)) camYaw+=wrapA(tYaw-camYaw)*(1-Math.exp(-dt*rate));   // si el jugador mueve la cámara, se respeta un rato
   const tx=P.x, tz=P.z;
   if (camMode===1){
     const h=58+spd*1.2;
@@ -4867,6 +4883,7 @@ function updateCamera(dt){
     const onBike=player.inCar&&player.inCar.T.bike;
     let D=(onBike?5.8+spd*0.1:player.inCar?9+spd*0.13:5.5)*pf, H=(onBike?2.7:player.inCar?3.8+spd*0.04:2.5)*pf;
     const k=aimK, eye=(player.crouch?1.2:1.75)+(player.y||0);
+    const op=tpPitch*(1-k); if (op){ H=Math.max(0.6,H+D*Math.sin(op)*0.9); D*=Math.cos(op*0.8); }   // inclinación elegida con el ratón
     D+= (2.3-D)*k; H+=(eye-0.1*aimPitch*2-H)*k;   // sobre el hombro
     // pivote: la cabeza del jugador (o el coche), desplazado al hombro derecho al apuntar si no hay pared al lado
     const py=player.inCar?1.4:(player.crouch?1.1:1.55)+(player.y||0), rx=-Math.cos(camYaw), rz=Math.sin(camYaw);
@@ -4886,7 +4903,7 @@ function updateCamera(dt){
     if (camSolid(camPos.x,camPos.z,camPos.y)) camPos.set(...safe);   // y nunca se queda dentro de un edificio
     camera.position.copy(camPos); camera.up.set(0,1,0);
     const cp=Math.cos(aimPitch), lx=camPos.x+Math.sin(camYaw)*cp*20, ly=camPos.y+Math.sin(aimPitch)*20, lz=camPos.z+Math.cos(camYaw)*cp*20;
-    camLook.set(tx+Math.sin(camYaw)*3,1.4,tz+Math.cos(camYaw)*3);
+    camLook.set(tx+Math.sin(camYaw)*3,1.4-Math.min(0,tpPitch)*(1-k)*3+(player.y||0),tz+Math.cos(camYaw)*3);
     if (k>0){ camLook.x+=(lx-camLook.x)*k; camLook.y+=(ly-camLook.y)*k; camLook.z+=(lz-camLook.z)*k; }
     camera.lookAt(camLook);
   }
@@ -5023,7 +5040,7 @@ function openPhone(){
   state='phone'; $('phone').hidden=false; const h=Math.floor(gameMin/60)%24, m=Math.floor(gameMin%60); $('phClock').textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
   phoneHome(); tone(1200,0.05,'sine',0.03);
 }
-function closePhone(){ if (state!=='phone') return; $('phone').hidden=true; state='play'; }
+function closePhone(){ if (state!=='phone') return; $('phone').hidden=true; state='play'; requestLock(true); }
 function phoneBack(){ if (phoneStack.length){ phoneHome(); } else closePhone(); }
 // taxi por teléfono: el taxi libre más cercano (o uno nuevo) viene a buscarte y se para a tu lado
 function taxiPickup(c,P){   // punto de recogida: de los cruces a menos de 45 m, el de ruta más corta para el taxi (con los sentidos únicos)
@@ -5245,12 +5262,13 @@ function updateCrime(dt){
   startScene(wpick(z.mix));
 }
 function pause(){
+  try{ document.exitPointerLock?.(); }catch(e){}
   state='paused'; $('pause').hidden=false; $('bPCancel').hidden=!mission.cur;
   $('plist').innerHTML=MISSIONS.map(ms=>`<li><span>${ms.name}</span>${save.done.includes(ms.id)?'<b>Superada</b>':`<i>${ms.reward} €</i>`}</li>`).join('');
   $('pdates').textContent=`Dátiles de oro: ${save.dates.length}/12 · Dinero: ${player.money} €`;
   $('bSound').textContent='Sonido: '+(soundOn?'sí':'no'); $('bQual').textContent='Gráficos: '+QUALITY[quality].label.toLowerCase(); $('bReset').textContent='Borrar progreso'; $('bReset').dataset.arm='';
 }
-function resume(){ $('pause').hidden=true; state='play'; }
+function resume(){ $('pause').hidden=true; state='play'; requestLock(true); }
 $('bPlay').addEventListener('click',startGame);
 $('bResume').addEventListener('click',resume);
 $('phBack').addEventListener('click',phoneBack); $('phHome').addEventListener('click',closePhone);
@@ -5291,8 +5309,10 @@ function boot(data){
 if (window.claude?.hot?.ready) window.claude.hot.ready(boot); else boot(window.claude?.hot?.data ?? {});
 
 let last=performance.now(), titleA=0;
+let playingCls=false;
 function frame(t){
   requestAnimationFrame(frame);
+  { const pl=state==='play'&&!isTouch; if (pl!==playingCls){ playingCls=pl; document.body.classList.toggle('playing',pl); } }   // cursor oculto durante el juego; visible en menús
   const dt=Math.min(0.05,(t-last)/1000); last=t;
   if (state==='play'||state==='dead'){
     now+=dt; update(dt);
