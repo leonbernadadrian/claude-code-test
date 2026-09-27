@@ -3686,7 +3686,7 @@ addEventListener('keyup',e=>{ keys.delete(e.code); if (e.code==='KeyH') hornUp()
 addEventListener('blur',()=>{ keys.clear(); aiming=false; mouseHeld=false; });
 renderer.domElement.addEventListener('mousedown',e=>{ if (state!=='play') return;
   if (needLock()){ e.preventDefault(); lockSwallow=true; requestLock(); return; }   // el clic que captura el ratón no dispara ni golpea
-  if (e.button===0){ fireEdge=true; mouseHeld=true; } else if (e.button===2){ aiming=true; if (!aimK){ aimPitch=0; camYaw=player.h+wrapA(camYaw-player.h)*0.3; } } });
+  if (e.button===0){ fireEdge=true; mouseHeld=true; } else if (e.button===2){ aiming=true; if (player.inCar){ if (carAimK<0.05){ carAimRel=wrapA(camYaw-player.inCar.h); aimPitch=0; } } else if (!aimK){ aimPitch=0; camYaw=player.h+wrapA(camYaw-player.h)*0.3; } } });
 addEventListener('mouseup',e=>{ if (lockSwallow){ lockSwallow=false; mouseHeld=false; return; } if (e.button===2) aiming=false; else mouseHeld=false; });
 let wheelT=0; renderer.domElement.addEventListener('wheel',e=>{ if (state!=='play'||performance.now()-wheelT<180) return; wheelT=performance.now(); selectWeapon(player.w+(e.deltaY>0?1:-1)); },{passive:true});
 {
@@ -3744,6 +3744,8 @@ function closeHelp(){ $('help').hidden=true; state='play'; requestLock(true); }
 let fp=false; try{ fp=localStorage.getItem('ilici-fp')==='1'; }catch(e){}
 let aiming=false, aimPitch=0, aimK=0;   // apuntado en tercera persona (clic derecho)
 const tpAim=()=>aiming && !fp && !player.inCar && player.health>0 && state==='play';
+let carAimRel=0, carAimK=0;   // apuntado desde un vehículo: el ángulo se guarda relativo al coche, así giros, acelerones y frenazos no lo mueven
+const carAim=()=>aiming && !fp && !!player.inCar && !taxiRide && !player.inCar.T.heavy && player.health>0 && state==='play';
 let lastHitZone=null;
 let fpPitch=0, fpCarLook=0, vmKick=0, vmBob=0, hitFlash=0, lastRayHit=null;
 const vmScene=new THREE.Scene(), vmCam=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,0.01,10);
@@ -3792,7 +3794,8 @@ addEventListener('mousemove',e=>{ if (state!=='play') return;
   const dx=e.movementX||0, dy=e.movementY||0; if (Math.abs(dx)>300||Math.abs(dy)>300) return;   // pico espurio del navegador al capturar: se ignora
   if (fp){ lookDelta(dx,dy,MOUSE_K); return; }
   if (player.inAir) return;
-  if (tpAim()){ camYaw-=dx*MOUSE_K*0.75; aimPitch=clamp(aimPitch-dy*MOUSE_K*0.75,-0.55,0.75); }   // apuntando: algo más fino
+  if (carAim()){ carAimRel=wrapA(carAimRel-dx*MOUSE_K*0.7); aimPitch=clamp(aimPitch-dy*MOUSE_K*0.7,-0.35,0.45); }   // relativo al coche
+  else if (tpAim()){ camYaw-=dx*MOUSE_K*0.75; aimPitch=clamp(aimPitch-dy*MOUSE_K*0.75,-0.55,0.75); }   // apuntando: algo más fino
   else { camYaw-=dx*MOUSE_K; tpPitch=clamp(tpPitch+dy*MOUSE_K,-0.3,0.85); }   // derecha → gira a la derecha; abajo → la cámara sube y mira hacia abajo
   mouseLookT=now; });
 document.addEventListener('pointerlockchange',()=>{ document.body.classList.toggle('locked',document.pointerLockElement===lockEl); if (document.pointerLockElement===lockEl){ lockFails=0; return; }
@@ -3805,7 +3808,7 @@ document.addEventListener('pointerlockchange',()=>{ document.body.classList.togg
 function updateViewmodel(dt){
   if (!hintMsg && state==='play' && needLock()) showHint('Haz clic para controlar la cámara con el ratón · Esc para soltarlo');
   const show=fp && !player.inCar && (state==='play'||state==='dead') && player.health>0;
-  vmRoot.visible=show; if (!show) vmLeft.visible=false; $('cross').hidden=!((fp || (tpAim() && aimK>0.6)) && (state==='play') && player.health>0);
+  vmRoot.visible=show; if (!show) vmLeft.visible=false; $('cross').hidden=!((fp || (tpAim() && aimK>0.6) || (carAim() && carAimK>0.6)) && (state==='play') && player.health>0);
   if (hitFlash>0){ hitFlash-=dt; $('cross').classList.toggle('hit',hitFlash>0); }
   if (!show) return;
   const W=curW();
@@ -4115,12 +4118,13 @@ function rayShot(ox,oz,a,range,dmg,oy=1.35,pitch=0){
 }
 function shoot(W){
   const car=player.inCar; let h=car?car.h:player.h;
-  const ox=car?car.x+Math.sin(h)*car.T.len*0.5:player.x+Math.sin(h)*0.5, oz=car?car.z+Math.cos(h)*car.T.len*0.5:player.z+Math.cos(h)*0.5;
+  let ox=car?car.x+Math.sin(h)*car.T.len*0.5:player.x+Math.sin(h)*0.5, oz=car?car.z+Math.cos(h)*car.T.len*0.5:player.z+Math.cos(h)*0.5;
   if (fp && car) h+=fpCarLook;
+  const cAim=car && !fp && carAim() && carAimK>0.5; if (cAim){ h=camYaw; const r=Math.min(car.T.len*0.5,car.T.w*0.5/Math.max(0.2,Math.abs(Math.sin(wrapA(h-car.h)))))+0.3; ox=car.x+Math.sin(h)*r; oz=car.z+Math.cos(h)*r; }   // desde el coche se dispara hacia donde apunta la cámara
   const oy=car?1.2:(player.crouch?0.95:1.4)+(player.y||0);
   const aimShot=tpAim()&&aimK>0.5 ? shoulderAim(ox,oz,oy) : null;
   if (aimShot) player.h=aimShot.yaw;
-  const tgt=aimShot?null:aimTarget(ox,oz,h,W.range,fp?(car?0.12:0.03):(car?0.3:0.75));
+  const tgt=aimShot?null:aimTarget(ox,oz,h,W.range,fp||cAim?(car?0.1:0.03):(car?0.3:0.75));
   if (tgt){ h=Math.atan2(tgt.x-ox,tgt.z-oz); if (!car && !fp) player.h=h; }
   vmKick=Math.min(1.4,vmKick+(W.kick?1.3:W.pellets?1.1:0.6)); let hit=false;
   aimT=0.5;
@@ -4128,6 +4132,7 @@ function shoot(W){
   let pitch=fp&&!car?fpPitch:0;
   if (!fp && tgt){ const d=Math.max(1,Math.hypot(tgt.x-ox,tgt.z-oz)); pitch=Math.atan2(1.25-oy,d); }   // tiro desde la cadera: al pecho
   if (aimShot){ h=aimShot.yaw; pitch=aimShot.pitch; }
+  if (cAim && !tgt) pitch=aimPitch;
   let head=false;
   for (let k=0;k<(W.pellets||1);k++){ if (skyShot){ tracer(ox,oz,ox+Math.sin(h)*20,oz+Math.cos(h)*20); continue; }
     const sp=W.spread*(player.crouch?0.5:1)*(aimShot||fp?0.6:1);
@@ -5408,9 +5413,12 @@ function updateCamera(dt){
   const spd=player.inCar?player.inCar.speed:0;
   const moving=player.inCar ? spd>1 : Math.hypot(player.vx,player.vz)>0.5;
   let tYaw=P.h;
+  { const on=carAim(); if (!player.inCar) carAimK=0; carAimK+=((on?1:0)-carAimK)*Math.min(1,dt*(on?6:3)); if (carAimK<0.01) carAimK=0;
+    if (on){ camYaw=player.inCar.h+carAimRel; mouseLookT=now; }
+    else if (carAimK>0 && player.inCar){ carAimRel*=Math.exp(-dt*2.5); camYaw=player.inCar.h+carAimRel; mouseLookT=-99; } }   // al soltar vuelve detrás del coche sin soltarse de él   // apuntando desde el coche: la cámara va con el coche y el ratón solo mueve el ángulo relativo
   const aimOn=tpAim(); aimK+=((aimOn?1:0)-aimK)*Math.min(1,dt*(aimOn?11:8)); if (aimK<0.01) aimK=0;
   const rate=(player.inCar?(moving?3.5:0.8):(moving?1.6:0.25))*(moving&&camDist!==null&&camDist<2?2.5:1);   // encajonada: gira antes para salir
-  if (!aimOn && now-mouseLookT>(player.inCar?1.2:2.5)) camYaw+=wrapA(tYaw-camYaw)*(1-Math.exp(-dt*rate));   // si el jugador mueve la cámara, se respeta un rato
+  if (!aimOn && !carAimK && now-mouseLookT>(player.inCar?1.2:2.5)) camYaw+=wrapA(tYaw-camYaw)*(1-Math.exp(-dt*rate));   // si el jugador mueve la cámara, se respeta un rato
   const tx=P.x, tz=P.z;
   if (camMode===1){
     const h=58+spd*1.2;
@@ -5420,8 +5428,9 @@ function updateCamera(dt){
     const pf=camera.aspect<1?1.35:1;
     const onBike=player.inCar&&player.inCar.T.bike;
     let D=(onBike?5.8+spd*0.1:player.inCar?9+spd*0.13:5.5)*pf, H=(onBike?2.7:player.inCar?3.8+spd*0.04:2.5)*pf;
+    if (carAimK && player.inCar){ const ck=carAimK*carAimK*(3-2*carAimK); D+=((onBike?3.4:4.2+player.inCar.T.len*0.35)*pf-D)*ck; H+=((onBike?1.9:2.3)-H)*ck; }   // sobre el techo, más cerca: transición suave
     const k=aimK, eye=(player.crouch?1.2:1.75)+(player.y||0); if (!player.inCar) H+=player.y||0;   // sobre un tejado o en el cauce, la cámara acompaña la altura
-    const op=tpPitch*(1-k); if (op){ H=Math.max(0.6+(player.inCar?0:player.y||0),H+D*Math.sin(op)*0.9); D*=Math.cos(op*0.8); }   // inclinación elegida con el ratón
+    const op=tpPitch*(1-k)*(1-carAimK); if (op){ H=Math.max(0.6+(player.inCar?0:player.y||0),H+D*Math.sin(op)*0.9); D*=Math.cos(op*0.8); }   // inclinación elegida con el ratón
     D+= (2.3-D)*k; H+=(eye-0.1*aimPitch*2-H)*k;   // sobre el hombro
     // pivote: la cabeza del jugador (o el coche), desplazado al hombro derecho al apuntar si no hay pared al lado
     const py=player.inCar?1.4:(player.crouch?1.1:1.55)+(player.y||0), rx=-Math.cos(camYaw), rz=Math.sin(camYaw);
@@ -5443,11 +5452,12 @@ function updateCamera(dt){
     const cp=Math.cos(aimPitch), lx=camPos.x+Math.sin(camYaw)*cp*20, ly=camPos.y+Math.sin(aimPitch)*20, lz=camPos.z+Math.cos(camYaw)*cp*20;
     camLook.set(tx+Math.sin(camYaw)*3,1.4-Math.min(0,tpPitch)*(1-k)*3+(player.y||0),tz+Math.cos(camYaw)*3);
     if (k>0){ camLook.x+=(lx-camLook.x)*k; camLook.y+=(ly-camLook.y)*k; camLook.z+=(lz-camLook.z)*k; }
+    if (carAimK>0){ const ck=carAimK*carAimK*(3-2*carAimK), cy2=1.5+Math.sin(aimPitch)*25; camLook.x=lerp(camLook.x,tx+Math.sin(camYaw)*cp*25,ck); camLook.y=lerp(camLook.y,cy2,ck); camLook.z=lerp(camLook.z,tz+Math.cos(camYaw)*cp*25,ck); }
     camera.lookAt(camLook);
   }
   if (shakeA>0){ camera.position.x+=mrand(-1,1)*shakeA*0.4; camera.position.y+=mrand(-1,1)*shakeA*0.3; shakeA=Math.max(0,shakeA-dt*2.5);
     if (camSolid(camera.position.x,camera.position.z,camera.position.y)) camera.position.copy(camPos); }
-  const fovT=(camera.aspect<1?74:60)+clamp(spd-15,0,30)*0.35-12*aimK; camera.fov+=(fovT-camera.fov)*Math.min(1,dt*3); camera.updateProjectionMatrix();
+  const fovT=(camera.aspect<1?74:60)+clamp(spd-15,0,30)*0.35-12*aimK-7*carAimK; camera.fov+=(fovT-camera.fov)*Math.min(1,dt*3); camera.updateProjectionMatrix();
 }
 
 const skyTopD=new THREE.Color('#4a8bd0'), skyHorD=new THREE.Color('#bdd7e8'), skyTopK=new THREE.Color('#34568a'), skyHorK=new THREE.Color('#f2a266'), skyTopN=new THREE.Color('#040913'), skyHorN=new THREE.Color('#18222f'), hemiD=new THREE.Color('#cfe3f5'), hemiN=new THREE.Color('#6a82b4');
