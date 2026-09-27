@@ -1922,7 +1922,16 @@ const pedMesh=(parts,shadow)=>{ const m=new THREE.Mesh(mergeColored(parts),pedMa
 const PGL={sph:new THREE.SphereGeometry(1,7,5), cap:new THREE.SphereGeometry(1,7,3,0,Math.PI*2,0,Math.PI*0.56), cyl:new THREE.CylinderGeometry(1,1,1,6), box:PG.box};
 const torsoL=f=>PGL[f?'tF':'tM']||(PGL[f?'tF':'tM']=new THREE.LatheGeometry((f?TORSO_F:TORSO_M).filter((p,i)=>i%2===0||i===7),6));
 const taperL=(r0,r1,l)=>new THREE.CylinderGeometry(r0,r1,l+(r0+r1)*0.8,6,1);
-const pedMeshes=new Set(), _pv=new THREE.Vector3();   // todas las personas vivas, para cambiar de detalle según la distancia
+const pedMeshes=new Set(), _pv=new THREE.Vector3();
+let groundList=null; const _grc=new THREE.Raycaster(), _gB=new THREE.Box3(), _gB2=new THREE.Box3();
+function floorUnder(x,z){   // altura de la superficie visible bajo un punto (acera, calzada, césped, losa…); se usa al quedar tendido un cuerpo
+  if (!groundList){ groundList=[]; const skip=new Set([...cars.map(c=>c.mesh),...AIRCRAFT.map(a=>a.mesh)]);
+    scene.traverse(o=>{ if (!(o.isMesh||o.isInstancedMesh)||!o.visible||o.isSprite||o.material.transparent) return; let q=o; while(q){ if (skip.has(q)||(q.userData&&q.userData.legs)) return; q=q.parent; } groundList.push(o); }); }
+  _grc.set(_pv.set(x,1.2,z),new THREE.Vector3(0,-1,0)); _grc.far=1.6;
+  for (const h of _grc.intersectObjects(groundList,false)) if (h.point.y<0.7) return h.point.y;
+  return 0;
+}
+function bodyMinY(m){ m.updateMatrixWorld(true); _gB.makeEmpty(); m.traverse(o=>{ if (o.isMesh&&!o.isSprite){ let v=true, q=o; while(q&&q!==m){ if(!q.visible){v=false;break;} q=q.parent; } if (v){ _gB2.setFromObject(o); _gB.union(_gB2); } } }); return _gB.min.y; }   // todas las personas vivas, para cambiar de detalle según la distancia
 function updatePedLOD(){
   const cx=camera.position.x, cy=camera.position.y, cz=camera.position.z;
   for (const g of pedMeshes){ if (!g.parent){ pedMeshes.delete(g); continue; } const L=g.userData.lod; if (!L) continue;
@@ -2282,11 +2291,15 @@ class Ped{
       this.x+=this.vx*dt; this.z+=this.vz*dt; const f=this.y>0?0.3:4; this.vx-=this.vx*Math.min(1,f*dt); this.vz-=this.vz*Math.min(1,f*dt);
       pushCircle(this,0.4); if (riverBlocked(this.x,this.z)){ this.x-=this.vx*dt; this.z-=this.vz*dt; this.vx*=-0.3; this.vz*=-0.3; }
       const fd=this.fallDir||-1; m.rotation.x = lerp(m.rotation.x,fd*Math.PI/2,Math.min(1,dt*8)); m.rotation.z=lerp(m.rotation.z,this.fallSide||0,Math.min(1,dt*6));
-      if (this.state==='dead'){ const u=m.userData, k=Math.min(1,Math.abs(m.rotation.x)/1.5); u.arms[0].rotation.z=0.5*k; u.arms[1].rotation.z=-0.7*k; u.arms[0].rotation.x=(fd<0?-2.2:-0.4)*k; u.arms[1].rotation.x=(fd<0?-1.8:-0.2)*k; u.knees[0].rotation.x=0.35*k; u.knees[1].rotation.x=0.1*k;
+      if (this.state==='dead'){ const u=m.userData, k=Math.min(1,Math.abs(m.rotation.x)/1.5), sp=this.splay??(this.splay=[mrand(0.6,1.2),mrand(0.6,1.2),mrand(0.08,0.2),mrand(0.08,0.2)]);
+        u.arms[0].rotation.z=-sp[0]*k; u.arms[1].rotation.z=sp[1]*k; u.arms[0].rotation.x=u.arms[1].rotation.x=-fd*0.15*k; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-0.25*k;   // brazos abiertos hacia fuera, apoyados
+        u.legs[0].rotation.x=u.legs[1].rotation.x=0; u.legs[0].rotation.z=-sp[2]*k; u.legs[1].rotation.z=sp[3]*k; u.knees[0].rotation.x=u.knees[1].rotation.x=fd>0?0.3*k:0.04*k;   // piernas rectas y algo abiertas
         if (this.poolT>0 && this.y<=0){ this.poolT-=dt; if (this.poolT<=0) bloodSplat(this.x+Math.sin(this.h)*fd*0.75,0,this.z+Math.cos(this.h)*fd*0.75,mrand(0.5,0.8),4,90); } }   // charco bajo el cuerpo
       this.t-=dt;
-      if (this.state==='hit' && this.t<=0){ m.rotation.x=0; m.rotation.z=0; this.state=this.cop&&player.stars>0?'cop':'flee'; this.t=6; this.fx=player.x; this.fz=player.z; }
+      if (this.state==='hit' && this.t<=0){ m.rotation.x=0; m.rotation.z=0; this.lieOff=null; const u=m.userData; for (const l of u.legs) l.rotation.z=0; this.state=this.cop&&player.stars>0?'cop':'flee'; this.t=6; this.fx=player.x; this.fz=player.z; }
       m.position.set(this.x,this.y+0.27+(Math.abs(m.rotation.x)>1?0.15:0),this.z);
+      if (Math.abs(m.rotation.x)>1.5 && this.y<=0){ if (this.lieOff==null || d2(this.x,this.z,this.lx,this.lz)>0.04){ this.lx=this.x; this.lz=this.z; this.lieOff=0; this.lieOff=floorUnder(this.x,this.z)+0.015-bodyMinY(m); } m.position.y+=this.lieOff; }   // tendido: apoyado en la superficie real, ni hundido ni flotando
+      else this.lieOff=null;
       return;
     }
     if (this.state==='cop'){
@@ -5558,8 +5571,10 @@ function deathPose(dt){   // muerte: se doblan las rodillas y el cuerpo cae con 
   const ang=(Math.PI/2-0.06)*f+bounce;
   m.rotation.x=D.dir*ang; m.rotation.z=D.side*f;
   m.position.y=0.25+(player.y||0)+0.14*f-0.25*buckle*(1-f);
-  u.knees[0].rotation.x=lerp(1.1*buckle,0.25,f); u.knees[1].rotation.x=lerp(0.9*buckle,0.45,f); u.legs[0].rotation.x=lerp(-0.5*buckle,0.1,f); u.legs[1].rotation.x=lerp(-0.3*buckle,-0.2,f);
-  u.arms[0].rotation.x=lerp(-0.6,D.dir<0?-2.4:-0.3,f); u.arms[1].rotation.x=lerp(-0.4,D.dir<0?-2.1:-0.5,f); u.arms[0].rotation.z=0.5*f; u.arms[1].rotation.z=-0.6*f;
+  const kt=D.dir>0?0.3:0.04; u.knees[0].rotation.x=lerp(1.1*buckle,kt,f); u.knees[1].rotation.x=lerp(0.9*buckle,kt,f); u.legs[0].rotation.x=lerp(-0.5*buckle,0,f); u.legs[1].rotation.x=lerp(-0.3*buckle,0,f);
+  u.arms[0].rotation.x=lerp(-0.6,-D.dir*0.15,f); u.arms[1].rotation.x=lerp(-0.4,-D.dir*0.15,f); u.arms[0].rotation.z=-0.9*f; u.arms[1].rotation.z=0.75*f; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-0.25*f;   // brazos abiertos hacia fuera
+  u.legs[0].rotation.z=-0.12*f; u.legs[1].rotation.z=0.15*f;
+  if (t>0.75){ if (D.lie==null){ D.lie=0; D.lie=floorUnder(player.x,player.z)+0.015-bodyMinY(m); } m.position.y+=D.lie; }   // tendido sobre la superficie real
   if (!D.bled && t>0.75){ D.bled=true; if (D.violent){
     bloodSplat(player.x+Math.sin(player.h)*D.dir*0.8,player.y||0,player.z+Math.cos(player.h)*D.dir*0.8,0.8,3.5,90); for (let i=0;i<5;i++) emit(bloodP,player.x,0.3+(player.y||0),player.z,mrand(-1,1),mrand(0.5,1.5),mrand(-1,1),0.5,0.06,'#7a0a0a',12); } }
 }
@@ -5584,7 +5599,7 @@ function frame(t){
       weaponPose();
       if (player.death) deathPose(dt);
       else if (player.downT>0){ const k=player.downT>0.4?1:player.downT/0.4; player.mesh.rotation.x=-1.45*k; player.mesh.position.y=0.25+0.12*k; u.arms[0].rotation.x=u.arms[1].rotation.x=-2.6*k; setWeaponModel(player.mesh,null); }
-      else { player.mesh.rotation.x=0; player.mesh.rotation.z=0; } }
+      else { player.mesh.rotation.x=0; player.mesh.rotation.z=0; const u2=player.mesh.userData; u2.legs[0].rotation.z=u2.legs[1].rotation.z=0; } }
     if (keysT>0){ keysT-=dt; if (keysT<=0) $('keys').classList.remove('show'); }
     updateCamera(dt); updateViewmodel(dt); updateHUD(dt); updateMarkers(); updateAudio();
   } else if (state==='title'){
