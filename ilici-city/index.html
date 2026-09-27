@@ -3816,8 +3816,9 @@ let starCool=0, lastPoliceHit=0, bustT=0, spawnT=0, policeSpawnT=0, regenT=0;
    Solo cuenta lo que la policía sabe (lo ha visto, o un testigo o una cámara te han identificado).
    Para perder la búsqueda: mientras la policía tenga pista (te ve, el helicóptero te sigue, te identifican) se mantiene; cuando la pierde empieza
    una búsqueda activa y, si sigues oculto, TODAS las estrellas parpadean y desaparecen a la vez. Cuanto más nivel, más tiempo cuesta. */
-const CRIME_SEV={assault:[8,2],fightnpc:[8,2],vandalism:[5,1],carjack:[26,2],runover:[16,2],drugs:[26,2],cararson:[20,2],robbery:[30,3],shots:[26,3],explosion:[30,3],murder:[40,3],
-  trespass:[12,1],aircraftTheft:[26,2],jetTheft:[80,4],copAssault:[15,3],copAim:[12,2],copRam:[12,3],copCar:[30,3],copShot:[30,4],copKill:[40,5],copCarDestroyed:[30,4]};   // [puntos, tope de estrellas]
+// Gravedad: robar un vehículo es un delito menor (1★ aunque repitas); la violencia, las armas, las víctimas y atacar a la policía son lo que escala.
+const CRIME_SEV={assault:[8,2],fightnpc:[8,2],vandalism:[5,1],carjack:[14,1],runover:[16,2],drugs:[26,2],cararson:[20,2],robbery:[30,3],shots:[26,3],explosion:[30,3],murder:[40,3],
+  trespass:[12,1],aircraftTheft:[26,2],jetTheft:[80,4],copAssault:[15,3],copAim:[12,2],copRam:[12,3],copCar:[22,2],copShot:[30,4],copKill:[40,5],copCarDestroyed:[30,4]};   // [puntos, tope de estrellas]
 const HEAT_T=[0,1,25,50,75,100], SEARCH_T=[0,6,12,22,35,55], FADE_T=[0,4,6,9,13,18];
 const starsFor=h=>h>=100?5:h>=75?4:h>=50?3:h>=25?2:h>=1?1:0;
 let heat=0, evadeT=0; const heatInc=new Map();
