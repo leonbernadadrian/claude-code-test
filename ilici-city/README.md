@@ -154,6 +154,25 @@ El centro (La Glorieta – carrer Aspe) es real. El resto del mapa se basa en la
 - **Calles**: contenedores de reciclaje junto al bordillo.
 - **Rendimiento en vuelo**: no se dibuja nada más allá de la niebla ni los peatones lejanos, lo que reduce las llamadas de dibujo en un 40 % desde el aire.
 
+## Vida en la calle y locales
+
+- **Estrellas coherentes**: robar un vehículo es 1 estrella, aunque sea otra vez (un coche patrulla, 2). Lo que sube el nivel es la violencia, las armas y atacar a la policía.
+- **Víctimas de un robo de coche**: según su carácter intentan recuperarlo (y pueden sacarte si te quedas parado), persiguen el coche, insultan, se quedan paralizadas, miran, piden ayuda, huyen o llaman a la policía.
+- **Conductores atacados** (golpes, patadas, disparos o embestidas): pitan, se enfadan, se bajan a pelear y luego vuelven a su coche, huyen a toda velocidad, te atropellan para escapar, salen corriendo, se encierran o llaman a la policía. Cambia según el vehículo.
+- **Patadas según el objetivo**: si está de pie, puñetazo; agachado, patada baja; en el suelo, pisotón; y contra un vehículo, patada a la puerta.
+- **Autobuses con líneas** (L1, L2, L3…), con letrero luminoso y paradas en orden. Si robas uno con gente dentro, cada pasajero reacciona a su manera: pánico, suplicar, llamar a la policía, grabar o tirarse en marcha.
+- **Motos**: scooter, naked y deportiva en el tráfico. Se inclinan en las curvas, la deportiva hace caballitos y al frenar se hunde el morro. Los pilotos llevan casco, y hay caídas en las que ruedas por el suelo. Los pilotos de la IA también caen.
+- **Saltar de un vehículo en marcha**: sales con la inercia, ruedas por el asfalto y el daño depende de la velocidad (por encima de unos 110 km/h suele ser mortal). También se puede saltar de las aeronaves.
+- **Apuntar desde el vehículo** (clic derecho): el ángulo es relativo al coche, sin saltos de cámara.
+- **Río Vinalopó transitable** por escaleras entre los pretiles. El puente de Santa Teresa ya no tiene muros en la calzada.
+- **Estancos, peluquerías y pensiones con interior**:
+  - En el estanco se compra tabaco.
+  - En la peluquería hay 15 cortes: te sientas y el barbero te corta; el corte se guarda.
+  - En la pensión puedes dormir 8 horas y recuperar la salud.
+- **Ruleta de acciones (U)**:
+  - Acciones: fumar, sentarse, tumbarse, acostarse, bailar, gestos y otras.
+  - Tiene en cuenta el contexto: bancos, sillas, sofás, camas y si llevas tabaco.
+
 ## Cómo seguir en local
 
 Todo el juego está en `ilici-city/index.html`, un único archivo. Clona el repositorio, cambia a la rama `claude/gracious-babbage-rbramm` (o a `main` si ya has fusionado el PR) y abre el archivo en el navegador, o sirve la carpeta con `python -m http.server`. Necesita internet para cargar three.js desde el CDN.
