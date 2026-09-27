@@ -1591,7 +1591,7 @@ const busStopMap=new Map(), BUS_STOPS=[];
   for (const [x,z] of [[20,-95],[-20,60],[-100,-140],[-12,-250]].filter(q=>!inRZ(q[0],q[1]))){ addBox(2.6,2.6,2.6,'#2e7d4f',x,1.57,z,{col:true}); addBox(3.4,0.25,3.4,'#e8e2d0',x,3,z); }
   // paradas de autobús (los autobuses paran en ellas)
   let k=0;
-  for (const e of edges){ if (e.diag || e.real || e.len<100 || (k++)%3) continue; const A=nodes[e.a],B=nodes[e.b],ux=(B.x-A.x)/e.len,uz=(B.z-A.z)/e.len;
+  for (const e of edges){ if (e.diag || (e.real && !(e.w>=10 && e.len>=80)) || (!e.real && e.len<100) || (k++)%2) continue; const A=nodes[e.a],B=nodes[e.b],ux=(B.x-A.x)/e.len,uz=(B.z-A.z)/e.len;
     const x=A.x+ux*e.len*0.5-uz*9.6, z=A.z+uz*e.len*0.5+ux*9.6; if (Math.abs(x-riverX(z))<RHz(z)+4||inRZ(x,z)||NOROAD.some(r=>inRect(r,x,z))||query(x,z,3).length) continue;
     const ry=Math.atan2(ux,uz)+Math.PI/2;
     addBox(4.2,0.15,1.7,'#e8e2d0',x,2.6,z,{ry}); addBox(4.2,2.1,0.08,'#9fc3d6',x-Math.sin(ry)*0.8,1.4,z-Math.cos(ry)*0.8,{ry,shadow:false}); addBox(3,0.1,0.5,'#555',x,0.75,z,{ry,shadow:false});
@@ -1599,7 +1599,7 @@ const busStopMap=new Map(), BUS_STOPS=[];
       addCollider(bx-ax*2.1-az*0.12,bz-az*2.1-ax*0.12,bx+ax*2.1+az*0.12,bz+az*2.1+ax*0.12,2.5);
       const sx=x-Math.sin(ry)*0.1, sz=z-Math.cos(ry)*0.1; addCollider(sx-ax*1.5-az*0.3,sz-az*1.5-ax*0.3,sx+ax*1.5+az*0.3,sz+az*1.5+ax*0.3,0.8);
       addCollider(x+ux*2.6-0.12,z+uz*2.6-0.12,x+ux*2.6+0.12,z+uz*2.6+0.12,2.8); }
-    addBox(0.12,2.8,0.12,'#d9282f',x+ux*2.6,1.4,z+uz*2.6,{shadow:false}); busStopMap.set(e.a+'_'+e.b,e.len*0.5); BUS_STOPS.push({key:e.a+'_'+e.b,x,z,ux,uz,ry,waiting:[]}); }
+    addBox(0.12,2.8,0.12,'#d9282f',x+ux*2.6,1.4,z+uz*2.6,{shadow:false}); busStopMap.set(e.a+'_'+e.b,e.len*0.5); BUS_STOPS.push({key:e.a+'_'+e.b,a:e.a,b:e.b,x,z,ux,uz,ry,waiting:[]}); }
   { // contenedores de reciclaje junto al bordillo (resto, envases, papel, vidrio), en grupos
     const cont=[], lids=[], COLS=['#3d4a3a','#e2b52a','#2c5d9a','#3f8a4a'];
     for (const e of edges){ if (e.diag || e.real || e.hwy || e.len<90) continue; const A=nodes[e.a],B=nodes[e.b],ux=(B.x-A.x)/e.len,uz=(B.z-A.z)/e.len;
@@ -2304,6 +2304,9 @@ class Ped{
       const fx=Math.sin(c.h), fz=Math.cos(c.h), rx=-fz, rz=fx, sx=this.seat%2?0.62:-0.62, sz=c.T.len*0.3-Math.floor(this.seat/2)*1.35;
       this.x=c.x+rx*sx+fx*sz; this.z=c.z+rz*sx+fz*sz; this.h=c.h; const u=m.userData; animPed(m,0,0);
       u.legs[0].rotation.x=u.legs[1].rotation.x=-1.5; u.knees[0].rotation.x=u.knees[1].rotation.x=1.5; u.arms[0].rotation.x=u.arms[1].rotation.x=-0.35; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-0.9;
+      const br=c.driver==='player'?this.busReact:null, w=Math.sin(now*9+this.seat);   // autobús robado: se agarra, agita los brazos, llama o graba
+      if (br==='panic'||br==='beg'||br==='jump'){ u.arms[0].rotation.x=-2.5+w*0.3; u.arms[1].rotation.x=-2.5-w*0.3; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-0.5; }
+      else if (br==='call'||br==='film'){ u.arms[br==='call'?0:1].rotation.x=br==='call'?-1.35:-1.2; u.elbows[br==='call'?0:1].rotation.x=br==='call'?-2.5:-1.3; }
       m.position.set(this.x,0.62,this.z); m.rotation.y=this.h; return; }
     if (this.state==='dragged'){ if (!jack||jack.p!==this){ this.knock(0,0,false); } return; }
     if (this.state==='vic'){ this.vicUpdate(dt); return; }   // reacción de víctima (robo del coche)   // lo mueve el robo del coche
@@ -4502,6 +4505,7 @@ function deadEnds(){ if (DEAD) return DEAD; DEAD=new Set(); for (const n of node
   return DEAD; }
 function pickNext(c,from,at){
   const ai=c.ai, A=nodes[from], B=nodes[at];
+  if (ai.busStop && at===ai.busStop.a && B.nb.includes(ai.busStop.b) && canGo(at,ai.busStop.b)) return ai.busStop.b;   // línea de autobús: entra en el tramo de la parada
   if (ai.goal){ let i=ai.route?ai.route.indexOf(at):-1; const gk=ai.goal.x+','+ai.goal.z;
     if (i<0 && ai.routeDone===gk) i=-2;   // ya llegó al final de la ruta hacia este mismo destino: no recalcular desde más allá
     else if (i<0){ ai.routeDone=null; ai.route=navPath(from,at,ai.goal.x,ai.goal.z,ai.goal.r||20); if (!ai.route){ const g=nearestNode(ai.goal.x,ai.goal.z); ai.route=pathTo(B,g,true)||null; } i=0; }
@@ -5082,6 +5086,46 @@ function busSeat(p,c){ c.passengers=c.passengers||[]; const used=new Set(c.passe
   p.state='inBus'; p.bus=c; p.seat=seat; p.rideStops=Math.floor(mrand(1,5)); c.passengers.push(p); const S=p.stop; if (S) S.waiting=S.waiting.filter(q=>q!==p); p.stop=null; }
 function busAlight(p,c,panic){ const fx=Math.sin(c.h), fz=Math.cos(c.h), rx=-fz, rz=fx; c.passengers=c.passengers.filter(q=>q!==p); p.bus=null;
   p.x=c.x+rx*(c.T.w/2+0.8)+fx*mrand(-2,3); p.z=c.z+rz*(c.T.w/2+0.8)+fz*mrand(-2,3); p.h=Math.atan2(rx,rz); p.state='walk'; p.home(); if (panic){ p.scare(c.x,c.z,mrand(6,10)); } }
+/* ---- líneas de autobús: cada una enlaza varias paradas en bucle; el autobús va de una a otra con la navegación del tráfico ---- */
+let BUS_LINES=null;
+function busLines(){
+  if (BUS_LINES) return BUS_LINES; BUS_LINES=[];
+  const ok=BUS_STOPS.filter(S=>inNav(S.a,S.b)); if (ok.length<4) return BUS_LINES;
+  const cx=ok.reduce((a,S)=>a+S.x,0)/ok.length, cz=ok.reduce((a,S)=>a+S.z,0)/ok.length;
+  const byA=ok.slice().sort((p,q)=>Math.atan2(p.x-cx,p.z-cz)-Math.atan2(q.x-cx,q.z-cz)), N=Math.max(1,Math.min(4,Math.floor(ok.length/4)));
+  const COL=['#d9282f','#1f6fd1','#1f9d55','#e08a12'];
+  for (let i=0;i<N;i++){ const stops=byA.filter((S,j)=>j%N===i); if (stops.length>=3) BUS_LINES.push({id:i+1,name:'L'+(i+1),color:COL[i],stops}); }
+  for (const L of BUS_LINES) for (const S of L.stops) (S.lines=S.lines||[]).push(L.name);
+  return BUS_LINES;
+}
+function busAssignLine(c){   // la línea cuya parada queda más cerca; empieza por esa parada
+  const Ls=busLines(); if (!Ls.length) return; let best=null, bd=1e18;
+  for (const L of Ls) L.stops.forEach((S,i)=>{ const d=d2(S.x,S.z,c.x,c.z); if (d<bd){ bd=d; best=[L,i]; } });
+  if (!best) return; c.line=best[0]; c.stopIdx=best[1]; busSign(c); busTarget(c);
+}
+const busSignMats={};
+function busSign(c){   // letrero luminoso del frontal: número de línea en su color y destino
+  if (c.lineSign) c.mesh.remove(c.lineSign); const L=c.line;
+  let mat=busSignMats[L.name]; if (!mat){ const cv=document.createElement('canvas'); cv.width=512; cv.height=90; const x=cv.getContext('2d'); x.fillStyle='#141414'; x.fillRect(0,0,512,90);
+    x.fillStyle=L.color; x.fillRect(6,8,120,74); x.fillStyle='#fff'; x.font='bold 58px Arial'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(L.name,66,47);
+    x.fillStyle='#ffb000'; x.font='bold 50px "Arial Narrow",Arial'; x.fillText('ELX · CIRCULAR',320,47); const t=new THREE.CanvasTexture(cv); t.colorSpace=THREE.SRGBColorSpace; mat=busSignMats[L.name]=new THREE.MeshBasicMaterial({map:t}); }
+  const m=new THREE.Mesh(decalGeo,mat); m.scale.set(1.6,0.28,1); m.position.set(0,c.T.h-0.2,c.T.len/2+0.12); c.mesh.add(m); c.lineSign=m; }
+function busTarget(c){ const S=c.line.stops[c.stopIdx%c.line.stops.length], A=nodes[S.a]; if (!c.ai) return; c.ai.busStop=S; c.ai.goal={x:A.x,z:A.z,r:6}; c.ai.route=null; c.ai.routeDone=null; }
+const BUSPAX_LINES={panic:['¡Socorro!','¡Pare! ¡Pare!','¡Nos va a matar!','¡Aaah!'],beg:['¡Déjeme bajar, por favor!','¡Abra la puerta!','¡Tengo niños!','¡Pare el autobús!'],
+  call:['📞 ¡Policía! ¡Nos han robado el bus!','📞 Estoy dentro del autobús...'],calm:['Oiga, que esta no es la ruta','Esto no es normal...','Madre mía...'],film:['📱 Esto lo sube mi primo','📱 Grabando, grabando...']};
+function busTheft(c){   // el jugador se lleva un autobús con gente: cada pasajero reacciona a su manera
+  c.stolenAt=now; for (const q of c.passengers){ const P=q.pers||{brave:0.5,wary:0.5,temper:0.5};
+    q.busReact=wpickO({panic:(1-P.brave)*0.9+(q.age==='mayor'?0.4:0), beg:0.5+(1-P.brave)*0.3, call:P.wary*0.8, calm:P.brave*0.5, film:q.age==='joven'?0.5:0.05, jump:P.brave*P.temper*0.6})||'panic';
+    q.busT=now+mrand(0.3,2); }
+}
+function busPaxUpdate(c,dt){   // pasajeros de un autobús robado
+  const sp=c.speed, stopped=sp<1.2;
+  for (const q of c.passengers.slice()){ if (now<(q.busT||0)) continue; const r=q.busReact;
+    if (stopped && (r==='panic'||r==='beg'||r==='jump') && now>(c.alightT||0)){ c.alightT=now+0.6; busAlight(q,c,true); say(q,mpick(['¡Corred!','¡Fuera, fuera!','¡Socorro!']),1.3); continue; }   // en cuanto para, bajan corriendo
+    if (r==='jump' && sp<5 && Math.random()<0.3){ busAlight(q,c,true); q.knock(c.vx*0.6,c.vz*0.6,false); say(q,'¡Me tiro!',1.2); continue; }   // se tira en marcha
+    if (r==='call' && !q.called && now-c.stolenAt>4){ q.called=true; policeCall({t:now,id:true,stars:1,x:c.x,z:c.z,car:c,type:'carjack',cid:++crimeSeq},false); }
+    q.busT=now+mrand(2.5,5); const L=BUSPAX_LINES[r==='jump'?'beg':r]; if (L && d2(c.x,c.z,player.x,player.z)<60*60) say(q,mpick(L),1.6); }
+}
 let busT=0;
 function updateBuses(dt){
   busT-=dt; const P=player.inCar||player;
@@ -5090,6 +5134,8 @@ function updateBuses(dt){
       const d=Math.hypot(S.x-P.x,S.z-P.z); if (d>150 || d<30) continue;   // aparecen fuera de la vista inmediata
       if (S.refillT && now<S.refillT) continue; S.want=S.want??Math.floor(Math.random()*4); if (S.waiting.length<S.want && peds.length<MAX_PEDS+12){ const p=new Ped(S.x+S.ux*mrand(-1.5,1.5),S.z+S.uz*mrand(-1.5,1.5)); p.state='busWait'; p.stop=S; p.slot=mrand(-1.6,1.6); p.phoneUse=Math.random()<0.4; S.waiting.push(p); } } }
   for (const c of cars){ if (c.k!=='bus' || c.exploded) continue; c.passengers=(c.passengers||[]).filter(q=>peds.includes(q)&&q.state==='inBus'&&q.bus===c);
+    if (c.driver==='npc' && c.ai){ if (!c.line) busAssignLine(c); else if (c.lastStop===c.ai.busStop?.key){ c.stopIdx++; busTarget(c); } }   // sigue su línea parada a parada
+    if (c.driver==='player'){ if (!c.stolenAt && c.passengers.length) busTheft(c); busPaxUpdate(c,dt); } else if (c.stolenAt && !c.driver){ for (const q of c.passengers.slice()) busAlight(q,c,true); c.stolenAt=0; }
     if (c.atStop && c.speed<0.6){ const S=BUS_STOPS.find(s=>s.key===c.atStop); c.boarding=false;
       if (!c.served || c.served!==c.atStop){ c.served=c.atStop; for (const q of c.passengers.slice()) if (--q.rideStops<=0) busAlight(q,c,false); }   // bajan los que llegan
       if (S) for (const q of S.waiting) if (q.state==='busWait' && d2(q.x,q.z,c.x,c.z)<26*26){ q.state='busBoard'; q.bus=c; } 
