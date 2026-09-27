@@ -2130,6 +2130,20 @@ function punchPose(m,f,kind,a,ext=1,vr=0,legs=true){   // f: 0→1 a lo largo de
   L[o].rotation.x=-0.28*k-0.1*back; K[o].rotation.x=0.3*k+dip; L[a].rotation.x=0.22*k+0.08*back; K[a].rotation.x=0.12+dip;
   return lean;
 }
+function kickPose(m,f,kind,leg=1){   // patada por fases: carga (rodilla arriba, cadera y torso atrás), extensión, contacto, recogida y apoyo
+  const u=m.userData, L=u.legs, K=u.knees, A=u.arms, E=u.elbows, o=1-leg, sg=leg?1:-1, ss=x=>x*x*(3-2*x);
+  const P1=0.3, S1=0.46, H1=0.58;   // fin de la carga, contacto, fin del contacto
+  const ch=f<P1?ss(f/P1):f<H1?1:1-ss((f-H1)/(1-H1)), ex=f<P1?0:f<S1?ss((f-P1)/(S1-P1)):f<H1?1:1-ss(Math.min(1,(f-H1)/0.22));
+  // altura del golpe: al suelo (pisotón), baja (agachado), media (coche: puerta y bajos)
+  const thC=kind==='stomp'?-1.55:kind==='lowkick'?-1.25:-1.45, knC=kind==='stomp'?2.1:1.9;          // rodilla cargada
+  const thE=kind==='stomp'?-0.55:kind==='lowkick'?-0.95:-1.25, knE=kind==='stomp'?0.25:0.08;          // pierna extendida
+  L[leg].rotation.x=lerp(0,lerp(thC,thE,ex),ch); K[leg].rotation.x=lerp(0.05,lerp(knC,knE,ex),ch); L[leg].rotation.z=kind==='lowkick'?-sg*0.35*ex*ch:0;
+  L[o].rotation.x=0.12*ch; K[o].rotation.x=0.22*ch; L[o].rotation.z=0;                                  // pierna de apoyo algo flexionada
+  const tw=(kind==='lowkick'?0.55:0.2)*sg*ex*ch, lean=kind==='stomp'?0.12*ex*ch-0.05*(ch-ex*ch):-0.2*ch+0.05*ex*ch;   // el torso compensa: atrás al cargar, sobre el golpe al pisar
+  torsoPose(m,-tw,lean);
+  A[0].rotation.x=A[1].rotation.x=-0.62-0.2*ch; E[0].rotation.x=E[1].rotation.x=-2.1+0.5*ch; A[leg].rotation.z=-sg*0.5*ch; A[o].rotation.z=sg*0.25*ch;   // brazos en guardia abiertos para equilibrar
+  return lean;
+}
 function weaponPose(){
   const m=player.mesh, W=curW(), A=m.userData.arms;
   torsoPose(m,0,0); A[0].rotation.y=A[1].rotation.y=0;
@@ -2144,6 +2158,7 @@ function weaponPose(){
     const f=1-player.punchT/player.punchDur, e=1-Math.pow(1-f,3);
     if (W.id==='bat'){ A[1].rotation.x=lerp(-3.0,-0.4,e); A[0].rotation.x=lerp(-2.7,-0.5,e); A[1].rotation.z=lerp(0.25,-0.15,e); A[0].rotation.z=lerp(-0.35,0.2,e); }
     else if (W.throw){ A[1].rotation.x=f<0.35?lerp(-0.4,-3.1,f/0.35):lerp(-3.1,-0.9,(f-0.35)/0.65); }
+    else if (KICKS[player.punchKind]) kickPose(m,f,player.punchKind,player.punchArm??1);
     else punchPose(m,f,player.punchKind,player.punchArm??1,player.punchExt??1,player.punchVar||0,Math.hypot(player.vx,player.vz)<1.5);
   } else if (meleeCharge!==null && W.melee){
     const k=Math.min(1,meleeCharge/1.1), a=W.id==='bat'?1:(1-(player.punchArm??1)), o=1-a, sg=a?1:-1;
@@ -2205,7 +2220,7 @@ class Ped{
   backoff(t,handsUp){ if (this.medic||this.state==='inBus'||this.state==='busBoard') return; if (this.state==='call') this.endCall(false); if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return; this.resetPose(); this.state='backoff'; this.t=t; this.handsUp=handsUp; this.lookT=0; this.bumpT=0; }
   meleeHit(dmg,dx,dz,power,bat){
     if (this.state==='dead') return false; this.wasHit=true;   // se acordará
-    if (this.state==='guard' && !bat && power<1.8){ this.hp-=dmg*0.4; this.t=Math.min(this.t,0.6); say(this,mpick(['¡Ugh!','¡Para ya!','¡Eh!']),0.8); if (this.hp<=0){ this.knock(dx*3,dz*3,true); return true; } return false; }   // se cubre: encaja mejor el golpe
+    if (this.state==='cover' && !bat && power<1.8){ this.hp-=dmg*0.4; this.t=Math.min(this.t,0.6); say(this,mpick(['¡Ugh!','¡Para ya!','¡Eh!']),0.8); if (this.hp<=0){ this.knock(dx*3,dz*3,true); return true; } return false; }   // se cubre: encaja mejor el golpe
     this.hp-=dmg;
     if (this.hp<=0){ this.knock(dx*(3+power*2),dz*(3+power*2),true); return true; }
     const fighting=this.state==='brawl';
@@ -2225,7 +2240,7 @@ class Ped{
   react(a){   // aplica la reacción elegida
     const P=player; this.resetPose(); this.afterHit=null;
     if (a==='fight'){ this.state='brawl'; this.t=mrand(7,12); this.pT=0.4; this.swing=0; this.report=null; say(this,mpick(this.age==='joven'?['¿Pero tú qué haces, loco?','¡Ven aquí!','¡Te vas a enterar!','¿Vas de listo?']:['¡Se acabó, ven aquí!','¡A mí no me pegas!','¿Tú de qué vas?','¡Te la estás buscando!']),1.6); return; }
-    if (a==='guard'){ this.state='guard'; this.t=mrand(1.6,2.8); say(this,mpick(['¡Eh! ¡Quieto!','¡Tranquilo, tranquilo!','¡Aparta!']),1.3); return; }
+    if (a==='guard'){ this.state='cover'; this.t=mrand(1.6,2.8); say(this,mpick(['¡Eh! ¡Quieto!','¡Tranquilo, tranquilo!','¡Aparta!']),1.3); return; }
     if (a==='call'){ if (!this.report) this.report={t:now+mrand(1.5,3),id:true,stars:1,x:P.x,z:P.z,car:null,type:'assault',cid:++crimeSeq}; this.state='flee'; this.t=3.5; this.fx=P.x; this.fz=P.z; say(this,mpick(['¡Voy a llamar a la policía!','¡Esto no se queda así!','¡Estás loco! ¡Policía!']),1.6); return; }
     if (a==='help'){ say(this,mpick(['¡Socorro! ¡Ayuda!','¡Que alguien me ayude!','¡Ayuda, por favor!']),2); screamSound(this.x,this.z); let n=0;
       for (const q of peds){ if (n>=2) break; if (q===this||q.cop||q.role||q.medic||q.state!=='walk'||q.age==='mayor'||d2(q.x,q.z,this.x,this.z)>18*18) continue; const Q=q.pers||{}; if (Q.brave>0.6 && Q.temper>0.4){ q.react('fight'); say(q,mpick(['¡Déjale en paz!','¡Eh! ¡Suéltale!','¿Qué haces? ¡Para!']),1.6); n++; } }
@@ -2290,7 +2305,8 @@ class Ped{
       this.x=c.x+rx*sx+fx*sz; this.z=c.z+rz*sx+fz*sz; this.h=c.h; const u=m.userData; animPed(m,0,0);
       u.legs[0].rotation.x=u.legs[1].rotation.x=-1.5; u.knees[0].rotation.x=u.knees[1].rotation.x=1.5; u.arms[0].rotation.x=u.arms[1].rotation.x=-0.35; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-0.9;
       m.position.set(this.x,0.62,this.z); m.rotation.y=this.h; return; }
-    if (this.state==='dragged'){ if (!jack||jack.p!==this){ this.knock(0,0,false); } return; }   // lo mueve el robo del coche
+    if (this.state==='dragged'){ if (!jack||jack.p!==this){ this.knock(0,0,false); } return; }
+    if (this.state==='vic'){ this.vicUpdate(dt); return; }   // reacción de víctima (robo del coche)   // lo mueve el robo del coche
     if (this.state==='crim'){ const u=m.userData; m.position.set(this.x,0.02,this.z); m.rotation.y=this.h;   // escena delictiva: la mueve updateCrime
       u.knees[0].rotation.x=u.knees[1].rotation.x=0; animPed(m,this.phase,this.walking?0.9:0);
       if (this.act==='shoot'||this.act==='rob'){ u.arms[1].rotation.x=-1.5; setWeaponModel(m,this.gun||'pistol'); }
@@ -2320,6 +2336,7 @@ class Ped{
     if (this.state==='brawl'){   // contraataca a puñetazos: se acerca, guardia alta, golpea cada poco
       const P=player, dx=P.x-this.x, dz=P.z-this.z, d=Math.hypot(dx,dz)||1, u=m.userData, W=curW(); this.t-=dt;
       if (this.t<=0 || this.hp<30 || d>16 || P.inCar || P.health<=0 || state!=='play' || (!W.melee && !W.throw && aimT>0)){   // cansado, herido, lejos… o le apuntas con un arma
+        if (this.ownCar && cars.includes(this.ownCar) && !this.ownCar.driver && !this.ownCar.dead && P.inCar!==this.ownCar && this.hp>=30){ const oc=this.ownCar; this.ownCar=null; this.vicCar=oc; this.startVic('recover'); return; }   // vuelve a su coche y se va
         this.resetPose(); this.state='flee'; this.t=6; this.fx=P.x; this.fz=P.z; if (Math.random()<0.6) say(this,mpick(['¡Esto no acaba aquí!','¡Estás loco!','Vale, vale…','¡Me voy a acordar de ti!']),1.4); return; }
       this.h+=wrapA(Math.atan2(dx,dz)-this.h)*Math.min(1,dt*8);
       if (d>1.25){ const sp=3.3, ox=this.x, oz=this.z; this.x+=dx/d*sp*dt; this.z+=dz/d*sp*dt; pushCircle(this,0.4); if (riverBlocked(this.x,this.z)){ this.x=ox; this.z=oz; } this.phase+=dt*sp*4.2; animPed(m,this.phase,0.8); this.pT=Math.max(this.pT,0.2); }
@@ -2329,7 +2346,7 @@ class Ped{
       else { torsoPose(m,0,0.03); u.arms[0].rotation.x=u.arms[1].rotation.x=-0.62; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-2.25; u.arms[0].rotation.y=u.arms[1].rotation.y=0; }   // guardia
       m.position.set(this.x,baseY(),this.z); m.rotation.y=this.h; return;
     }
-    if (this.state==='guard'){   // se cubre y retrocede despacio; luego se encara o se va
+    if (this.state==='cover'){   // se cubre y retrocede despacio; luego se encara o se va
       const P=player, ax=this.x-P.x, az=this.z-P.z, L=Math.hypot(ax,az)||1, u=m.userData, ox=this.x, oz=this.z; this.t-=dt;
       this.h+=wrapA(Math.atan2(-ax,-az)-this.h)*Math.min(1,dt*8); this.x+=ax/L*0.8*dt; this.z+=az/L*0.8*dt; pushCircle(this,0.4); if (riverBlocked(this.x,this.z)){ this.x=ox; this.z=oz; }
       this.phase-=dt*3; animPed(m,this.phase,0.25); u.arms[0].rotation.x=u.arms[1].rotation.x=-1.9; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-2.2; u.arms[0].rotation.z=0.25; u.arms[1].rotation.z=-0.25;
@@ -2393,7 +2410,7 @@ class Ped{
         u.legs[0].rotation.x=u.legs[1].rotation.x=0; u.legs[0].rotation.z=-sp[2]*k; u.legs[1].rotation.z=sp[3]*k; u.knees[0].rotation.x=u.knees[1].rotation.x=fd>0?0.3*k:0.04*k;   // piernas rectas y algo abiertas
         if (this.poolT>0 && this.y<=0){ this.poolT-=dt; if (this.poolT<=0) bloodSplat(this.x+Math.sin(this.h)*fd*0.75,0,this.z+Math.cos(this.h)*fd*0.75,mrand(0.5,0.8),4,90); } }   // charco bajo el cuerpo
       this.t-=dt;
-      if (this.state==='hit' && this.t<=0){ m.rotation.x=0; m.rotation.z=0; this.lieOff=null; const u=m.userData; for (const l of u.legs) l.rotation.z=0; this.state=this.cop&&player.stars>0?'cop':'flee'; this.t=6; this.fx=player.x; this.fz=player.z; }
+      if (this.state==='hit' && this.t<=0){ m.rotation.x=0; m.rotation.z=0; this.lieOff=null; const u=m.userData; for (const l of u.legs) l.rotation.z=0; if (this.vicPending||this.afterFall){ const vc=this.vicPending||this.afterFall; this.vicPending=this.afterFall=null; this.state='walk'; this.victimReact(vc);  /* robo o caída de la moto: reacciona según su carácter */ return; } this.state=this.cop&&player.stars>0?'cop':'flee'; this.t=6; this.fx=player.x; this.fz=player.z; }
       m.position.set(this.x,this.y+0.27+(Math.abs(m.rotation.x)>1?0.15:0),this.z);
       if (Math.abs(m.rotation.x)>1.5 && this.y<=0){ if (this.lieOff==null || d2(this.x,this.z,this.lx,this.lz)>0.04){ this.lx=this.x; this.lz=this.z; this.lieOff=0; this.lieOff=floorUnder(this.x,this.z)+0.015-bodyMinY(m); } m.position.y+=this.lieOff; }   // tendido: apoyado en la superficie real, ni hundido ni flotando
       else this.lieOff=null;
@@ -3875,6 +3892,116 @@ function damageCar(c,n,imp){
     if (c===player.inCar) toast('¡El coche está ardiendo! <em>Sal ya</em>',2.5);
     carAbandon(c); }
 }
+/* ---- reacciones de víctimas y conductores (módulo común) ----
+   Cada persona elige según su carácter (genio, valor, prudencia), su edad, si vas armado, el vehículo y la situación.
+   Las acciones son piezas reutilizables: recuperar el coche, volver a subir, pelear, insultar, huir, llamar a la policía,
+   perseguir el coche, quedarse paralizado, mirar, pedir ayuda. Los conductores atacados además pueden pitar, irse, huir
+   a toda velocidad, atropellarte para escapar, bajarse corriendo o encerrarse. */
+function wpickO(w){ let t=0; for (const k in w) t+=Math.max(0,w[k]); if (t<=0) return null; let r=Math.random()*t; for (const k in w){ r-=Math.max(0,w[k]); if (r<=0) return k; } return null; }
+const playerArmed=()=>{ const W=curW(); return !player.inCar && !W.melee && !W.throw; };
+const INSULTS=['¡Ladrón! ¡Sinvergüenza!','¡Hijo de...! ¡Devuélvemelo!','¡Me cago en todo!','¡Chorizo!','¡Tú eres tonto o qué!','¡Que te den!','¡Delincuente!','¡Vete a la mierda!'];
+const VIC_LINES={recover:['¡Ese coche es mío!','¡Bájate de mi coche!','¡Eh! ¡Que es mío!'],chase:['¡Para! ¡PARA!','¡Al ladrón!','¡Que alguien lo pare!'],
+  freeze:['No... no puede ser...','¿Qué... qué ha pasado?','Madre mía...'],watch:['Mi coche...','Y ahora qué hago...','Se lo lleva...'],
+  call:['¡Me han robado el coche!','Policía, por favor...'],flee:['¡No me hagas nada!','¡Llévatelo, llévatelo!']};
+Ped.prototype.victimReact=function(c){   // la víctima de un robo de coche, al levantarse
+  const P=this.pers, old=this.age==='mayor', young=this.age==='joven', armed=playerArmed(), inC=player.inCar===c, away=inC&&c.speed>5;
+  let near=0; for (const q of peds) if (q!==this && !q.cop && q.state==='walk' && d2(q.x,q.z,this.x,this.z)<18*18) near++;
+  const a=wpickO({recover:P.brave*0.9*(armed?0.1:1)*(old?0.3:1)*(away?0.15:1), fight:Math.max(0,P.temper+P.brave-1)*1.6*(armed?0.05:1)*(old?0.2:1)*(inC?0.4:1),
+    insult:P.temper*0.8, flee:(1-P.brave)*0.6+(armed?0.8:0), call:P.wary*0.7+(old?0.3:0), chase:P.brave*0.55*(young?1.3:1)*(old?0.1:1)*(inC?1:0.3),
+    freeze:(1-P.brave)*0.35+(armed?0.4:0), watch:0.25, help:(1-P.brave)*0.3*(near>=2?1:0.2)})||'flee';
+  this.vicCar=c; this.startVic(a);
+};
+Ped.prototype.startVic=function(a){
+  this.resetPose(); this.vm=a; this.vt=0; this.vlast=0; const c=this.vicCar;
+  if (a==='flee'){ this.vicCar=null; this.react('flee'); say(this,mpick(VIC_LINES.flee),1.4); return; }
+  if (a==='help'){ this.vicCar=null; this.react('help'); return; }
+  if (a==='fight'){ if (!player.inCar){ this.react('fight'); return; } a=this.vm=player.inCar.speed>5?'chase':'recover'; }
+  if (a==='call'){ if (!this.report) this.report={t:now,id:true,stars:1,x:this.x,z:this.z,car:c||null,type:'carjack',cid:++crimeSeq}; say(this,mpick(VIC_LINES.call),1.6); this.startCall(); return; }
+  if (a==='recover'||a==='chase') this.keepRep=this.report, this.report=null;   // mientras intenta recuperarlo, no llama
+  this.state='vic'; this.vdur=a==='freeze'?mrand(3,5):a==='watch'?mrand(4,6):a==='insult'?mrand(3,4.5):a==='chase'?mrand(8,13):a==='fightcar'?mrand(8,12):16;
+  const L=VIC_LINES[a]; say(this,L?mpick(L):mpick(INSULTS),1.8);
+};
+Ped.prototype.vicUpdate=function(dt){
+  const m=this.mesh, u=m.userData, c=this.vicCar, a=this.vm; this.vt+=dt;
+  const face=(x,z,k=6)=>{ this.h+=wrapA(Math.atan2(x-this.x,z-this.z)-this.h)*Math.min(1,dt*k); };
+  const run=(x,z,sp)=>{ const dx=x-this.x, dz=z-this.z, L=Math.hypot(dx,dz)||1, ox=this.x, oz=this.z; face(x,z,10); this.x+=dx/L*sp*dt; this.z+=dz/L*sp*dt; pushCircle(this,0.4); if (riverBlocked(this.x,this.z)){ this.x=ox; this.z=oz; } this.phase+=dt*sp*4.2; animPed(m,this.phase,Math.min(1,sp*0.22)); };
+  const done=(next)=>{ this.resetPose(); this.vm=null; if (this.keepRep && !this.report){ this.report=this.keepRep; this.report.t=now+mrand(1,3); } this.keepRep=null;
+    if (next==='call' && this.report){ this.startCall(); return; } this.state='walk'; this.vicCar=null; this.home(); };
+  const gone=!c || !cars.includes(c) || c.exploded || c.dead;
+  if (a==='recover'){
+    if (gone){ done('call'); return; }
+    const inC=player.inCar===c, dd=Math.hypot(c.x-this.x,c.z-this.z), reach=c.T.len/2+1.3;
+    if (inC && c.speed>6){ this.vm='chase'; this.vt=0; this.vdur=mrand(6,10); say(this,mpick(VIC_LINES.chase),1.5); return; }
+    if (c.driver && c.driver!=='player'){ done(); return; }
+    if (dd>reach){ run(c.x,c.z,4.6); if (this.vt>this.vdur){ done('call'); return; } }
+    else { animPed(m,0,0); face(c.x,c.z); const b=Math.sin(this.vt*14);   // golpea la ventanilla
+      if (inC){ u.arms[1].rotation.x=-1.6+b*0.35; u.elbows[1].rotation.x=-1.1; u.arms[0].rotation.x=-0.7; this.bang=(this.bang||0)+dt;
+        if (this.vt-this.vlast>1.1){ this.vlast=this.vt; say(this,mpick(['¡Sal de ahí!','¡Abre!','¡Bájate, ladrón!','¡Que te saco!']),1); noise(0.08,0.1,300); }
+        if (this.bang>2.6 && this.pers.brave>0.45){ this.bang=0; exitCar(true,true); knockDown(1.4); hurt(6,'torso',{x:this.x,z:this.z,melee:true}); shake(0.35); sfxPunch(); toast('¡El dueño te ha sacado de su coche!',1.8); npcRetake(c,this); return; } }
+      else { npcRetake(c,this); return; } }
+    m.position.set(this.x,0.27,this.z); m.rotation.y=this.h; return; }
+  if (a==='chase'){
+    if (gone){ done('call'); return; }
+    const dd=Math.hypot(c.x-this.x,c.z-this.z);
+    if (player.inCar!==c && c.speed<1 && !c.driver){ this.vm='recover'; this.vt=0; this.vdur=14; return; }   // lo ha dejado tirado: va a por él
+    if (this.vt>this.vdur || dd>45){ say(this,mpick(INSULTS),1.6); done(Math.random()<0.4+this.pers.wary*0.5?'call':null); return; }
+    run(c.x,c.z,5.2); u.arms[1].rotation.x=-2.4+Math.sin(this.vt*9)*0.3; u.elbows[1].rotation.x=-0.3;   // corre detrás con el brazo en alto
+    if (this.vt-this.vlast>2.2){ this.vlast=this.vt; say(this,mpick(VIC_LINES.chase.concat(INSULTS)),1.3); }
+    m.position.set(this.x,0.27,this.z); m.rotation.y=this.h; return; }
+  // en el sitio: insultar, quedarse paralizado o mirar cómo se lo llevan
+  const tgt=c&&cars.includes(c)?c:(player.inCar||player); face(tgt.x,tgt.z,a==='freeze'?1.5:5); animPed(m,0,0);
+  if (a==='insult'){ const b=Math.sin(this.vt*9); u.arms[1].rotation.x=-2.3+b*0.3; u.elbows[1].rotation.x=-0.6; u.arms[0].rotation.x=-0.5+Math.sin(this.vt*3)*0.3;   // puño en alto
+    if (this.vt-this.vlast>1.5){ this.vlast=this.vt; say(this,mpick(INSULTS),1.3); } }
+  else if (a==='freeze'){ const k=Math.min(1,this.vt*3); u.arms[0].rotation.x=u.arms[1].rotation.x=-2.7*k; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-2.2*k; u.arms[0].rotation.z=-0.5*k; u.arms[1].rotation.z=0.5*k; }   // manos a la cabeza
+  else if (a==='watch'){ u.arms[0].rotation.x=u.arms[1].rotation.x=-0.15; if (this.vt>this.vdur*0.5 && !this.vsaid){ this.vsaid=true; say(this,mpick(VIC_LINES.watch),1.6); } }
+  m.position.set(this.x,0.27,this.z); m.rotation.y=this.h;
+  if (this.vt>this.vdur){ this.vsaid=false; done(a==='insult'&&Math.random()<0.5?null:'call'); }
+};
+function npcRetake(c,p){   // el dueño (o el conductor que bajó) vuelve a subir y se va
+  if (!c || c.exploded || c.dead || player.inCar===c) return false;
+  if (p){ if (p.keepRep){ p.keepRep=null; } p.remove(); }
+  if (c.fallen){ c.fallen=false; c.mesh.rotation.z=0; }
+  c.driver='npc'; c.lockT=now+12; assignEdge(c); if (c.ai){ c.ai.rush=now+mrand(6,12); } c.driverless=0; hornAt(c,0.3,1); return true;
+}
+// conductor cuyo vehículo golpeas, pateas, disparas o embistes
+function carAttacked(c,how,power=1){
+  if (!c || c.exploded || c.dead || c===player.inCar || c.driver!=='npc' || !c.ai) return;
+  if (now-(c.attT||-9)<1.2) return; c.attT=now; c.anger=(c.anger||0)+power*(how==='shot'?3:how==='ram'?1.5:1);
+  const P=c.dp||(c.dp={temper:Math.random(),brave:Math.random(),wary:Math.random()}), bus=c.k==='bus', truck=c.T.len>7&&!bus, bike=!!c.T.bike;
+  const armed=playerArmed()||how==='shot', inCar=!!player.inCar, fx=Math.sin(c.h), fz=Math.cos(c.h), Pp=player.inCar||player;
+  const front=((Pp.x-c.x)*fx+(Pp.z-c.z)*fz)>c.T.len*0.3 && Math.abs(-(Pp.x-c.x)*fz+(Pp.z-c.z)*fx)<c.T.w, pax=bus&&c.passengers&&c.passengers.length;
+  if (pax) for (const q of c.passengers.slice(0,3)) say(q,mpick(['¡Aaah!','¡¿Qué pasa?!','¡Nos atacan!','¡Arranque, arranque!']),1.4);
+  const w={angry:P.temper*0.8*(armed?0.3:1), fight:Math.max(0,P.temper+P.brave-0.9)*1.5*(truck?1.6:1)*(bus?0.3:1)*(armed?0.05:1)*(inCar?0.4:1)*(c.anger>2?1.4:1),
+    flee:(1-P.brave)*0.7+(armed?0.9:0)+(pax?0.6:0), horn:0.4*(armed?0.2:1), ram:(P.temper*0.6+(armed?0.5:0))*(front?1:0)*(bus?0.2:1)*(bike?0:1),
+    runaway:(1-P.brave)*0.4*(armed?1.6:1)*(bus?0.25:1)*(bike?1.5:1), lock:P.wary*0.5*(1-P.brave)*(bike?0:1), call:P.wary*0.6*(bike?0.4:1)};
+  const a=wpickO(w)||'flee', drvSay=(t)=>{ if (d2(c.x,c.z,player.x,player.z)<40*40) toast('<em>Conductor:</em> '+t,1.4); };
+  c.react=a;
+  if (a==='angry'){ c.ai.hold=now+mrand(2,4); hornAt(c,0.5,3); drvSay(mpick(['¡¿Pero qué haces, animal?!','¡Mi coche! ¡Estás loco!','¡Me cago en...!','¡Deja el coche!'])); }
+  else if (a==='horn'){ c.ai.hold=now+mrand(1.5,3); hornAt(c,0.9,1); }
+  else if (a==='flee'){ c.ai.rush=now+mrand(8,14); hornAt(c,0.3,1); if (pax) for (const q of c.passengers.slice()) if (Math.random()<0.3) busAlight(q,c,true); }
+  else if (a==='ram'){ c.ai.rush=now+mrand(6,10); c.ai.ram=now+4; hornAt(c,1,1); drvSay(mpick(['¡Apártate!','¡Quita de en medio!'])); }
+  else if (a==='lock'){ c.lockT=now+mrand(10,18); c.ai.hold=now+mrand(4,7); drvSay(mpick(['¡He cerrado! ¡Déjame en paz!','¡No te abro!'])); }
+  else if (a==='call'){ c.ai.hold=now+mrand(4,6); drvSay(mpick(['¡Voy a llamar a la policía!','¡Te estoy grabando!'])); reports.push({t:now+mrand(4,6),id:true,stars:1,x:c.x,z:c.z,car:player.inCar||null,type:'vandalism',cid:++crimeSeq}); }
+  else if (a==='fight'||a==='runaway'){   // se baja: a pegarse o a correr
+    const p=driverOut(c); if (!p) return;
+    if (a==='fight' && !inCar){ p.ownCar=c; p.react('fight'); }
+    else { p.react('flee'); say(p,mpick(['¡Socorro!','¡Está loco!','¡Quédatelo!']),1.4); } }
+}
+function bikeRiderFall(c,dx,dz,sp){   // el piloto de una moto o bici sale despedido: el vehículo cae de lado y él rueda por el suelo
+  if (!c || c.driver!=='npc') return null; sp=sp??c.speed; const L=Math.hypot(dx,dz)||1, ux=dx/L, uz=dz/L;
+  resvDropAll(c); c.driver=null; c.ai=null; c.fallen=true; c.mesh.rotation.z=(Math.random()<0.5?1:-1)*Math.PI/2*0.92; c.vx*=0.35; c.vz*=0.35;
+  const p=new Ped(c.x+ux*0.6,c.z+uz*0.6); p.h=c.h; p.home(); p.knock(ux*(2.5+sp*0.4)+c.vx*0.5,uz*(2.5+sp*0.4)+c.vz*0.5,false); p.t=1.6+sp*0.05;
+  p.hp-=4+sp*2.2; if (p.hp<=0){ p.knock(ux*3,uz*3,true); }
+  else { p.vicPending=null; p.afterFall=c; }
+  return p;
+}
+function driverOut(c){   // el conductor abre y baja por su puerta (el coche queda parado)
+  if (!c || c.driver!=='npc') return null; const rx=-Math.cos(c.h), rz=Math.sin(c.h); let x=c.x-rx*(c.T.w/2+0.7), z=c.z-rz*(c.T.w/2+0.7);
+  if (circleBlocked(x,z,0.4)){ x=c.x+rx*(c.T.w/2+0.7); z=c.z+rz*(c.T.w/2+0.7); }
+  resvDropAll(c); c.driver=null; c.ai=null; c.vx*=0.2; c.vz*=0.2;
+  if (c.passengers) for (const q of c.passengers.slice()) busAlight(q,c,true);
+  const p=new Ped(x,z); p.h=c.h; p.home(); return p;
+}
 // ocupantes de un coche que arde: reaccionan, abren la puerta y huyen (si explota antes, no salen con vida)
 function carAbandon(c){
   if (c===player.inCar || c.occ) return; const d=c.driver;
@@ -3923,6 +4050,7 @@ function enterExit(exitOnly=true){
 }
 function enterCar(c){
   if (!c || player.inCar || jack) return;
+  if (c.driver==='npc' && c.lockT>now){ toast('🔒 Ha bloqueado las puertas',1.4); hornAt(c,0.3,2); if (c.ai && Math.random()<0.4){ c.ai.rush=now+8; c.ai.hold=0; } return; }
   if (c.driver==='npc' || c.driver==='police'){
     if (c.speed>5){ toast('Va demasiado rápido para sacar al conductor',1.4); return; }
     startJack(c); return;
@@ -3952,6 +4080,7 @@ function endJack(ok){
   const J=jack; jack=null; if (!J) return;
   if (J.door) J.c.mesh.remove(J.door);
   if (J.p.state==='dragged'){ const G=jackGeo(J.c,J.side); J.p.knock(G.lx*2,G.lz*2,false); }
+  if (ok && !J.cop) J.p.vicPending=J.c;   // al levantarse, reacciona al robo
   if (!ok){ if (J.c.driver==='jacked') J.c.driver=null; player.mesh.visible=!fp; return; }
   const c=J.c; c.driver='player'; c.ai=null; player.inCar=c; player.mesh.visible=false; player.y=0; player.vy=0;
   if (J.cop){ addCrime('copCar','¡Has robado un <em>coche patrulla</em>!'); }
@@ -4015,16 +4144,39 @@ function punch(W,power=1){
   const bat=W.id==='bat', heavy=power>=1.8;
   if (!bat) player.punchArm=1-(player.punchArm??1);
   player.punchKind = heavy ? 'heavy' : bat ? 'swing' : mpick(['jab','jab','hook','upper']);
+  const MT=meleeTarget(W); player.meleeT=MT; if (!bat && MT && MT.kick){ player.punchKind=MT.kick; }   // de pie: puñetazo; agachado, en el suelo o un coche: patada
   player.punchPower=power;
   if (!fp){ // en tercera persona el personaje se gira hacia el objetivo cercano
     let best=null, bs=1e9; const fx=Math.sin(player.h), fz=Math.cos(player.h);
     for (const p of peds){ if (p.state==='dead') continue; const dx=p.x-player.x, dz=p.z-player.z, L=Math.hypot(dx,dz); if (L>W.range+1.2) continue; const dot=(dx*fx+dz*fz)/Math.max(L,0.01); if (dot<-0.2) continue; const sc=L-dot; if (sc<bs){ bs=sc; best=p; } }
+    if (MT) best=MT.o.T?{x:MT.px,z:MT.pz}:MT.o;
     if (best) player.h=Math.atan2(best.x-player.x,best.z-player.z);
   }
   player.punchVar=mrand(-1,1); player.punchExt=1;
   { let bd=9; for (const p of peds){ if (p.state==='dead') continue; const dx=p.x-player.x, dz=p.z-player.z, L=Math.hypot(dx,dz), dot=(dx*Math.sin(player.h)+dz*Math.cos(player.h))/Math.max(L,0.01); if (dot>0.5 && L<bd) bd=L; } player.punchExt=clamp((bd-0.45)/0.75,0.35,1); }   // pegado al rival: el brazo no lo atraviesa
-  player.punchT=player.punchDur=bat?(heavy?0.65:0.5):(heavy?0.56:player.punchKind==='jab'?0.36:0.42); player.hitT=player.punchDur*(bat?0.4:heavy?0.32:0.44); player.hitW=W;   // el impacto coincide con la extensión
+  player.punchT=player.punchDur=bat?(heavy?0.65:0.5):KICKS[player.punchKind]?(heavy?0.72:0.6):(heavy?0.56:player.punchKind==='jab'?0.36:0.42); player.hitT=player.punchDur*(bat?0.4:KICKS[player.punchKind]?0.46:heavy?0.32:0.44); player.hitW=W;   // el impacto coincide con la extensión
   noise(heavy?0.22:0.12,heavy?0.16:0.08,bat?700:1500);
+}
+const KICKS={stomp:1,lowkick:1,carkick:1};
+function meleeTarget(W){   // qué hay delante al golpear y con qué: persona de pie, agachada, en el suelo o un vehículo (sus bajos)
+  const fx=Math.sin(player.h), fz=Math.cos(player.h), reach=W.range+0.9; let best=null, bs=1e9;
+  for (const p of peds){ if (p.state==='dead') continue; if (p.state==='inBus'||p.state==='dragged') continue; const dx=p.x-player.x, dz=p.z-player.z, L=Math.hypot(dx,dz); if (L>reach) continue; const dot=(dx*fx+dz*fz)/Math.max(L,0.01); if (dot<0.2 && L>1) continue;
+    const down=p.state==='hit'||p.state==='dead', low=(p.state==='cower'&&p.cmode==='crouch')||(p.state==='stagger'&&p.stZone==='leg')||(p.state==='medic'&&p.mStep==='work');
+    const sc=L-dot*0.8; if (sc<bs){ bs=sc; best={o:p,kick:down?'stomp':low?'lowkick':null,d:L}; } }
+  for (const c of cars){ if (c.exploded||c===player.inCar) continue; const dx=player.x-c.x, dz=player.z-c.z, cf=Math.sin(c.h), cz=Math.cos(c.h), lon=dx*cf+dz*cz, lat=-dx*cz+dz*cf;
+    const nl=clamp(lon,-c.T.len/2,c.T.len/2), nt=clamp(lat,-c.T.w/2,c.T.w/2), px=c.x+cf*nl-cz*nt, pz=c.z+cz*nl+cf*nt, L=Math.hypot(px-player.x,pz-player.z); if (L>W.range*0.9) continue;
+    const dot=((px-player.x)*fx+(pz-player.z)*fz)/Math.max(L,0.01); if (dot<0.1 && L>0.5) continue; const sc=L-dot*0.8+0.3;   // a igualdad, antes la persona
+    if (sc<bs){ bs=sc; best={o:c,kick:c.T.bike?null:'carkick',d:L,px,pz}; } }
+  return best;
+}
+function meleeCar(c,W,power,kind){   // golpe o patada a un vehículo: abolladura, empujón, alarma y reacción de quien va dentro
+  const bat=W.id==='bat', dmg=(bat?6:kind==='carkick'?3.5:1.5)*power; damageCar(c,dmg,0); c.hitByPlayer=now;
+  const fx=Math.sin(player.h), fz=Math.cos(player.h), push=(bat?0.35:kind==='carkick'?0.5:0.15)*power/Math.max(1,(MASS[c.k]||1)); c.vx+=fx*push; c.vz+=fz*push; c.kickWob=now;
+  sfxCrash(bat?2.2:kind==='carkick'?1.6:0.8); shake(0.08*power);
+  if (!c.driver && !c.dead) c.alarmT=now+8;   // aparcado: salta la alarma
+  if (c.T.bike && c.driver==='npc' && power>=1.6) bikeRiderFall(c,fx,fz);
+  else carAttacked(c,kind==='carkick'?'kick':'punch',power);
+  if (c.driver==='police') addCrime('copAssault','¡Has atacado un coche patrulla!','cp:'+cars.indexOf(c));
 }
 function meleeHit(W){
   if (player.inCar || player.health<=0) return;
@@ -4036,9 +4188,10 @@ function meleeHit(W){
     if (L<reach && (dx*fx+dz*fz)/Math.max(L,0.01)>(L<1.2?-0.1:0.4)){
       const killed=p.meleeHit(W.dmg*power,fx,fz,power,W.id==='bat'); hitAny=true;
       if (killed) onPedKilled(p); else if (p.cop){ addCrime('copAssault','¡Has agredido a un policía!','ca:'+(p.uid||(p.uid=++pedUid))); } else crime('assault',player.x,player.z,1,{victim:p,care:0.8});
-      for (const q of peds) if (q!==p && q.state!=='brawl' && q.state!=='guard' && d2(q.x,q.z,player.x,player.z)<400) q.scare(player.x,player.z,6);
+      for (const q of peds) if (q!==p && q.state!=='brawl' && q.state!=='guard' && q.state!=='cover' && d2(q.x,q.z,player.x,player.z)<400) q.scare(player.x,player.z,6);
     }
   }
+  const MT=player.meleeT; if (!hitAny && MT && MT.o.T && cars.includes(MT.o)){ const c=MT.o, L=Math.hypot(MT.px-player.x,MT.pz-player.z); if (L<reach) meleeCar(c,W,power,player.punchKind); }
   if (hitAny){ sfxPunch(); if (W.id==='bat'||power>=1.8){ noise(0.18,0.25+power*0.1,500); shake(0.12*power); } }
 }
 function horn(){ const e=player.inCar||player; if (!player.inCar) return; for (const p of peds) if (d2(p.x,p.z,e.x,e.z)<144 && Math.random()<0.5) p.scare(e.x,e.z,3); }   // el sonido lo pone hornDown()
@@ -4113,7 +4266,7 @@ function rayShot(ox,oz,a,range,dmg,oy=1.35,pitch=0){
     damageCar(best,dmg*0.3,0); best.hitByPlayer=now;
     for (let i=0;i<4;i++) emit(glowP,ex,1,ez,mrand(-3,3),mrand(1,4),mrand(-3,3),0.2,0.12,'#ffd27a',10);
     if (best.driver==='police'){ if (now-lastPoliceHit>3){ lastPoliceHit=now; addCrime('copShot','¡Has disparado a la policía!'); } }
-    else if (best.driver==='npc' && Math.random()<0.2){ const p=new Ped(best.x-Math.cos(best.h)*2,best.z+Math.sin(best.h)*2); p.scare(player.x,player.z,8); best.driver=null; best.ai=null; }
+    else if (best.driver==='npc') carAttacked(best,'shot',1);
   } else if (bt<range){ for (let i=0;i<3;i++) emit(glowP,ex,1.3,ez,mrand(-2,2),mrand(0,3),mrand(-2,2),0.15,0.1,'#ffe6a0',8); }
 }
 function shoot(W){
@@ -4449,6 +4602,7 @@ function cruise(c,dt){
   let base = c.driver==='police' || c.emsOn ? 15 : Math.min(12,c.T.max*0.6);
   if (A.hwy || B.hwy) base = Math.min(c.T.max*0.75, c.driver==='police'?30:22);
   if ((A.real || B.real) && c.driver!=='police' && !c.emsOn) base = Math.min(base,9);
+  const rush=ai.rush>now; if (rush) base=Math.min(c.T.max*0.9,base*1.9);   // huye a toda prisa
   let desired=base;
   // curvas por delante: velocidad según el giro y distancia para frenar a tiempo (4,5 m/s²)
   for (let k=1;k<ai.pts.length-1;k++){ const d=ai.cum[k]-s; if (d>50) break; if (d<-6) continue; const th=turnAt(ai,k); if (th<0.18) continue;   // la curva cuenta hasta dejarla atrás
@@ -4458,7 +4612,7 @@ function cruise(c,dt){
   if (c.k==='bus'){ const key=ai.a+'_'+ai.b, st=busStopMap.get(key); if (st!==undefined && c.lastStop!==key && te>st-18 && te<st-4){ desired=0; if (c.speed<0.6){ c.busWait=(c.busWait||0)+dt; c.atStop=key; if (c.busWait>(c.boarding?9:4)){ c.lastStop=key; c.busWait=0; c.atStop=null; } } } }
   // semáforo en el próximo nodo
   const dB=ai.cum[1]-s;
-  if (B.light && dB>3 && dB<26 && lightState(Math.abs(ux)>Math.abs(uz)?'H':'V')!=='green') desired=Math.min(desired,Math.sqrt(2*6*Math.max(0,dB-5)));
+  if (!rush && B.light && dB>3 && dB<26 && lightState(Math.abs(ux)>Math.abs(uz)?'H':'V')!=='green') desired=Math.min(desired,Math.sqrt(2*6*Math.max(0,dB-5)));
   // lo que tiene delante sobre su trayectoria (coches, peatones, jugador): distancia de seguimiento según la velocidad
   const range=8+v*2.2; let gap=1e9, who=null;
   const test=(o,x,z,wid,len)=>{ if (d2(x,z,c.x,c.z)>(range+12)*(range+12)) return; const [so,lo]=pathProj(ai,x,z); if (lo>wid || so<=s+0.3 || so-s>range) return; const g=so-s-c.T.len/2-len; if (g<gap){ gap=g; who=o; } };
@@ -4466,7 +4620,7 @@ function cruise(c,dt){
   for (const o of cars) if (o!==c && !(ai.byp && ai.byp.car===o)){ const ca=Math.abs(Math.cos(o.h-c.h)), sa=Math.abs(Math.sin(o.h-c.h));   // un coche cruzado ocupa su largo a lo ancho de la trayectoria
     test(o,o.x,o.z,ca*o.T.w/2+sa*o.T.len/2+c.T.w/2+0.15,ca*o.T.len/2+sa*o.T.w/2); }
   for (const p of peds) if (p.state!=='dead' && p.state!=='inBus') test(p,p.x,p.z,c.T.w/2+0.55,0.3);   // los pasajeros de un autobús no son obstáculos
-  if (!player.inCar) test(player,player.x,player.z,c.T.w/2+0.6,0.3);
+  if (!player.inCar && !(ai.ram>now)) test(player,player.x,player.z,c.T.w/2+0.6,0.3);   // escapando a la desesperada: no frena por ti
   if (who){ const vf=Math.max(0,(gap-2.2)*0.95); desired=Math.min(desired,vf); }
   ai.dbg={who:who?(who.k||(who===player?'player':'ped')):null,gap:+gap.toFixed(1),yieldAt:ai.yieldKey||null};
   if (who && gap<4){ ai.wait+=dt; if (ai.wait>6 && who.ai && who.ai.wait>3) desired=Math.max(desired,2.2);   // dos coches esperándose el uno al otro: este avanza despacio
@@ -4506,6 +4660,7 @@ function cruise(c,dt){
   const Ld=clamp(3+0.55*v,4,11); let [tx,tz]=pathPoint(ai,s+Ld);
   if (ai.byp){ const [qx,qz]=pathPoint(ai,s+Ld+1), L=Math.hypot(qx-tx,qz-tz)||1, nx=-(qz-tz)/L, nz=(qx-tx)/L; tx+=nx*ai.byp.sh; tz+=nz*ai.byp.sh; desired=Math.min(desired,5); lat=0; }
   const he=Math.abs(wrapA(Math.atan2(tx-c.x,tz-c.z)-c.h)); desired=Math.min(desired,Math.max(2.5,base*(1-he/1.1)-lat*1.2));   // mal orientado o fuera del carril: despacio hasta recolocarse
+  if (ai.hold>now) desired=0;   // se queda quieto: pitando, encerrado o llamando
   ai.des=desired; ai.lat=lat;
   aiControl(c,tx,tz,desired,dt,true);
 }
@@ -4677,7 +4832,7 @@ function updateIntel(dt){
   if (intel.inv && now>intel.inv.until){ intel.inv=null; }
   for (const p of peds) if (p.report){
     if (p.state==='dead'){ p.report=null; continue; }
-    if (p.state==='call' || now<p.report.t || p.state==='hit' || p.state==='stagger' || p.state==='cower' || p.state==='backoff' || p.state==='dragged') continue;
+    if (p.state==='call' || p.state==='vic' || now<p.report.t || p.state==='hit' || p.state==='stagger' || p.state==='cower' || p.state==='backoff' || p.state==='dragged') continue;
     const P=player.inCar||player, dp=Math.hypot(P.x-p.x,P.z-p.z);
     if (dp<12 && !losBlocked(p.x,p.z,P.x,P.z,1.4)){   // le estás persiguiendo: primero huye (y puede que no llegue a llamar)
       p.report.t=now+2.5; if ((p.report.tries=(p.report.tries||0)+1)>4 && Math.random()<0.5){ p.report=null; continue; } p.scare(P.x,P.z,4); continue; }
@@ -5292,7 +5447,7 @@ function update(dt){
       const vn=(a.vx-b.vx)*nx+(a.vz-b.vz)*nz;
       if (vn>0){ a.vx-=nx*vn*0.8*wa; a.vz-=nz*vn*0.8*wa; b.vx+=nx*vn*0.8*wb; b.vz+=nz*vn*0.8*wb;
         if (a.k==='tank'||b.k==='tank'){ const o=a.k==='tank'?b:a; if (vn>1.5 && o.k!=='tank') damageCar(o,vn*9,vn); }   // un blindado aplasta lo que embiste
-        else if (vn>5){ damageCar(a,(vn-5)*1.6,vn); damageCar(b,(vn-5)*1.6,vn); }
+        else if (vn>5){ damageCar(a,(vn-5)*1.6,vn); damageCar(b,(vn-5)*1.6,vn); if (a===player.inCar) carAttacked(b,'ram',vn/8); else if (b===player.inCar) carAttacked(a,'ram',vn/8); }
         const pc=taxiRide?null:a===player.inCar?b:b===player.inCar?a:null; if (pc) pc.hitByPlayer=now;
         if (pc && pc.driver==='police' && vn>4 && now-lastPoliceHit>4){ lastPoliceHit=now; addCrime('copRam','¡Has embestido a la policía!'); }
       }
