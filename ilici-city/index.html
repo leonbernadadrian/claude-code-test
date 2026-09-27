@@ -2070,11 +2070,33 @@ function makeWeaponModels(arm){
   return wm;
 }
 function setWeaponModel(mesh,id){ const wm=mesh.userData.wm; for (const k in wm) wm[k].visible = k===id; }
+// Puñetazo por fases: preparación (recoge el brazo, torso atrás) → golpe (el torso gira y arrastra el hombro, el peso pasa a la pierna
+// delantera, el brazo se extiende hacia el objetivo) → contacto → recuperación a la guardia. Sirve para el jugador y para los NPC que pelean.
+function torsoPose(m,tw,lean){   // el esqueleto no tiene columna: los hombros siguen el giro y la inclinación del torso
+  const u=m.userData, B=m.children[0]; B.rotation.y=tw; B.rotation.x=lean;
+  u.arms.forEach((sh,i)=>{ const bx=u.sx0??(u.sx0=Math.abs(sh.position.x)), x0=(i?1:-1)*bx, y0=1.43; sh.position.set(x0*Math.cos(tw)+Math.sin(lean)*0, y0*Math.cos(lean), -x0*Math.sin(tw)+y0*Math.sin(lean)); sh.rotation.y=tw; });
+}
+function punchPose(m,f,kind,a,ext=1,vr=0,legs=true){   // f: 0→1 a lo largo del golpe; a: brazo (1 derecho, 0 izquierdo); ext: extensión (menos si el objetivo está pegado)
+  const u=m.userData, A=u.arms, E=u.elbows, o=1-a, sg=a?1:-1, ss=x=>x*x*(3-2*x);
+  const W1=kind==='heavy'?0.1:0.24, S1=kind==='heavy'?0.32:0.44, H1=S1+0.12;   // fin de preparación, contacto, fin del contacto (el cargado ya se preparó al cargar)
+  const prep=f<W1?ss(f/W1):1, strike=f<W1?0:f<S1?ss((f-W1)/(S1-W1)):1, rec=f<H1?0:ss((f-H1)/(1-H1)), k=strike*(1-rec), back=prep*(1-strike);
+  const twMax=(kind==='heavy'?0.55:kind==='hook'?0.6:0.3)*(1+vr*0.15), lean=0.03-back*0.05+k*(kind==='heavy'?0.16:0.09)-(kind==='upper'?back*0.05:0);
+  torsoPose(m,-sg*back*0.32+sg*k*twMax,lean);
+  A[o].rotation.x=-0.62-k*0.12; E[o].rotation.x=-2.25; A[o].rotation.z=0;   // la otra mano en guardia: codo abajo, puño a la altura de la barbilla
+  if (kind==='hook'){ A[a].rotation.x=lerp(lerp(-0.62,-0.5,back),-0.45,k); A[a].rotation.z=sg*lerp(0.2+back*0.5,1.3,k); E[a].rotation.x=lerp(-2.25,-1.6,k); A[a].rotation.y=0; }   // gancho: codo abierto, antebrazo al frente; el giro del torso lleva el puño en arco
+  else if (kind==='upper'){ A[a].rotation.x=lerp(lerp(-0.62,-0.15,back),-2.05,k); E[a].rotation.x=lerp(lerp(-2.25,-1.8,back),-1.0,k); A[a].rotation.z=0; A[a].rotation.y=-sg*0.2*k; }
+  else { const reach=-1.52-vr*0.06; A[a].rotation.x=lerp(lerp(-0.62,-0.3,back),reach,k*ext+(1-ext)*k*0.6); E[a].rotation.x=lerp(lerp(-2.25,-2.45,back),-0.08-(1-ext)*1.1,k); A[a].rotation.z=0; A[a].rotation.y=-sg*0.14*k; }   // directo y cargado: recto al objetivo
+  if (!legs) return lean;   // andando: las piernas siguen con la zancada
+  // piernas: el peso va de atrás hacia la pierna delantera (la contraria al brazo que golpea)
+  const L=u.legs, K=u.knees, dip=kind==='upper'?back*0.35:0;
+  L[o].rotation.x=-0.28*k-0.1*back; K[o].rotation.x=0.3*k+dip; L[a].rotation.x=0.22*k+0.08*back; K[a].rotation.x=0.12+dip;
+  return lean;
+}
 function weaponPose(){
   const m=player.mesh, W=curW(), A=m.userData.arms;
-  m.children[0].rotation.y=0;
+  torsoPose(m,0,0); A[0].rotation.y=A[1].rotation.y=0;
   if (jack){ const E=m.userData.elbows, k=Math.sin(Math.min(1,jack.t/1.5)*Math.PI); setWeaponModel(m,null); A[0].rotation.z=A[1].rotation.z=0;
-    A[0].rotation.x=A[1].rotation.x=-1.3+k*0.5; E[0].rotation.x=E[1].rotation.x=-0.3-k*0.9; m.children[0].rotation.y=0.25*k; return; }
+    A[0].rotation.x=A[1].rotation.x=-1.3+k*0.5; E[0].rotation.x=E[1].rotation.x=-0.3-k*0.9; torsoPose(m,0.25*k,0); return; }
   setWeaponModel(m, W.throw ? (player.ammo.grenade>0?'grenade':null) : W.id);
   A[0].rotation.z=0; A[1].rotation.z=0;
   const E=m.userData.elbows, two=W.id==='smg'||W.id==='shotgun';
@@ -2084,16 +2106,11 @@ function weaponPose(){
     const f=1-player.punchT/player.punchDur, e=1-Math.pow(1-f,3);
     if (W.id==='bat'){ A[1].rotation.x=lerp(-3.0,-0.4,e); A[0].rotation.x=lerp(-2.7,-0.5,e); A[1].rotation.z=lerp(0.25,-0.15,e); A[0].rotation.z=lerp(-0.35,0.2,e); }
     else if (W.throw){ A[1].rotation.x=f<0.35?lerp(-0.4,-3.1,f/0.35):lerp(-3.1,-0.9,(f-0.35)/0.65); }
-    else { const k=f<0.35?f/0.35:1-(f-0.35)/0.65, a=player.punchArm??1, o=1-a, sg=a?1:-1, kind=player.punchKind;
-      A[o].rotation.x=-1.2; E[o].rotation.x=-1.9;   // la otra mano en guardia
-      if (kind==='hook'){ A[a].rotation.x=-1.35; A[a].rotation.z=sg*lerp(0.9,-0.2,k); E[a].rotation.x=-0.9; m.children[0].rotation.y=sg*0.35*k; }
-      else if (kind==='upper'){ A[a].rotation.x=lerp(-0.3,-2.3,k); E[a].rotation.x=lerp(-1.6,-0.6,k); }
-      else if (kind==='heavy'){ A[a].rotation.x=-0.2-1.5*k; E[a].rotation.x=-0.2; m.children[0].rotation.y=sg*0.45*k; }
-      else { A[a].rotation.x=-0.25-1.35*k; E[a].rotation.x=-0.3*(1-k); } }
+    else punchPose(m,f,player.punchKind,player.punchArm??1,player.punchExt??1,player.punchVar||0,Math.hypot(player.vx,player.vz)<1.5);
   } else if (meleeCharge!==null && W.melee){
     const k=Math.min(1,meleeCharge/1.1), a=W.id==='bat'?1:(1-(player.punchArm??1)), o=1-a, sg=a?1:-1;
     if (W.id==='bat'){ A[1].rotation.x=-3.0-0.3*k; A[0].rotation.x=-2.7-0.3*k; A[1].rotation.z=0.5*k; }
-    else { A[a].rotation.x=0.4*k; E[a].rotation.x=-1.9; A[o].rotation.x=-1.2; E[o].rotation.x=-1.9; m.children[0].rotation.y=-sg*0.4*k; }
+    else { A[a].rotation.x=-0.62+0.85*k; E[a].rotation.x=-2.3; A[o].rotation.x=-0.62; E[o].rotation.x=-2.25; torsoPose(m,-sg*0.45*k,-0.04*k); const L=m.userData.legs, K=m.userData.knees; L[o].rotation.x=-0.2*k; K[o].rotation.x=0.25*k; K[a].rotation.x=0.3*k; }   // cargando: brazo atrás, torso girado, peso atrás
   } else if (aimT>0 && !W.melee && !W.throw){
     const ap=tpAim()?aimPitch:0; A[1].rotation.x=-1.5-ap; if (two){ A[0].rotation.x=-1.35-ap; A[0].rotation.z=-0.45; }
   } else if (W.id==='bat'){ A[1].rotation.x=-0.45; A[1].rotation.z=0.15; }
@@ -2247,10 +2264,10 @@ class Ped{
         this.resetPose(); this.state='flee'; this.t=6; this.fx=P.x; this.fz=P.z; if (Math.random()<0.6) say(this,mpick(['¡Esto no acaba aquí!','¡Estás loco!','Vale, vale…','¡Me voy a acordar de ti!']),1.4); return; }
       this.h+=wrapA(Math.atan2(dx,dz)-this.h)*Math.min(1,dt*8);
       if (d>1.25){ const sp=3.3, ox=this.x, oz=this.z; this.x+=dx/d*sp*dt; this.z+=dz/d*sp*dt; pushCircle(this,0.4); if (riverBlocked(this.x,this.z)){ this.x=ox; this.z=oz; } this.phase+=dt*sp*4.2; animPed(m,this.phase,0.8); this.pT=Math.max(this.pT,0.2); }
-      else { animPed(m,this.phase,0); this.pT-=dt; if (this.pT<=0 && this.swing<=0){ this.swing=0.32; this.swung=false; this.pT=mrand(0.8,1.4)*(1.2-this.pers.temper*0.4); } }
-      u.arms[0].rotation.x=-1.25; u.arms[1].rotation.x=-1.25; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-1.9;   // guardia
-      if (this.swing>0){ this.swing-=dt; const k=Math.sin((1-this.swing/0.32)*Math.PI); u.arms[1].rotation.x=-1.25-0.35*k; u.elbows[1].rotation.x=-1.9+1.7*k;
-        if (!this.swung && this.swing<0.16){ this.swung=true; if (d<1.6 && !player.inCar){ hurt(mrand(5,9),'torso',{x:this.x,z:this.z,melee:true}); sfxPunch(); shake(0.18); } } }
+      else { animPed(m,this.phase,0); this.pT-=dt; if (this.pT<=0 && this.swing<=0){ this.swing=0.42; this.swung=false; this.sArm=1-(this.sArm??0); this.sKind=mpick(['jab','jab','hook']); this.pT=mrand(0.8,1.4)*(1.2-this.pers.temper*0.4); } }
+      if (this.swing>0){ this.swing-=dt; punchPose(m,1-this.swing/0.42,this.sKind,this.sArm,clamp((d-0.45)/0.75,0.35,1),0,true);   // mismo puñetazo por fases que el jugador
+        if (!this.swung && this.swing<0.42*(1-0.44)){ this.swung=true; if (d<1.6 && !player.inCar){ hurt(mrand(5,9),'torso',{x:this.x,z:this.z,melee:true}); sfxPunch(); shake(0.18); } } }
+      else { torsoPose(m,0,0.03); u.arms[0].rotation.x=u.arms[1].rotation.x=-0.62; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-2.25; u.arms[0].rotation.y=u.arms[1].rotation.y=0; }   // guardia
       m.position.set(this.x,baseY(),this.z); m.rotation.y=this.h; return;
     }
     if (this.state==='guard'){   // se cubre y retrocede despacio; luego se encara o se va
@@ -2400,7 +2417,7 @@ class Ped{
     this.block=nb; this.k=nk; [this.tx,this.tz]=nb.corners[nk]; this.cross=true;
   }
   remove(){ scene.remove(this.mesh); disposePed(this.mesh); if (this.bubble) this.bubble.material.dispose(); const i=peds.indexOf(this); if (i>=0) peds.splice(i,1); }
-  resetPose(){ const u=this.mesh.userData; for (const a of u.arms) a.rotation.z=0; this.mesh.rotation.x=0; this.mesh.rotation.z=0; this.ct=0; }
+  resetPose(){ const u=this.mesh.userData; for (const a of u.arms){ a.rotation.z=0; a.rotation.y=0; } torsoPose(this.mesh,0,0); this.mesh.rotation.x=0; this.mesh.rotation.z=0; this.ct=0; }
 }
 
 buildAirport();
@@ -3870,7 +3887,9 @@ function punch(W,power=1){
     for (const p of peds){ if (p.state==='dead') continue; const dx=p.x-player.x, dz=p.z-player.z, L=Math.hypot(dx,dz); if (L>W.range+1.2) continue; const dot=(dx*fx+dz*fz)/Math.max(L,0.01); if (dot<-0.2) continue; const sc=L-dot; if (sc<bs){ bs=sc; best=p; } }
     if (best) player.h=Math.atan2(best.x-player.x,best.z-player.z);
   }
-  player.punchT=player.punchDur=(bat?0.5:0.3)*(heavy?1.3:1); player.hitT=player.punchDur*0.4; player.hitW=W;
+  player.punchVar=mrand(-1,1); player.punchExt=1;
+  { let bd=9; for (const p of peds){ if (p.state==='dead') continue; const dx=p.x-player.x, dz=p.z-player.z, L=Math.hypot(dx,dz), dot=(dx*Math.sin(player.h)+dz*Math.cos(player.h))/Math.max(L,0.01); if (dot>0.5 && L<bd) bd=L; } player.punchExt=clamp((bd-0.45)/0.75,0.35,1); }   // pegado al rival: el brazo no lo atraviesa
+  player.punchT=player.punchDur=bat?(heavy?0.65:0.5):(heavy?0.56:player.punchKind==='jab'?0.36:0.42); player.hitT=player.punchDur*(bat?0.4:heavy?0.32:0.44); player.hitW=W;   // el impacto coincide con la extensión
   noise(heavy?0.22:0.12,heavy?0.16:0.08,bat?700:1500);
 }
 function meleeHit(W){
