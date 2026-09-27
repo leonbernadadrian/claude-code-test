@@ -1971,7 +1971,7 @@ class Car{
   fwd(){ return this.vx*Math.sin(this.h)+this.vz*Math.cos(this.h); }
   drive(dt,thr,steer,hb){
     const T=this.T; this.thr=thr; this.hb=hb; this.braking=(thr<-0.05&&this.fwd()>0.4)||(hb&&this.speed>0.5);
-    if (this.dead){ thr=0; steer=0; hb=true; }
+    if (this.dead){ thr=0; steer=0; hb=true; } else if (this.engineOff) thr=Math.min(0,thr);   // sin motor: rueda por inercia y frena
     this.steerV += (steer-this.steerV)*Math.min(1,dt*(Math.abs(steer)<0.05?13:7)); if (Math.abs(this.steerV)<1e-3 && Math.abs(steer)<0.05) this.steerV=0;   // al soltar, el volante vuelve al centro (autoalineado) y queda recto de verdad
     let fx=Math.sin(this.h), fz=Math.cos(this.h);
     const v0=this.vx*fx+this.vz*fz;
@@ -1980,7 +1980,8 @@ class Car{
     this.h -= yaw*dt;
     fx=Math.sin(this.h); fz=Math.cos(this.h); const rx=-fz, rz=fx;
     let vF=this.vx*fx+this.vz*fz, vR=this.vx*rx+this.vz*rz;
-    if (thr>0){ if (vF<-0.5) vF+=T.acc*2.2*thr*dt; else vF+=T.acc*thr*dt*Math.max(0,1-Math.max(0,vF)/T.max); }
+    const dk=this.health<45&&!T.bike?0.55+Math.max(0,this.health)/45*0.45:1, Tmax=T.max*dk;   // motor tocado: menos potencia y velocidad punta
+    if (thr>0){ if (vF<-0.5) vF+=T.acc*2.2*thr*dt; else vF+=T.acc*dk*thr*dt*Math.max(0,1-Math.max(0,vF)/Tmax); }
     else if (thr<0){ if (vF>0.5) vF+=T.acc*2.4*thr*dt; else { vF+=T.acc*0.7*thr*dt; if (vF<-T.max*0.3) vF=-T.max*0.3; } }
     else vF-=vF*0.55*dt;
     if (hb) vF-=vF*1.3*dt;
@@ -2910,7 +2911,7 @@ function explode(x,z,big=1,byPlayer=false){
   for (const p of peds){ const k=fall(p.x,p.z); if (!k || p.state==='dead') continue; const a=Math.atan2(p.x-x,p.z-z), f=4+12*k, dmg=15+150*k*k;
     p.hp-=dmg; if (p.hp<=0){ p.knock(Math.sin(a)*f,Math.cos(a)*f,true); p.t=Math.max(p.t,60); if (byPlayer) onPedKilled(p); }
     else if (k>0.35){ p.limp=true; p.knock(Math.sin(a)*f*0.7,Math.cos(a)*f*0.7,false); p.panicT=now; } else p.scare(x,z,9); }
-  for (const c of cars){ const k=fall(c.x,c.z); if (!k || c.exploded || (c.x===x&&c.z===z)) continue; damageCar(c,10+90*k,0); const a=Math.atan2(c.x-x,c.z-z); c.vx+=Math.sin(a)*9*k; c.vz+=Math.cos(a)*9*k; if (byPlayer) c.hitByPlayer=now; }
+  for (const c of cars){ const k=fall(c.x,c.z); if (!k || c.exploded || (c.x===x&&c.z===z)) continue; damageCar(c,10+90*k,0,impactPoint(c,x-c.x,z-c.z)); const a=Math.atan2(c.x-x,c.z-z); c.vx+=Math.sin(a)*9*k; c.vz+=Math.cos(a)*9*k; if (byPlayer) c.hitByPlayer=now; }
   const kp=fall(player.x,player.z);
   if (kp){ if (!player.inCar||player.inCar.T.bike){ if (player.inCar) bikeFall(player.x-x,player.z-z,10); hurt(Math.round(8+85*kp*kp)); if (kp>0.3) knockDown(0.8+kp); }
     else if (kp>0.5) hurt(Math.round(20*(kp-0.5)/0.5)); }
@@ -4198,17 +4199,60 @@ function hurt(n,zone='torso',from=null){   // from: {x,z} de quien dispara o gol
   if (player.health<=0) wasted(from);
 }
 let hurtFx=0;
-function damageCar(c,n,imp){
+/* ---- daño de vehículos por zonas ----
+   El daño depende de la energía del golpe (velocidad por encima de un umbral), de la resistencia de cada tipo y de dónde golpea:
+   frontal, trasero, lateral izquierdo o derecho. Cada zona se abolla por separado (la chapa se deforma donde golpea) y el motor
+   sufre sobre todo con los golpes frontales. El fuego solo llega con daño extremo, no por sumar un número fijo de choques. */
+const TOUGH={compact:0.85,sedan:1,taxi:1,sports:0.8,police:1.25,van:1.3,pickup:1.35,boxvan:1.6,ambulance:1.5,truck:2.3,bus:2.6,tank:25,scooter:0.6,moto:0.65,sportbike:0.6,bike:0.5};
+const crashDmg=v=>v<=4?0:0.55*Math.pow(v-4,1.5);   // 10 m/s → 8 · 20 m/s → 35 · 30 m/s → 73 (antes de la resistencia del vehículo)
+const ZW={front:1,rear:0.75,left:0.6,right:0.6};   // cuánto afecta al motor cada zona
+const crackedGlass=new THREE.MeshStandardMaterial({color:'#6f7f88',metalness:0.1,roughness:0.5,transparent:true,opacity:0.85});
+function carLocal(c,x,z){ const dx=x-c.x, dz=z-c.z, ch=Math.cos(c.h), sh=Math.sin(c.h); return [dx*ch-dz*sh, dx*sh+dz*ch]; }   // [derecha, delante] en el coche
+function impactPoint(c,nx,nz){ const L=Math.hypot(nx,nz)||1; nx/=L; nz/=L; const ch=Math.cos(c.h), sh=Math.sin(c.h), lx=nx*ch-nz*sh, lz=nx*sh+nz*ch; const e=Math.min(c.T.len/2/Math.max(Math.abs(lz),1e-3),c.T.w/2/Math.max(Math.abs(lx),1e-3)); return {x:c.x+nx*e,z:c.z+nz*e}; }   // punto del contorno en la dirección (nx,nz)
+function damageCar(c,n,imp,hit){
   if (c.exploded) return;
   if (c.T.bike){ if (c===player.inCar && imp){ sfxCrash(imp*0.5); if (imp>(c.T.moto?5.5:6.5)) bikeFall(-c.vx||1,-c.vz,imp); else if (imp>4) hurt(imp*0.8); }
     else if (c.driver==='npc' && imp>3.5) bikeRiderFall(c,-c.vx||1,-c.vz||0);   // el piloto de la IA también se cae
     if (!c.T.moto) return; }
-  c.health-=n;
-  if (c===player.inCar){ if (imp) sfxCrash(imp); shake(Math.min(1,n/40)); }
-  if (c.health<=0 && !c.dead){ c.dead=true; c.burn=c.health<-45 ? mrand(0.3,0.9) : mrand(3,6);   // destrozado de golpe: apenas hay tiempo
-    if (c===player.inCar) toast('¡El coche está ardiendo! <em>Sal ya</em>',2.5);
+  n/=TOUGH[c.k]||1; if (n<=0) return;
+  let zone='front', lx=0, lz=c.T.len/2;
+  if (hit){ [lx,lz]=carLocal(c,hit.x,hit.z); const fz=lz/(c.T.len/2), fx=lx/(c.T.w/2); zone=Math.abs(fz)>=Math.abs(fx)?(fz>0?'front':'rear'):(fx>0?'right':'left'); }
+  const Z=c.zones||(c.zones={front:0,rear:0,left:0,right:0}); Z[zone]=Math.min(100,Z[zone]+n*1.5);
+  c.health-=n*ZW[zone]*(hit?1:0.8);
+  if (hit && !c.T.bike) dentCar(c,lx,lz,zone,n);
+  if (zone==='rear' && Z.rear>=100 && n>18 && !c.dead && Math.random()<0.35) c.health=Math.min(c.health,-1);   // depósito reventado en un golpe trasero brutal
+  if (c===player.inCar){ if (imp) sfxCrash(imp); shake(Math.min(1,n/35)); }
+  if (c.health<=0 && !c.engineOff && !c.dead){ c.engineOff=true;   // motor destrozado: ya no arranca y echa humo, pero aún no arde
+    if (c===player.inCar) toast('Motor destrozado: el coche ya no anda',2); else if (c.driver==='npc'){ const p=driverOut(c); if (p) p.scare(c.x,c.z,5); } }
+  if (c.health<=-35 && !c.dead){ c.dead=true; c.burn=c.health<-90 ? mrand(1,2) : mrand(7,12);   // solo con daño extremo arde; da tiempo a salir salvo un golpe brutal
+    if (c===player.inCar) toast('¡El motor está ardiendo! <em>Sal ya</em>',2.5);
     carAbandon(c); }
 }
+function tessellate(geo,maxE){   // subdivide triángulos largos (por su arista mayor) hasta que ninguna arista pase de maxE: da vértices para abollar
+  const g=geo.index?geo.toNonIndexed():geo, names=Object.keys(g.attributes), src=names.map(n=>g.attributes[n]), dims=src.map(a=>a.itemSize), out=names.map(()=>[]);
+  const P=g.attributes.position, stack=[]; for (let t=0;t<P.count;t+=3) stack.push([t,t+1,t+2].map(i=>src.map(a=>Array.from({length:a.itemSize},(_,k)=>a.array[i*a.itemSize+k]))));
+  let guard=0;
+  while (stack.length && guard++<60000){ const tri=stack.pop(), p=tri.map(v=>v[0]), e=[[0,1],[1,2],[2,0]].map(([a,b])=>[a,b,Math.hypot(p[a][0]-p[b][0],p[a][1]-p[b][1],p[a][2]-p[b][2])]).sort((x,y)=>y[2]-x[2])[0];
+    if (e[2]<=maxE){ for (const v of tri) v.forEach((arr,ai)=>out[ai].push(...arr)); continue; }
+    const [a,b]=e, o=3-a-b, m=tri[a].map((arr,ai)=>arr.map((x,k)=>(x+tri[b][ai][k])/2));
+    stack.push([tri[a],m,tri[o]],[m,tri[b],tri[o]]); }   // las aristas van en orden cíclico: se conserva el sentido de giro
+  const G=new THREE.BufferGeometry(); names.forEach((n,i)=>G.setAttribute(n,new THREE.BufferAttribute(new Float32Array(out[i]),dims[i]))); return G;
+}
+function dentCar(c,lx,lz,zone,n){   // abolla la chapa alrededor del punto de impacto y raya la pintura (geometría y material propios, al primer golpe)
+  const body=c.painted&&c.painted[0]; if (!body || !body.geometry || !body.geometry.attributes.position) return;
+  if (!body.userData.own){ const g=tessellate(body.geometry,0.35); g.setAttribute('orig',g.attributes.position.clone()); const N=g.attributes.position.count, col=new Float32Array(N*3).fill(1); g.setAttribute('color',new THREE.BufferAttribute(col,3));
+    body.geometry=g; body.material=body.material.clone(); body.material.vertexColors=true; body.material.needsUpdate=true; body.userData.own=true; }
+  const G=body.geometry, P=G.attributes.position, O=G.attributes.orig, C=G.attributes.color, R=0.6+Math.min(1,n*0.035), amt=Math.min(0.3,0.03+n*0.011), ix=zone==='right'?-1:zone==='left'?1:0, iz=zone==='front'?-1:zone==='rear'?1:0;
+  for (let i=0;i<P.count;i++){ const x=P.getX(i), y=P.getY(i), z=P.getZ(i), d=Math.hypot(x-lx,z-lz)+Math.abs(y-0.75)*0.3; if (d>R) continue;
+    const f=(1-d/R)**2*amt; let nx=x+ix*f, ny=y-f*0.3, nz=z+iz*f; const ox=O.getX(i), oy=O.getY(i), oz=O.getZ(i), dd=Math.hypot(nx-ox,ny-oy,nz-oz);
+    if (dd>0.5){ const k=0.5/dd; nx=ox+(nx-ox)*k; ny=oy+(ny-oy)*k; nz=oz+(nz-oz)*k; }   // la chapa no se hunde más de medio metro
+    P.setXYZ(i,nx,ny,nz); const sc=Math.max(0.36,C.getX(i)-(1-d/R)*Math.min(0.55,n*0.03)); C.setXYZ(i,sc,sc,sc*0.97); }   // pintura rayada y oscurecida
+  P.needsUpdate=true; C.needsUpdate=true; G.computeVertexNormals(); G.computeBoundingSphere();   // normales nuevas: la abolladura se ve en los reflejos
+  if (c.zones[zone]>60){ const g=c.mesh.children.find(m=>m.material===glassMat||m.material===busGlassMat); if (g) g.material=crackedGlass; }   // lunas agrietadas con daño grave
+}
+function repairCar(c){ c.health=100; c.dead=false; c.engineOff=false; c.zones={front:0,rear:0,left:0,right:0}; const body=c.painted&&c.painted[0];
+  if (body && body.userData.own){ const G=buildCarMesh(c.k,c.color); body.geometry.dispose(); body.geometry=G.painted[0].geometry; body.material=G.painted[0].material; body.userData.own=false; }
+  for (const m of c.mesh.children) if (m.material===crackedGlass) m.material=c.k==='bus'?busGlassMat:glassMat; }
 /* ---- reacciones de víctimas y conductores (módulo común) ----
    Cada persona elige según su carácter (genio, valor, prudencia), su edad, si vas armado, el vehículo y la situación.
    Las acciones son piezas reutilizables: recuperar el coche, volver a subir, pelear, insultar, huir, llamar a la policía,
@@ -4487,7 +4531,7 @@ function meleeTarget(W){   // qué hay delante al golpear y con qué: persona de
   return best;
 }
 function meleeCar(c,W,power,kind){   // golpe o patada a un vehículo: abolladura, empujón, alarma y reacción de quien va dentro
-  const bat=W.id==='bat', dmg=(bat?6:kind==='carkick'?3.5:1.5)*power; damageCar(c,dmg,0); c.hitByPlayer=now;
+  const bat=W.id==='bat', dmg=(bat?6:kind==='carkick'?3.5:1.5)*power; const MT=player.meleeT; damageCar(c,dmg,0,MT&&MT.px!=null?{x:MT.px,z:MT.pz}:null); c.hitByPlayer=now;
   const fx=Math.sin(player.h), fz=Math.cos(player.h), push=(bat?0.35:kind==='carkick'?0.5:0.15)*power/Math.max(1,(MASS[c.k]||1)); c.vx+=fx*push; c.vz+=fz*push; c.kickWob=now;
   sfxCrash(bat?2.2:kind==='carkick'?1.6:0.8); shake(0.08*power);
   if (!c.driver && !c.dead) c.alarmT=now+8;   // aparcado: salta la alarma
@@ -4580,7 +4624,7 @@ function rayShot(ox,oz,a,range,dmg,oy=1.35,pitch=0){
     const killed=best.gunHit(dmg*ZONES[zone].mult,zone,dx,dz); lastHitZone=zone;
     if (killed) onPedKilled(best); else if (best.cop && now-lastPoliceHit>3){ lastPoliceHit=now; addCrime('copShot','¡Has disparado a un policía!'); }
   } else if (best){
-    damageCar(best,dmg*0.3,0); best.hitByPlayer=now;
+    damageCar(best,dmg*0.25,0,{x:ex,z:ez}); best.hitByPlayer=now;
     for (let i=0;i<4;i++) emit(glowP,ex,1,ez,mrand(-3,3),mrand(1,4),mrand(-3,3),0.2,0.12,'#ffd27a',10);
     if (best.driver==='police'){ if (now-lastPoliceHit>3){ lastPoliceHit=now; addCrime('copShot','¡Has disparado a la policía!'); } }
     else if (best.driver==='npc'){ if (best.T.bike){ const p=bikeRiderFall(best,dx,dz); if (p) p.gunHit(dmg*0.8,'torso',dx,dz); } else carAttacked(best,'shot',1); }   // en moto el disparo alcanza al piloto
@@ -5602,7 +5646,7 @@ function placeMenu(sh,items){
     add('Turno de taxista',busy?busyTxt:(P&&P.k==='taxi'?'Usarás tu taxi':'Te dejan un taxi de la cooperativa'),()=>{ const t=P&&P.k==='taxi'?P:jobCar('taxi',sh); t.mission=true; closeShop(); if (player.inCar!==t){ if (player.inCar) exitCar(true,true); player.x=t.x+1.2; player.z=t.z; enterExitCar(t); } startMission(genTaxi(sh,t)); }); }
   else if (sh.id==='taller'){ who='El taller de Carrús repara, compra y vende coches. Y si hay averías en la calle, busca mecánico.';
     add('Asistencia en carretera',busy?busyTxt:'Repara un coche averiado en la calle. 200–300 €',()=>takeJob(genGrua(sh)));
-    if (P && !P.T.bike){ const cost=Math.round((100-P.health)*7); items.push({label:'Reparar tu coche',sub:P.dead?'Está siniestro total':`Motor y chapa al ${Math.round(P.health)}%`,price:cost,btn:`${cost} €`,dis:P.dead||P.health>=99,buy:()=>{ P.health=100; toast('Coche como nuevo',1.5); }});
+    if (P && !P.T.bike){ const cost=Math.round((100-P.health)*7); items.push({label:'Reparar tu coche',sub:P.dead?'Está siniestro total':`Motor y chapa al ${Math.round(P.health)}%`,price:cost,btn:`${cost} €`,dis:P.dead||P.health>=99,buy:()=>{ repairCar(P); toast('Coche como nuevo',1.5); }});
       const v=P.driver==='player'&&P.k!=='police'&&!P.mission?Math.round((VALUE[P.k]||1500)*(P.owned?0.7:0.35)*P.health/100/10)*10:0;
       items.push({label:'Vender este coche',sub:P.k==='police'?'Aquí no se compran coches patrulla':player.stars>0?'Con la policía detrás no te lo compran':P.mission?'Este vehículo no es tuyo':P.owned?'Es tuyo: te dan el 70% de su valor':'Robado: te pagan una miseria (35%)',price:0,btn:`+${v} €`,dis:!v||player.stars>0,
         buy:()=>{ const c=player.inCar; exitCar(true,true); c.remove(); player.money+=v; shownMoney=player.money; toast(`Vendido por ${v} €`,2); closeShop(); }}); }
@@ -5794,7 +5838,7 @@ function update(dt){
     // edificios
     const r=c.T.w*0.56; let hitN=null;
     for (const [cx,cz] of carCircles(c)){ const p={x:cx,z:cz}; const n=pushCircle(p,r); if (n){ c.x+=p.x-cx; c.z+=p.z-cz; hitN=n; } }
-    if (hitN){ const vn=c.vx*hitN.nx+c.vz*hitN.nz; if (vn<0){ c.vx-=hitN.nx*vn*1.3; c.vz-=hitN.nz*vn*1.3; c.vx*=0.92; c.vz*=0.92; if (-vn>5) damageCar(c,(-vn-5)*2.3,-vn); } }
+    if (hitN){ const vn=c.vx*hitN.nx+c.vz*hitN.nz; if (vn<0){ c.vx-=hitN.nx*vn*1.3; c.vz-=hitN.nz*vn*1.3; c.vx*=0.92; c.vz*=0.92; if (-vn>4) damageCar(c,crashDmg(-vn),-vn,impactPoint(c,-hitN.nx,-hitN.nz)); } }
     if (c.occ && c.occ.length && !c.exploded) for (const o of c.occ.slice()) if (now>=o.t){ occupantOut(c,o,true); c.occ.splice(c.occ.indexOf(o),1); }
     if (c.dead && !c.exploded && (c.scareT=(c.scareT||0)-dt)<=0){ c.scareT=1; for (const p of peds) if (d2(p.x,p.z,c.x,c.z)<14*14 && p.state==='walk'){ p.scare(c.x,c.z,7); if (Math.random()<0.3) say(p,mpick(['¡Que explota!','¡Apartaos!','¡Fuego!']),1.4); } }   // la gente se aparta del coche en llamas
     if (c.dead && !c.exploded){ c.burn-=dt; c.smokeT-=dt; if (c.smokeT<=0){ c.smokeT=0.05; emit(glowP,c.x+mrand(-.6,.6),1.4,c.z+mrand(-.6,.6),mrand(-.5,.5),mrand(2,4),mrand(-.5,.5),0.6,0.7,mpick(['#ff9a2a','#ffcf4a','#ff5a1a']),0,-0.6); } if (c.burn<=0) carExplode(c); }
@@ -5813,9 +5857,9 @@ function update(dt){
       a.x-=nx*pen*wa; a.z-=nz*pen*wa; b.x+=nx*pen*wb; b.z+=nz*pen*wb;
       const vn=(a.vx-b.vx)*nx+(a.vz-b.vz)*nz;
       if (vn>0){ a.vx-=nx*vn*0.8*wa; a.vz-=nz*vn*0.8*wa; b.vx+=nx*vn*0.8*wb; b.vz+=nz*vn*0.8*wb;
-        if (a.k==='tank'||b.k==='tank'){ const o=a.k==='tank'?b:a; if (vn>1.5 && o.k!=='tank') damageCar(o,vn*9,vn); }   // un blindado aplasta lo que embiste
+        if (a.k==='tank'||b.k==='tank'){ const o=a.k==='tank'?b:a; if (vn>1.5 && o.k!=='tank') damageCar(o,vn*9,vn,impactPoint(o,o===a?nx:-nx,o===a?nz:-nz)); }   // un blindado aplasta lo que embiste
         else if (vn>3.5 && vn<=5 && (a.T.bike||b.T.bike)){ if (a.T.bike) damageCar(a,0,vn); if (b.T.bike) damageCar(b,0,vn); }   // en moto un golpe menor ya tira al piloto
-        else if (vn>5){ damageCar(a,(vn-5)*1.6,vn); damageCar(b,(vn-5)*1.6,vn); if (a===player.inCar) carAttacked(b,'ram',vn/8); else if (b===player.inCar) carAttacked(a,'ram',vn/8); }
+        else if (vn>4){ const E=crashDmg(vn); damageCar(a,E*wa,vn,impactPoint(a,nx,nz)); damageCar(b,E*wb,vn,impactPoint(b,-nx,-nz)); if (vn>5 && a===player.inCar) carAttacked(b,'ram',vn/8); else if (b===player.inCar) carAttacked(a,'ram',vn/8); }
         const pc=taxiRide?null:a===player.inCar?b:b===player.inCar?a:null; if (pc) pc.hitByPlayer=now;
         if (pc && pc.driver==='police' && vn>4 && now-lastPoliceHit>4){ lastPoliceHit=now; addCrime('copRam','¡Has embestido a la policía!'); }
       }
