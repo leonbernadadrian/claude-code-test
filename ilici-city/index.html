@@ -3069,33 +3069,49 @@ function updateNav(dt){
 
 /* ================= audio ================= */
 let AC=null, master=null, eng=null, soundOn=true;
+/* Mezcla: cada sonido va a un bus de su categoría (interfaz, efectos, explosiones, sirenas, vehículos). Cada categoría tiene un máximo de voces
+   simultáneas y, cuantas más suenan a la vez, más bajas va cada una; las explosiones y los disparos atenúan un momento sirenas y motores (prioridad),
+   y un limitador al final evita la saturación. */
+const BUS_GAIN={ui:0.9,sfx:0.85,boom:1.0,siren:0.95,veh:0.75}, bus={}, VOICE_CAP={ui:6,sfx:10,boom:4,veh:8}, voices={};
+const busOut=cat=>bus[cat]||master;
+function voiceGain(cat,dur){   // 0 si la categoría está llena; si no, factor que reparte el volumen entre las voces activas
+  const t=AC.currentTime, L=voices[cat]||(voices[cat]=[]); for (let i=L.length-1;i>=0;i--) if (L[i]<t) L.splice(i,1);
+  if (L.length>=(VOICE_CAP[cat]||8)) return 0; L.push(t+dur); return 1/Math.sqrt(1+(L.length-1)*0.6);
+}
+function duck(cats,k,dur){   // prioridad: baja un momento otros buses (p. ej. sirenas bajo una explosión)
+  if (!AC) return; const t=AC.currentTime;
+  for (const c of cats){ const g=bus[c]; if (!g) continue; g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(BUS_GAIN[c]*k,t,0.02); g.gain.setTargetAtTime(BUS_GAIN[c],t+dur,0.3); }
+}
 function initAudio(){
   if (AC) return;
   try{
-    AC=new (window.AudioContext||window.webkitAudioContext)(); master=AC.createGain(); master.gain.value=0.55; master.connect(AC.destination);
+    AC=new (window.AudioContext||window.webkitAudioContext)(); master=AC.createGain(); master.gain.value=0.55;
+    const lim=AC.createDynamicsCompressor(); lim.threshold.value=-12; lim.knee.value=8; lim.ratio.value=12; lim.attack.value=0.003; lim.release.value=0.25;   // limitador final: nada satura
+    master.connect(lim); lim.connect(AC.destination);
+    for (const k in BUS_GAIN){ const g=AC.createGain(); g.gain.value=BUS_GAIN[k]; g.connect(master); bus[k]=g; }
     const o=AC.createOscillator(); o.type='sawtooth'; const f=AC.createBiquadFilter(); f.type='lowpass'; f.frequency.value=380; const g=AC.createGain(); g.gain.value=0;
-    o.connect(f); f.connect(g); g.connect(master); o.start(); eng={o,g,f};
+    o.connect(f); f.connect(g); g.connect(bus.veh); o.start(); eng={o,g,f};
   }catch(e){ AC=null; }
 }
-function tone(freq,dur,type='square',vol=0.08,when=0,slide=0){
-  if (!AC||!soundOn) return; const t=AC.currentTime+when, o=AC.createOscillator(), g=AC.createGain();
+function tone(freq,dur,type='square',vol=0.08,when=0,slide=0,cat='ui'){
+  if (!AC||!soundOn) return; const vg=voiceGain(cat,dur+when); if (!vg) return; vol*=vg; const t=AC.currentTime+when, o=AC.createOscillator(), g=AC.createGain();
   o.type=type; o.frequency.setValueAtTime(freq,t); if (slide) o.frequency.exponentialRampToValueAtTime(slide,t+dur);
-  g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.connect(g); g.connect(master); o.start(t); o.stop(t+dur+0.02);
+  g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.connect(g); g.connect(busOut(cat)); o.start(t); o.stop(t+dur+0.02);
 }
 let noiseBuf=null;
-function noise(dur,vol,freq){
-  if (!AC||!soundOn) return;
+function noise(dur,vol,freq,cat='sfx',at=null){   // at: {x,z} para que suene desde ese punto
+  if (!AC||!soundOn) return; const vg=voiceGain(cat,dur); if (!vg) return; vol*=vg;
   if (!noiseBuf){ noiseBuf=AC.createBuffer(1,AC.sampleRate,AC.sampleRate); const d=noiseBuf.getChannelData(0); for (let i=0;i<d.length;i++) d[i]=Math.random()*2-1; }
   const s=AC.createBufferSource(); s.buffer=noiseBuf; const f=AC.createBiquadFilter(); f.type='lowpass'; f.frequency.value=freq; const g=AC.createGain(); const t=AC.currentTime;
-  g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); s.connect(f); f.connect(g); g.connect(master); s.start(t); s.stop(t+dur);
+  g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur); s.connect(f); f.connect(g); g.connect(at?spatial(at.x,1.4,at.z,9,260,cat):busOut(cat)); s.start(t); s.stop(t+dur);
 }
-const sfxBoom = v => noise(1.4,0.6*v,500);
+const sfxBoom = v => { noise(1.4,0.6*v,500,'boom'); duck(['siren','veh'],0.45,0.7); };
 // Audio posicional: el oyente es la cámara y cada sonido sale de su posición en el mundo
-function spatial(x,y,z,ref=5,max=180){
+function spatial(x,y,z,ref=5,max=180,cat='sfx'){
   if (!AC||!soundOn) return null;
   const p=AC.createPanner(); p.panningModel='equalpower'; p.distanceModel='inverse'; p.refDistance=ref; p.maxDistance=max; p.rolloffFactor=1.2;
   if (p.positionX){ p.positionX.value=x; p.positionY.value=y; p.positionZ.value=z; } else p.setPosition(x,y,z);
-  p.connect(master); return p;
+  p.connect(busOut(cat)); return p;
 }
 const _lf=new THREE.Vector3();
 function updateListener(){
@@ -3161,7 +3177,7 @@ function bellVoice(out,H,t){   // ring-ring: parciales inarmónicos que se apaga
 }
 function hornAt(src,dur=0.4,beeps=1){   // claxon de un vehículo (o del jugador) desde su posición
   if (!AC||!soundOn||!src) return null;
-  const H=HORNS[vAudio(src.k||(src.T&&src.T.bike?'bike':'sedan')).horn]||HORNS.car, out=spatial(src.x,1.2,src.z,H.bell?3:7,240); if (!out) return null;
+  const H=HORNS[vAudio(src.k||(src.T&&src.T.bike?'bike':'sedan')).horn]||HORNS.car, out=spatial(src.x,1.2,src.z,H.bell?3:7,240,'veh'); if (!out) return null;
   const t=AC.currentTime, buf=sampleFor(H);
   if (buf){ const s=AC.createBufferSource(), g=AC.createGain(); s.buffer=buf; g.gain.value=H.gain*2; s.connect(g); g.connect(out); s.start(t); return null; }
   if (H.bell){ bellVoice(out,H,t); return null; }
@@ -3180,24 +3196,27 @@ function whistle(){   // a pie: un silbido para llamar la atención
     g.gain.setValueAtTime(0.0001,t+d); g.gain.exponentialRampToValueAtTime(0.18,t+d+0.03); g.gain.exponentialRampToValueAtTime(0.0001,t+d+0.2); o.connect(g); g.connect(out); o.start(t+d); o.stop(t+d+0.22); }
 }
 // sirenas: una voz por vehículo de emergencia en servicio (las más cercanas), que se mueve con él
-const sirenVoices=new Map(); const MAX_SIRENS=4;
+const sirenVoices=new Map(); const MAX_SIRENS=3, SIREN_PRIO=[1,0.55,0.32];   // solo las 3 más cercanas; la más cercana manda
 function sirenVoice(S){
   const o=AC.createOscillator(), f=AC.createBiquadFilter(), g=AC.createGain(), p=AC.createPanner(), lfo=AC.createOscillator(), lg=AC.createGain();
-  o.type=S.type; f.type='lowpass'; f.frequency.value=S.filter; g.gain.value=0; p.panningModel='equalpower'; p.distanceModel='inverse'; p.refDistance=8; p.maxDistance=300; p.rolloffFactor=1.1;
-  lfo.frequency.value=6; lg.gain.value=8; lfo.connect(lg); lg.connect(o.frequency);   // un poco de vibrato
-  o.connect(f); f.connect(g); g.connect(p); p.connect(master); o.start(); lfo.start(); return {o,g,p,lfo,S,ph:Math.random()};
+  o.type=S.type; f.type='lowpass'; f.frequency.value=S.filter*mrand(0.85,1.1); g.gain.value=0; p.panningModel='equalpower'; p.distanceModel='inverse'; p.refDistance=8; p.maxDistance=300; p.rolloffFactor=1.35;
+  lfo.frequency.value=mrand(5,7.5); lg.gain.value=mrand(5,10); lfo.connect(lg); lg.connect(o.frequency);   // vibrato distinto en cada patrulla
+  o.connect(f); f.connect(g); g.connect(p); p.connect(bus.siren||master); o.start(); lfo.start();
+  return {o,g,p,lfo,S,ph:Math.random(),det:mrand(0.965,1.035),per:mrand(0.92,1.08)};   // cada sirena con su tono y su ritmo: no suenan todas idénticas
 }
 function sirenOn(c){ return (c.driver==='police' && c.ai && c.ai.mode==='chase' && player.stars>0) || (c.emsOn && (c.driver==='npc'||c.driver==='police')); }
 function updateSirens(){
   if (!AC) return; const t=AC.currentTime, want=[];
   if (soundOn && state==='play') for (const c of cars){ const S=SIRENS[vAudio(c.k).siren]; if (S && sirenOn(c)){ const d=d2(c.x,c.z,camera.position.x,camera.position.z); if (d<300*300) want.push([d,c,S]); } }
-  want.sort((a,b)=>a[0]-b[0]); const keep=new Set(want.slice(0,MAX_SIRENS).map(w=>w[1]));
-  for (const [c,v] of sirenVoices) if (!keep.has(c)){ v.g.gain.setTargetAtTime(0,t,0.08); v.o.stop(t+0.4); v.lfo.stop(t+0.4); sirenVoices.delete(c); }
-  for (const c of keep){ let v=sirenVoices.get(c); const S=SIRENS[vAudio(c.k).siren]; if (!v){ v=sirenVoice(S); sirenVoices.set(c,v); }
+  want.sort((a,b)=>a[0]-b[0]); const top=want.slice(0,MAX_SIRENS), keep=new Set(top.map(w=>w[1]));
+  for (const [c,v] of sirenVoices) if (!keep.has(c)){ v.g.gain.setTargetAtTime(0,t,0.25); v.o.stop(t+1.2); v.lfo.stop(t+1.2); sirenVoices.delete(c); }   // se apaga poco a poco
+  const crowd=1/Math.sqrt(1+(Math.min(want.length,8)-1)*0.25);   // muchas patrullas juntas: cada una más baja
+  top.forEach(([dd,c,S],i)=>{ let v=sirenVoices.get(c); if (!v){ v=sirenVoice(S); sirenVoices.set(c,v); }
     if (v.p.positionX){ v.p.positionX.setTargetAtTime(c.x,t,0.03); v.p.positionY.value=1.6; v.p.positionZ.setTargetAtTime(c.z,t,0.03); } else v.p.setPosition(c.x,1.6,c.z);
-    const ph=((now/S.period)+v.ph)%1;
-    const fr=S.wail?S.wail[0]+(S.wail[1]-S.wail[0])*(0.5-0.5*Math.cos(ph*Math.PI*2)):(ph<0.5?S.tones[0]:S.tones[1]);
-    v.o.frequency.setTargetAtTime(fr,t,S.wail?0.05:0.012); v.g.gain.setTargetAtTime(S.gain,t,0.1); }
+    const ph=((now/(S.period*v.per))+v.ph)%1;
+    const fr=(S.wail?S.wail[0]+(S.wail[1]-S.wail[0])*(0.5-0.5*Math.cos(ph*Math.PI*2)):(ph<0.5?S.tones[0]:S.tones[1]))*v.det;
+    const far=1/(1+dd/(120*120));   // además del panner: las lejanas, mucho más bajas
+    v.o.frequency.setTargetAtTime(fr,t,S.wail?0.05:0.012); v.g.gain.setTargetAtTime(S.gain*SIREN_PRIO[i]*crowd*far,t,0.25); });
 }
 function stopSirens(){ if (!AC) return; const t=AC.currentTime; for (const [c,v] of sirenVoices){ v.g.gain.setTargetAtTime(0,t,0.05); v.o.stop(t+0.3); v.lfo.stop(t+0.3); } sirenVoices.clear(); }
 const sfxPick = () => { tone(880,0.1,'square',0.06); tone(1320,0.15,'square',0.06,0.08); };
@@ -3647,14 +3666,14 @@ function shoot(W){
   if (hit) hitFlash=head?0.35:0.18;
   if (head){ tone(1500,0.06,'square',0.05); $('cross').classList.add('head'); setTimeout(()=>$('cross').classList.remove('head'),300); }
   emit(glowP,ox+Math.sin(h)*0.3,1.35,oz+Math.cos(h)*0.3,0,0,0,0.06,0.55,'#ffd27a');
-  noise(W.snd[1],W.snd[2],W.snd[0]); shake(W.kick||(W.pellets?0.35:0.1));
+  noise(W.snd[1],W.snd[2],W.snd[0]); duck(['siren','veh'],0.7,0.18); shake(W.kick||(W.pellets?0.35:0.1));
   for (const p of peds) if (p.state!=='dead' && d2(p.x,p.z,ox,oz)<2025) p.scare(ox,oz,7);
   if (now>shotAlertT){ shotAlertT=now+4; crime('shots',ox,oz,1,{loud:true,copMsg:'¡Disparos! La policía acude'}); }
 }
 const COP_GUN={pistol:{range:28,rate:[1.1,1.8],dmg:7},smg:{range:26,rate:[0.28,0.45],dmg:4},shotgun:{range:15,rate:[1.4,2.0],dmg:15}};
 function copWeapon(){ const s=player.stars, r=Math.random(); return s>=5&&r<0.35?'shotgun':s>=3&&r<0.45?'smg':'pistol'; }
 function copShot(ox,oz,P,d,dmg=7,range=40){
-  tracer(ox,oz,P.x+mrand(-1,1),P.z+mrand(-1,1),'#bfe0ff'); noise(0.08,0.16,2000);
+  tracer(ox,oz,P.x+mrand(-1,1),P.z+mrand(-1,1),'#bfe0ff'); noise(0.08,0.5,2000,'sfx',{x:ox,z:oz});
   if (Math.random()<(player.inCar?0.55:0.42)*(1-d/(range+12))*(!player.inCar&&player.crouch?0.5:1)){
     if (player.inCar && !player.inCar.T.bike) damageCar(player.inCar,dmg*0.6,0);
     else { const r=Math.random(), zone=r<0.08?'head':r<0.35?'leg':'torso'; hurt(dmg*(zone==='head'?2.2:zone==='leg'?0.7:1),zone); shake(zone==='head'?0.5:0.25); if (player.inCar && (zone==='head'||Math.random()<0.15)) bikeFall(P.x-ox,P.z-oz,4); } }
@@ -5123,7 +5142,7 @@ function npcCrime(type,x,z,suspect,victim){
     if (p===victim || (d<30 && !losBlocked(p.x,p.z,x,z,1.5))){ if (Math.random()<(p===victim?0.9:0.35)){ p.report={t:now+mrand(2,5),id:true,npc:true,stars:0,x,z,car:null,type,suspect,cid}; if (++n>=3) break; } } }
 }
 function npcShot(from,to,dmg){   // disparo entre NPC (o de un NPC al jugador): trazadora, ruido, dispersión y daño por zona
-  const tx=to.x, tz=to.z, d=Math.hypot(tx-from.x,tz-from.z); tracer(from.x,from.z,tx+mrand(-1,1),tz+mrand(-1,1),'#ffe6a0'); noise(0.08,0.14,1800);
+  const tx=to.x, tz=to.z, d=Math.hypot(tx-from.x,tz-from.z); tracer(from.x,from.z,tx+mrand(-1,1),tz+mrand(-1,1),'#ffe6a0'); noise(0.08,0.45,1800,'sfx',{x:from.x,z:from.z});
   for (const q of peds) if (q!==from && q!==to && !q.cop && q.state==='walk' && d2(q.x,q.z,from.x,from.z)<30*30) q.scare(from.x,from.z,7);
   if (Math.random()>0.5*(1-d/34)) return;
   if (to===player){ if (player.inCar && !player.inCar.T.bike) damageCar(player.inCar,dmg*0.6,0); else hurt(dmg); return; }
