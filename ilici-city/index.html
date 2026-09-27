@@ -1084,7 +1084,7 @@ const GLORIETA={x:55,z:-55};
 function addBuilding(x0,z0,x1,z1,h,c){
   const w=x1-x0, d=z1-z0;
   buildings.push({x:(x0+x1)/2,y:h/2+0.25,z:(z0+z1)/2,sx:w,sy:h,sz:d,c});
-  addCollider(x0,z0,x1,z1,h);
+  addCollider(x0,z0,x1,z1,h+0.25);
   _c.set(c).multiplyScalar(0.78); cornices.push({x:(x0+x1)/2,y:h+0.25+0.25,z:(z0+z1)/2,sx:w+0.5,sy:0.5,sz:d+0.5,c:'#'+_c.getHexString()});
   if (rnd()<0.55 && w>7 && d>7){
     const pw=Math.min(4,w*0.3), pd=Math.min(4,d*0.3);
@@ -2289,6 +2289,11 @@ function makeHeli(body,stripe){
   g.traverse(o=>{ if (o.isMesh) o.castShadow=true; }); return {g,rotor,tail};
 }
 function airGround(x,z){ let h=inRect(AP,x,z)?0.2:0; for (const c of query(x,z,0.2)){ if (c.h<=h) continue; const inside=c.poly?(x>=c.x0&&x<=c.x1&&z>=c.z0&&z<=c.z1&&pointInPoly(x,z,c.poly)):(x>=c.x0&&x<=c.x1&&z>=c.z0&&z<=c.z1); if (inside) h=c.h; } return h; }
+function heliGround(a){   // punto de apoyo más alto bajo los patines (x ±1, z -1,5…1,9) y el centro
+  const fx=Math.sin(a.h), fz=Math.cos(a.h), rx=-fz, rz=fx; let g=airGround(a.x,a.z);
+  for (const [s,f] of [[1,1.8],[-1,1.8],[1,-1.4],[-1,-1.4]]) g=Math.max(g,airGround(a.x+rx*s+fx*f,a.z+rz*s+fz*f));
+  return g;
+}
 class Aircraft{
   constructor(kind,name,x,z,h,o={}){
     this.kind=kind; this.name=name; this.x=x; this.z=z; this.h=h; this.y=airGround(x,z); this.pitch=0; this.roll=0; this.v=0; this.vy=0; this.side=0; this.thr=0; this.rpm=0;
@@ -2312,7 +2317,7 @@ function aircraftAIInput(a){   // piloto automático: patrulla por puntos de rut
   return inp;
 }
 function flightStep(a,dt,inp){
-  const g=airGround(a.x,a.z), onG=a.y<=g+0.05, fx=Math.sin(a.h), fz=Math.cos(a.h);
+  const g=a.kind==='heli'?heliGround(a):airGround(a.x,a.z), onG=a.y<=g+0.05, fx=Math.sin(a.h), fz=Math.cos(a.h);
   if (a.kind==='plane'){
     a.rpm=lerp(a.rpm,a.pilot||a.ai?0.35+a.thr*0.65:0,dt*2);
     a.thr=clamp(a.thr+inp.thr*0.45*dt,0,1);
@@ -2331,17 +2336,22 @@ function flightStep(a,dt,inp){
     const on=!!(a.pilot||a.ai); a.rpm=clamp(a.rpm+(on?0.35:-0.25)*dt,0,1); const lift=a.rpm>0.85;
     const gyh=a.y-g; let vyT=lift?(inp.up?7:0)-(inp.down?6:0):-4; if (vyT<0 && gyh<5) vyT=Math.max(vyT,-1.2-gyh*0.5);   // cerca del suelo frena el descenso: se posa suave
     a.vy+=(vyT-a.vy)*dt*2.2;
-    const air=a.y>g+0.3; a.v+=((air&&lift?inp.thr*38:0)-a.v)*dt*(air?0.7:3); a.side+=((air&&lift?inp.strafe*12:0)-a.side)*dt*1.5;
-    if (a.rpm>0.5) a.h-=inp.turn*1.25*dt;
+    const air=a.y>g+0.3; a.v+=((air&&lift?inp.thr*38:0)-a.v)*Math.min(1,dt*(air?0.7:8)); a.side+=((air&&lift?inp.strafe*12:0)-a.side)*Math.min(1,dt*(air?1.5:8));
+    if (a.rpm>0.5) a.h-=inp.turn*(air?1.25:0.45)*dt;   // posado: gira despacio sobre los patines
     a.pitch=-a.v/38*0.28; a.roll=a.side/12*0.22+(air?inp.turn*0.08:0);
     const rx=-fz, rz=fx; a.x+=(fx*a.v+rx*a.side)*dt; a.z+=(fz*a.v+rz*a.side)*dt; a.y+=a.vy*dt;
+    if (!air && a.vy<=0 && !inp.up){ a.vy=0; a.y=g; }   // posado: quieto, sin rebotes ni vibraciones
+    // palas del rotor contra una pared más alta: se aparta con suavidad (no atraviesa ni sale disparado)
+    const ry=a.y+3.1; let px=0, pz=0;
+    for (let k=0;k<8;k++){ const an=k/8*Math.PI*2, ux=Math.sin(an), uz=Math.cos(an); if (airGround(a.x+ux*5.2,a.z+uz*5.2)>ry){ px-=ux; pz-=uz; } }
+    if (px||pz){ const L=Math.hypot(px,pz)||1; a.x+=px/L*2.5*dt; a.z+=pz/L*2.5*dt; const vf=fx*px/L+fz*pz/L; if (vf<0) a.v*=0.8; a.side*=0.8; }
   }
   // choque con edificios (morro y puntas) y contacto con el suelo
   const fwd=a.kind==='plane'?4:2.2, span=a.kind==='plane'?5.2:1.4, rxv=-Math.cos(a.h), rzv=Math.sin(a.h);
   const speed=Math.hypot(a.v,a.vy,a.side);
   for (const [px,pz] of [[a.x+fx*fwd,a.z+fz*fwd],[a.x+rxv*span,a.z+rzv*span],[a.x-rxv*span,a.z-rzv*span],[a.x-fx*(a.kind==='plane'?5:6),a.z-fz*(a.kind==='plane'?5:6)]]){
     const gh=airGround(px,pz); if (gh>a.y+0.6){ if (speed>9) return aircraftCrash(a,'¡Te has estrellado contra un edificio!'); a.x-=fx*a.v*dt*1.2; a.z-=fz*a.v*dt*1.2; a.v=0; a.side=0; break; } }
-  const g2=airGround(a.x,a.z);
+  const g2=a.kind==='heli'?heliGround(a):airGround(a.x,a.z);
   if (a.y<g2){ const hard=a.vy<(a.kind==='plane'?-7:-7.5) || (a.kind==='plane' && (Math.abs(a.roll)>0.55 || a.pitch<-0.3));
     if (hard) return aircraftCrash(a,'¡Aterrizaje forzoso!'); if (a.vy<-3.5){ a.health-=(-a.vy-3.5)*8; shake(0.5); } a.y=g2; a.vy=0; if (a.kind==='plane'){ a.pitch=Math.max(0,a.pitch); } }
   if (Math.abs(a.x)>3450 || Math.abs(a.z)>1500 || a.x<-1600){ a.h=wrapA(Math.atan2(55-a.x,-55-a.z)); if (a.pilot) toast('Fuera de la zona: el piloto automático te devuelve a Elche',2); }   // límites del mundo
@@ -2364,8 +2374,10 @@ function exitAircraft(){
   const gy=a.y-airGround(a.x,a.z), sp=Math.hypot(a.v,a.side,a.vy);
   if (gy>1.2){ toast('¡Estás en el aire! Aterriza antes de bajar',1.8); return; }
   if (sp>3){ toast('Vas demasiado rápido para bajar',1.6); return; }
-  const rx=-Math.cos(a.h), rz=Math.sin(a.h), off=a.kind==='plane'?1.8:2.2;
-  player.inAir=null; a.pilot=null; a.thr=0; player.x=a.x+rx*off; player.z=a.z+rz*off; player.y=airGround(player.x,player.z); player.vy=0; player.mesh.visible=true; player.h=a.h;
+  const rx=-Math.cos(a.h), rz=Math.sin(a.h), off=a.kind==='plane'?1.8:2.2, fx=Math.sin(a.h), fz=Math.cos(a.h), base=a.kind==='heli'?heliGround(a):airGround(a.x,a.z);
+  let ex=a.x+rx*off, ez=a.z+rz*off;
+  for (const [sx,sz] of [[rx*off,rz*off],[-rx*off,-rz*off],[fx*3,fz*3],[rx*1.3+fx*0.6,rz*1.3+fz*0.6],[-rx*1.3+fx*0.6,-rz*1.3+fz*0.6]]){ const gh=airGround(a.x+sx,a.z+sz); if (Math.abs(gh-base)<0.5){ ex=a.x+sx; ez=a.z+sz; break; } }
+  player.inAir=null; a.pilot=null; a.thr=0; player.x=ex; player.z=ez; player.y=airGround(player.x,player.z); player.vy=0; player.mesh.visible=true; player.h=a.h;
 }
 function updateAircraft(dt){
   for (const a of AIRCRAFT){ if (a.dead) continue;
