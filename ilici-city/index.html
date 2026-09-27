@@ -239,6 +239,7 @@
       <kbd>T</kbd><span>Pedir un taxi libre</span>
       <kbd>U</kbd><span>Ruleta de acciones (fumar, sentarse, bailar…)</span>
       <kbd>C · V</kbd><span>Cámara cenital · primera persona</span>
+      <kbd>B</kbd><span>Conduciendo: mirar hacia atrás</span>
       <kbd>M</kbd><span>Mapa: zoom y destinos</span>
       <kbd>Tab</kbd><span>Teléfono móvil</span>
       <kbd>Retroceso</kbd><span>Cancelar misión</span>
@@ -1971,7 +1972,7 @@ class Car{
   drive(dt,thr,steer,hb){
     const T=this.T; this.thr=thr; this.hb=hb; this.braking=(thr<-0.05&&this.fwd()>0.4)||(hb&&this.speed>0.5);
     if (this.dead){ thr=0; steer=0; hb=true; }
-    this.steerV += (steer-this.steerV)*Math.min(1,dt*7);
+    this.steerV += (steer-this.steerV)*Math.min(1,dt*(Math.abs(steer)<0.05?13:7)); if (Math.abs(this.steerV)<1e-3 && Math.abs(steer)<0.05) this.steerV=0;   // al soltar, el volante vuelve al centro (autoalineado) y queda recto de verdad
     let fx=Math.sin(this.h), fz=Math.cos(this.h);
     const v0=this.vx*fx+this.vz*fz;
     const st=this.steerV*0.62*(1-Math.min(Math.abs(v0)/T.max,1)*0.55);
@@ -4073,7 +4074,7 @@ function closeHelp(){ $('help').hidden=true; state='play'; requestLock(true); }
 let fp=false; try{ fp=localStorage.getItem('ilici-fp')==='1'; }catch(e){}
 let aiming=false, aimPitch=0, aimK=0;   // apuntado en tercera persona (clic derecho)
 const tpAim=()=>aiming && !fp && !player.inCar && player.health>0 && state==='play';
-let carAimRel=0, carAimK=0;   // apuntado desde un vehículo: el ángulo se guarda relativo al coche, así giros, acelerones y frenazos no lo mueven
+let carAimRel=0, carAimK=0, lookBackK=0; const lookBack=()=>keys.has('KeyB')&&!!player.inCar&&state==='play';   // B: mirar hacia atrás mientras conduces   // apuntado desde un vehículo: el ángulo se guarda relativo al coche, así giros, acelerones y frenazos no lo mueven
 const carAim=()=>aiming && !fp && !!player.inCar && !taxiRide && !player.inCar.T.heavy && player.health>0 && state==='play';
 let lastHitZone=null;
 let fpPitch=0, fpCarLook=0, vmKick=0, vmBob=0, hitFlash=0, lastRayHit=null;
@@ -4122,6 +4123,7 @@ addEventListener('mousemove',e=>{ if (state!=='play') return;
   const locked=document.pointerLockElement===lockEl; if (!locked && !(e.buttons&2)) return;
   const dx=e.movementX||0, dy=e.movementY||0; if (Math.abs(dx)>300||Math.abs(dy)>300) return;   // pico espurio del navegador al capturar: se ignora
   if (wheel){ wheelMouse(dx,dy); return; }   // con la ruleta abierta el ratón elige, no mueve la cámara
+  if (player.inCar && !carAim() && !(fp && aiming)) return;   // conduciendo, la cámara va fija detrás del vehículo: el ratón no la mueve (salvo apuntando)
   if (fp){ lookDelta(dx,dy,MOUSE_K); return; }
   if (player.inAir) return;
   if (carAim()){ carAimRel=wrapA(carAimRel-dx*MOUSE_K*0.7); aimPitch=clamp(aimPitch-dy*MOUSE_K*0.7,-0.35,0.45); }   // relativo al coche
@@ -5919,7 +5921,7 @@ function updateCamera(dt){
     return; }
   if (fp){
     let yaw, x, y, z;
-    if (player.inCar){ const c=player.inCar, fx=Math.sin(c.h), fz=Math.cos(c.h), rx=-fz, rz=fx; fpCarLook*=Math.exp(-dt*0.8);
+    if (player.inCar){ const c=player.inCar, fx=Math.sin(c.h), fz=Math.cos(c.h), rx=-fz, rz=fx; if (!aiming) fpCarLook+=((lookBack()?Math.PI:0)-fpCarLook)*Math.min(1,dt*8);   // vista fija al frente (o atrás con B); con clic derecho se apunta
       const so=c.T.bike?0:taxiRide?-0.4:0.36, back=taxiRide?0.95:0.15; x=c.x-rx*so-fx*back; z=c.z-rz*so-fz*back; y=c.T.eye||(c.k==='van'?1.9:c.k==='sports'?1.18:1.4); yaw=c.h+fpCarLook; }
     else { yaw=player.h; y=0.25+(player.y||0)+(player.crouch?1.05:1.62)+Math.abs(Math.sin(vmBob))*0.03; x=player.x+Math.sin(yaw)*0.1; z=player.z+Math.cos(yaw)*0.1;
       if (camSolid(x+Math.sin(yaw)*0.22,z+Math.cos(yaw)*0.22,y)){ x=player.x; z=player.z; } }   // pegado a una pared: la cámara no asoma dentro
@@ -5939,7 +5941,9 @@ function updateCamera(dt){
     else if (carAimK>0 && player.inCar){ carAimRel*=Math.exp(-dt*2.5); camYaw=player.inCar.h+carAimRel; mouseLookT=-99; } }   // al soltar vuelve detrás del coche sin soltarse de él   // apuntando desde el coche: la cámara va con el coche y el ratón solo mueve el ángulo relativo
   const aimOn=tpAim(); aimK+=((aimOn?1:0)-aimK)*Math.min(1,dt*(aimOn?11:8)); if (aimK<0.01) aimK=0;
   const rate=(player.inCar?(moving?3.5:0.8):(moving?1.6:0.25))*(moving&&camDist!==null&&camDist<2?2.5:1);   // encajonada: gira antes para salir
-  if (!aimOn && !carAimK && now-mouseLookT>(player.inCar?1.2:2.5)) camYaw+=wrapA(tYaw-camYaw)*(1-Math.exp(-dt*rate));   // si el jugador mueve la cámara, se respeta un rato
+  if (player.inCar && !carAimK){ const back=lookBack()?Math.PI:0; lookBackK+=((back?1:0)-lookBackK)*Math.min(1,dt*9); camYaw=P.h+wrapA(camYaw-P.h); const tgt=P.h+Math.PI*lookBackK;   // conduciendo: detrás del coche, acompañando los giros con suavidad; mirar atrás gira la cámara sin tocar la dirección
+    camYaw+=wrapA(tgt-camYaw)*(1-Math.exp(-dt*(lookBack()||lookBackK>0.02&&lookBackK<0.98?14:7))); tpPitch*=Math.exp(-dt*3); }
+  else if (!aimOn && !carAimK && now-mouseLookT>(player.inCar?1.2:2.5)) camYaw+=wrapA(tYaw-camYaw)*(1-Math.exp(-dt*rate));   // si el jugador mueve la cámara, se respeta un rato
   const tx=P.x, tz=P.z;
   if (camMode===1){
     const h=58+spd*1.2;
