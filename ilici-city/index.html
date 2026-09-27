@@ -2626,8 +2626,8 @@ function boardAircraft(a){
 function exitAircraft(){
   const a=player.inAir; if (!a) return;
   const gy=a.y-airGround(a.x,a.z), sp=Math.hypot(a.v,a.side,a.vy);
-  if (gy>1.2){ toast('¡Estás en el aire! Aterriza antes de bajar',1.8); return; }
-  if (sp>3){ toast('Vas demasiado rápido para bajar',1.6); return; }
+  if (gy>1.2 || sp>3){ player.inAir=null; a.pilot=null; a.thr=0; player.x=a.x-Math.cos(a.h)*2.5; player.z=a.z+Math.sin(a.h)*2.5; player.y=a.y; player.vy=0; player.mesh.visible=true; player.h=a.h;   // saltas: caes (y la aeronave sigue sin piloto)
+    if (sp>3) player.slide={vx:Math.sin(a.h)*a.v*0.7,vz:Math.cos(a.h)*a.v*0.7,t:0}; toast(gy>6?'¡Saltas al vacío!':'¡Saltas de la aeronave!',1.6); return; }
   const rx=-Math.cos(a.h), rz=Math.sin(a.h), off=a.kind==='jet'?3.4:a.kind==='plane'?1.8:2.2, fx=Math.sin(a.h), fz=Math.cos(a.h), base=a.kind==='heli'?heliGround(a):airGround(a.x,a.z);
   let ex=a.x+rx*off, ez=a.z+rz*off;
   for (const [sx,sz] of [[rx*off,rz*off],[-rx*off,-rz*off],[fx*3,fz*3],[rx*1.3+fx*0.6,rz*1.3+fz*0.6],[-rx*1.3+fx*0.6,-rz*1.3+fz*0.6]]){ const gh=airGround(a.x+sx,a.z+sz); if (Math.abs(gh-base)<0.5){ ex=a.x+sx; ez=a.z+sz; break; } }
@@ -3981,9 +3981,17 @@ function updateJack(dt){
   }
   if (t>=T3) endJack(true);
 }
+function bailOut(c,v){   // saltar de un vehículo en marcha: sales con su inercia, caes, ruedas y te haces daño según la velocidad
+  const sp=v.sp, kmh=sp*3.6; c.driverless=now;
+  player.slide={vx:v.x*0.85,vz:v.z*0.85,t:0}; player.vy=Math.min(3,1+sp*0.06); player.y=Math.max(player.y||0,0.3);
+  knockDown(Math.min(3.2,0.7+sp*0.09)); player.rollA=0; if (sp>3) player.h=Math.atan2(v.x,v.z)+Math.PI/2;   // cuerpo cruzado a la marcha: rueda de lado sobre su eje
+  const dmg=sp<6?0:sp<14?(sp-6)*2.2:sp<30?17+(sp-14)*3.6:200;   // ~50 km/h: leve · ~100 km/h: grave · >108 km/h: mortal
+  if (dmg>0) hurt(dmg,'torso'); shake(Math.min(1,0.25+sp*0.03)); sfxCrash(Math.min(5,sp*0.2));
+  toast(kmh<25?'Te bajas en marcha':kmh<60?'¡Saltas del vehículo en marcha!':kmh<100?'¡Caes rodando por el asfalto!':'¡Salto a una velocidad brutal!',1.8);
+}
 function exitCar(forced,silent){
   const c=player.inCar; if (!c) return;
-  if (!forced && c.speed>8) { toast('Frena antes de salir',1.2); return; }
+  const bail=!forced && c.speed>3.5, bv={x:c.vx,z:c.vz,sp:c.speed};   // se puede saltar en marcha: la física pone las consecuencias
   const rx=-Math.cos(c.h), rz=Math.sin(c.h);
   let placed=false;
   for (const s of [1,-1,0]){
@@ -3992,6 +4000,7 @@ function exitCar(forced,silent){
   }
   if (!placed){ player.x=c.x+rx*(c.T.w/2+1.1); player.z=c.z+rz*(c.T.w/2+1.1); }
   if (!c.dead) c.driver=null; player.h=c.h; camYaw=c.h; if (c.T.bike) c.mesh.rotation.z=0; player.mesh.rotation.set(0,player.h,0);
+  if (bail){ player.inCar=null; player.mesh.visible=true; bailOut(c,bv); return; }
   if (!forced && !c.T.bike){ const sx=c.x+(player.x-c.x)*0.45, sz=c.z+(player.z-c.z)*0.45;   // sale por la puerta: del asiento hacia fuera
     player.exitA={t:0,sx,sz,ex:player.x,ez:player.z,h:Math.atan2(player.x-c.x,player.z-c.z)}; player.x=sx; player.z=sz; }
   player.inCar=null; player.mesh.visible=true;
@@ -5180,7 +5189,7 @@ function update(dt){
   if (!player.inCar && !player.inAir){   // suelo bajo los pies: escalones y bordillos se suben solos; bancos, muretes y techos de coche, saltando
     const g=supportAt(player.x,player.z,player.y); player.gy=g.h;
     if (g.car && player.y<=g.h+0.02){ player.x+=g.car.vx*dt; player.z+=g.car.vz*dt; }   // encima de un coche en marcha, se mueve con él
-    if (player.y>g.h+0.001 || player.vy>0){ player.vy-=20*dt; player.y+=player.vy*dt; if (player.y<=g.h){ player.y=g.h; player.vy=0; } }
+    if (player.y>g.h+0.001 || player.vy>0){ player.vy-=20*dt; player.y+=player.vy*dt; if (player.y<=g.h){ player.y=g.h; if (player.vy<-11){ const f=-player.vy-11; hurt(f*f*0.9+f*3); knockDown(Math.min(2.5,0.5+f*0.12)); shake(Math.min(1,f*0.08)); } player.vy=0; } }   // caída desde altura: daño según la velocidad de impacto
     else { player.y=g.h; player.vy=0; } }
   if (fireEdge){ fireEdge=false; tryFire(); } else if ((fireHeld||mouseHeld||keys.has('KeyF')) && curW().auto) tryFire();
   updateMelee(dt);
@@ -5195,7 +5204,12 @@ function update(dt){
     if (!taxiRide && c.speed<2){ const o=bestInteraction(); if (o) showHint(isTouch?`ENTRAR: ${o.verb} · ${o.name}`:`[E] ${o.verb} · ${o.name}  ·  Intro: bajarse`); }   // parado junto a una actividad
     player.x=c.x; player.z=c.z; player.vx=c.vx; player.vz=c.vz;
   } else if (jack){ updateJack(dt);
-  } else if (player.downT>0){ player.downT-=dt; player.vx=player.vz=0; pushCircle(player,0.42,player.y+0.001);
+  } else if (player.downT>0){ player.downT-=dt; player.vx=player.vz=0;
+    if (player.slide){ const S=player.slide, ox=player.x, oz=player.z; player.x+=S.vx*dt; player.z+=S.vz*dt; const f=Math.exp(-dt*(player.y>0.05?0.6:2.6)); S.vx*=f; S.vz*=f; player.rollA=(player.rollA||0)+Math.hypot(S.vx,S.vz)*dt*1.6;   // rueda por el suelo
+      if (playerBlockedAt(player.x,player.z)||pointBlocked(player.x,player.z)){ player.x=ox; player.z=oz; const hit=Math.hypot(S.vx,S.vz); if (hit>6){ hurt((hit-6)*3); shake(0.5); } S.vx*=-0.2; S.vz*=-0.2; }
+      if (Math.hypot(S.vx,S.vz)<0.3) player.slide=null; }
+    else if (player.rollA!=null){ const T=Math.round(player.rollA/6.2832)*6.2832, d=T-player.rollA; player.rollA+=Math.sign(d)*Math.min(Math.abs(d),dt*6); if (Math.abs(d)<0.01) player.rollA=null; else player.downT=Math.max(player.downT,0.45); }   // termina de rodar hasta quedar tumbado
+    pushCircle(player,0.42,player.y+0.001);
   } else if (state==='play' && fp){
     if (keys.has('ArrowLeft')) player.h+=2.2*dt; if (keys.has('ArrowRight')) player.h-=2.2*dt;
     const mag=Math.min(1,Math.hypot(ax.x,ax.y));
@@ -5244,7 +5258,7 @@ function update(dt){
     else if (c.driver==='taxi' && c.ai) taxiAI(c,dt);
     else if (c.driver==='npc' && c.ai) cruise(c,dt);
     else if (c.driver==='police' && c.ai){ if (c.ai.mode==='chase') chase(c,dt); else cruise(c,dt); }
-    else c.drive(dt,0,0,true);
+    else c.drive(dt,0,0,!(c.driverless && now-c.driverless<8));   // abandonado en marcha: sigue rodando por inercia hasta chocar o pararse
     if (c.hornT>0) c.hornT-=dt;
     // río y límites
     const fx=Math.sin(c.h), fz=Math.cos(c.h), hl=c.T.len*0.45;
@@ -5864,7 +5878,7 @@ function deathPose(dt){   // muerte: se doblan las rodillas y el cuerpo cae con 
   if (!D.bled && t>0.75){ D.bled=true; if (D.violent){
     bloodSplat(player.x+Math.sin(player.h)*D.dir*0.8,player.y||0,player.z+Math.cos(player.h)*D.dir*0.8,0.8,3.5,90); for (let i=0;i<5;i++) emit(bloodP,player.x,0.3+(player.y||0),player.z,mrand(-1,1),mrand(0.5,1.5),mrand(-1,1),0.5,0.06,'#7a0a0a',12); } }
 }
-let playingCls=false;
+let playingCls=false; const _rq=new THREE.Quaternion(), _ax=new THREE.Vector3();   // _rq/_ax: rodar sobre el eje largo del cuerpo
 function frame(t){
   requestAnimationFrame(frame);
   { const pl=state==='play'&&!isTouch; if (pl!==playingCls){ playingCls=pl; document.body.classList.toggle('playing',pl); } }   // cursor oculto durante el juego; visible en menús
@@ -5885,8 +5899,8 @@ function frame(t){
       weaponPose();
       if (player.exitA){ const k=1-Math.min(1,player.exitA.t/0.55); u.legs[0].rotation.x=-1.1*k; u.legs[1].rotation.x=-0.5*k; u.knees[0].rotation.x=1.3*k; u.knees[1].rotation.x=0.6*k; player.mesh.position.y-=0.35*k; }   // se incorpora al salir del coche
       if (player.death) deathPose(dt);
-      else if (player.downT>0){ const k=player.downT>0.4?1:player.downT/0.4; player.mesh.rotation.x=-1.45*k; player.mesh.position.y=0.25+0.12*k; u.arms[0].rotation.x=u.arms[1].rotation.x=-2.6*k; setWeaponModel(player.mesh,null); }
-      else { player.mesh.rotation.x=0; player.mesh.rotation.z=0; const u2=player.mesh.userData; u2.legs[0].rotation.z=u2.legs[1].rotation.z=0; } }
+      else if (player.downT>0){ const k=player.downT>0.4?1:player.downT/0.4; player.mesh.rotation.x=-1.45*k; player.mesh.rotation.z=0; if (player.rollA){ _rq.setFromAxisAngle(_ax.set(0,1,0),player.rollA); player.mesh.quaternion.multiply(_rq); } player.mesh.position.y=0.25+0.12*k+(player.y||0); if (player.rollA){ player.mesh.position.y+=(player.y||0)+0.01-bodyMinY(player.mesh); } /* al rodar, lo más bajo del cuerpo va sobre el suelo */ u.arms[0].rotation.x=u.arms[1].rotation.x=-2.6*k; setWeaponModel(player.mesh,null); }
+      else { player.rollA=null; player.mesh.rotation.x=0; player.mesh.rotation.z=0; const u2=player.mesh.userData; u2.legs[0].rotation.z=u2.legs[1].rotation.z=0; } }
     if (keysT>0){ keysT-=dt; if (keysT<=0) $('keys').classList.remove('show'); }
     updateCamera(dt); updateViewmodel(dt); updateHUD(dt); updateMarkers(); updateAudio();
   } else if (state==='title'){
