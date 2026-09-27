@@ -1560,6 +1560,17 @@ const busStopMap=new Map(), BUS_STOPS=[];
   for (const [x,z] of [[30,-30],[80,-30],[30,-80],[80,-80],[-95,95],[-15,95],[-60,-300],[-100,-150],[-100,-190]]) if (!inRZ(x,z) && !query(x,z,3).length) ficus(x,z,R(3.5,5));
   for (const e of edges){ if (e.diag || e.real) continue; const A=nodes[e.a],B=nodes[e.b],ux=(B.x-A.x)/e.len,uz=(B.z-A.z)/e.len;
     for (let t=30;t<e.len-20;t+=55){ const x=A.x+ux*t+uz*10.3, z=A.z+uz*t-ux*10.3; if (Math.abs(x-riverX(z))<RHz(z)+2 || inRZ(x,z)||NOROAD.some(r=>inRect(r,x,z))||pointBlocked(x,z)) continue; bins.push({x,y:0.8,z,sx:0.6,sy:1.1,sz:0.6,c:'#2f6b3a'}); } }
+  { // contenedores de reciclaje junto al bordillo (resto, envases, papel, vidrio), en grupos
+    const cont=[], lids=[], COLS=['#3d4a3a','#e2b52a','#2c5d9a','#3f8a4a'];
+    for (const e of edges){ if (e.diag || e.real || e.hwy || e.len<90) continue; const A=nodes[e.a],B=nodes[e.b],ux=(B.x-A.x)/e.len,uz=(B.z-A.z)/e.len;
+      const side=(e.a+e.b)%2?1:-1, off=8.15, n=2+((e.a*7+e.b)%3), half=(n-1)*0.9+0.9, ry=Math.atan2(ux,uz);
+      const free=(x,z)=>!query(x,z,half+0.8).some(c=>c.h>0.4 && x>c.x0-half-0.8 && x<c.x1+half+0.8 && z>c.z0-half-0.8 && z<c.z1+half+0.8);
+      for (const t of [e.len*0.62,e.len*0.35,e.len*0.75]){ const cx=A.x+ux*t-uz*off*side, cz=A.z+uz*t+ux*off*side;   // entre farolas y árboles, donde quepa el grupo
+        if (Math.abs(cx-riverX(cz))<RHz(cz)+3||inRZ(cx,cz)||NOROAD.some(r=>inRect(r,cx,cz))||!free(cx,cz)) continue;
+        for (let i=0;i<n;i++){ const o=(i-(n-1)/2)*1.75, x=cx+ux*o, z=cz+uz*o, c=COLS[(i+e.a)%4];
+          cont.push({x,y:0.95,z,sx:1.6,sy:1.3,sz:1.15,ry,c}); lids.push({x,y:1.66,z,sx:1.66,sy:0.12,sz:1.2,ry,c:'#'+_c.set(c).multiplyScalar(0.8).getHexString()}); }
+        addCollider(cx-Math.abs(ux)*half-Math.abs(uz)*0.6,cz-Math.abs(uz)*half-Math.abs(ux)*0.6,cx+Math.abs(ux)*half+Math.abs(uz)*0.6,cz+Math.abs(uz)*half+Math.abs(ux)*0.6,1.7); break; } }
+    { const cg=new THREE.BoxGeometry(1,1,1,1,1,1), P=cg.attributes.position; for (let i=0;i<P.count;i++) if (P.getY(i)<0) { P.setX(i,P.getX(i)*0.9); P.setZ(i,P.getZ(i)*0.88); } cg.computeVertexNormals(); instanced(cg,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.55,metalness:0.1}),cont); }   /* cuerpo algo más estrecho abajo, como los reales */ instanced(boxGeo,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.5}),lids,false); }
   instanced(boxGeo,new THREE.MeshLambertMaterial({color:0xffffff}),seats,false);
   instanced(boxGeo,new THREE.MeshLambertMaterial({color:0xffffff}),backs,false);
   instanced(new THREE.CylinderGeometry(0.5,0.44,1,12),new THREE.MeshLambertMaterial({color:0xffffff}),bins,false);   // papeleras cilíndricas
@@ -1922,7 +1933,11 @@ function makeIdentity(origin,age){   // nombre y aspecto de una persona concreta
 const pedMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.82,metalness:0});   // un solo material para todos: tela y piel responden a la luz
 const capCache={};
 const capsule=(r,l)=>capCache[r+'_'+l]||(capCache[r+'_'+l]=new THREE.CapsuleGeometry(r,l,3,10));
-const taperCache={};
+const taperCache={}, muscleCache={};
+const muscle=(r0,rm,r1,l,mp=0.35)=>{ const k=[r0,rm,r1,l,mp].join('_'); if (muscleCache[k]) return muscleCache[k];   // extremidad con volumen: redondeada arriba, abultada (bíceps, gemelo…) y estrecha abajo
+  const pts=[], top=l/2, bot=-l/2; for (let i=0;i<=3;i++){ const a=-Math.PI/2+i/3*Math.PI/2; pts.push(new THREE.Vector2(Math.cos(a)*r1,bot+Math.sin(a)*r1*0.9)); }
+  for (const [f,r] of [[0.5,lerp(r1,rm,0.75)],[1-mp,rm],[1-mp*0.45,lerp(rm,r0,0.4)]]) pts.push(new THREE.Vector2(r,bot+l*f)); for (let i=0;i<=3;i++){ const a=i/3*Math.PI/2; pts.push(new THREE.Vector2(Math.cos(a)*r0,top+Math.sin(a)*r0*0.9)); }
+  return muscleCache[k]=new THREE.LatheGeometry(pts,12); };
 const taper=(r0,r1,l)=>taperCache[r0+'_'+r1+'_'+l]||(taperCache[r0+'_'+r1+'_'+l]=(()=>{ const pts=[]; for (let i=0;i<=3;i++){ const a=-Math.PI/2+i/3*Math.PI/2; pts.push(new THREE.Vector2(Math.cos(a)*r1,-l/2+Math.sin(a)*r1)); }
   for (let i=0;i<=3;i++){ const a=i/3*Math.PI/2; pts.push(new THREE.Vector2(Math.cos(a)*r0,l/2+Math.sin(a)*r0)); } return new THREE.LatheGeometry(pts,10); })());   // cápsula que se estrecha (muslo, gemelo, antebrazo)
 // ao: oscurece hacia abajo (0 = sin efecto) para dar volumen sin coste de render
@@ -1998,7 +2013,7 @@ function makePedMesh(shirt,pants,skin,hair,extra,look={}){   // look: rasgos ele
   body.push(tintGeo(PG.sph,shade(skin,0.93),0,1.628,0.112,0.018,0.012,0.015));
   for (const sx of [-1,1]){
     body.push(tintGeo(PG.sphL,'#f2f0ea',sx*0.036,1.676,0.093,0.016,0.011,0.008)); body.push(tintGeo(PG.sphL,mpick(['#3b2716','#1b1410','#3a5a7a','#4a6a3a']),sx*0.036,1.676,0.099,0.008,0.008,0.005));
-    body.push(tintGeo(PG.box,shade(hair,0.9),sx*0.037,1.699,0.097,0.034,0.009,0.012)); body.push(tintGeo(PG.sph,shade(skin,0.95),sx*0.1,1.655,0,0.016,0.028,0.02));
+    body.push(tintGeo(PG.box,shade(hair,1.05),sx*0.037,1.701,0.1,0.03,0.006,0.008,sx*0.12)); body.push(tintGeo(PG.sph,shade(skin,0.95),sx*0.1,1.655,0,0.016,0.028,0.02));
   }
   body.push(tintGeo(PG.box,shade(skin,0.72),0,1.604,0.1,0.034,0.007,0.01));   // boca
   // pelo, gorras y barba
@@ -2010,7 +2025,7 @@ function makePedMesh(shirt,pants,skin,hair,extra,look={}){   // look: rasgos ele
   } else {
     if (style==='hijab'){ const hc=look.headC||'#2c3e50'; body.push(tintGeo(PG.cap,hc,0,1.655,-0.035,0.122,0.136,0.13)); body.push(tintGeo(PG.cyl,hc,0,1.53,-0.005,0.078,0.13,0.074)); body.push(tintGeo(PG.rbox,hc,0,1.5,-0.07,0.2,0.24,0.1)); }   // pañuelo: cubre pelo, orejas y cuello
     else if (style==='cap'){ const cc=capC; body.push(tintGeo(PG.cap,cc,0,1.685,0,0.11,0.1,0.118)); body.push(tintGeo(PG.cyl,cc,0,1.7,0.1,0.075,0.012,0.07)); }
-    else if (style!=='bald'){ const hh=style==='buzz'?0.09:0.105; body.push(tintGeo(PG.cap,hair,0,1.672,-0.008,0.108,hh,0.12));
+    else if (style!=='bald'){ const hh=style==='buzz'?0.09:0.105; body.push(tintGeo(PG.cap,hair,0,1.678,-0.012,0.112,hh+0.012,0.126,-0.24));   // inclinado hacia atrás: frente despejada, nuca cubierta
       if (style==='side') body.push(tintGeo(PG.sph,hair,0.03,1.735,0.04,0.08,0.03,0.07));
       if (style==='long'){ body.push(tintGeo(PG.rbox,hair,0,1.56,-0.07,0.21,0.3,0.08)); for (const sx of [-1,1]) body.push(tintGeo(PG.rbox,hair,sx*0.095,1.6,0.0,0.035,0.2,0.09)); }
       if (style==='bob') body.push(tintGeo(PG.rbox,hair,0,1.63,-0.03,0.22,0.14,0.18));
@@ -2029,27 +2044,27 @@ function makePedMesh(shirt,pants,skin,hair,extra,look={}){   // look: rasgos ele
   if (cop) bodyL.push(tintGeo(PGL.cyl,'#17234a',0,1.765,0,0.112,0.07,0.12));
   else if (style==='hijab'){}
   else if (style==='cap') bodyL.push(tintGeo(PGL.cap,capC,0,1.685,0,0.11,0.1,0.118));
-  else if (style!=='bald'){ bodyL.push(tintGeo(PGL.cap,hair,0,1.672,-0.008,0.108,style==='buzz'?0.09:0.105,0.12)); if (style==='long'||style==='bob') bodyL.push(tintGeo(PG.box,hair,0,style==='long'?1.56:1.63,-0.06,0.2,style==='long'?0.3:0.14,0.1)); }
+  else if (style!=='bald'){ bodyL.push(tintGeo(PGL.cap,hair,0,1.678,-0.012,0.112,(style==='buzz'?0.09:0.105)+0.012,0.126,-0.24)); if (style==='long'||style==='bob') bodyL.push(tintGeo(PG.box,hair,0,style==='long'?1.56:1.63,-0.06,0.2,style==='long'?0.3:0.14,0.1)); }
   if (extra==='elche') bodyL.push(tintGeo(PGL.cyl,'#1f8a4c',0,1.23,0,0.2,0.09,0.13));
   both(bodyG,body,bodyL);
   // brazos y piernas: mismos grupos que siempre (hombro→codo, cadera→rodilla); las poses del juego los mueven directamente
   const legs=[], arms=[], knees=[], elbows=[]; let wmHolder=null;
   for (const sx of [-1,1]){
     const sh=new THREE.Group(); sh.position.set(sx*(fem?0.175:0.2),1.43,0); g.add(sh); arms.push(sh);
-    const upper=[tintGeo(taper(0.062,0.05,0.2),longSleeve||top==='polo'||top==='tee'?outer:skin,0,-0.15,0,1,1,1,0,0.15)];
-    if (!longSleeve) upper.push(tintGeo(taper(0.046,0.042,0.1),skin,0,-0.22,0));   // brazo que asoma de la manga corta
+    const upper=[tintGeo(muscle(0.066,0.069,0.05,0.2,0.4),longSleeve||top==='polo'||top==='tee'?outer:skin,0,-0.15,0,1,1,1,0,0.15)];
+    if (!longSleeve) upper.push(tintGeo(muscle(0.05,0.052,0.045,0.1,0.4),skin,0,-0.23,0));   // brazo que asoma de la manga corta
     both(sh,upper,[tintGeo(taperL(0.062,0.05,0.2),upC,0,-0.15,0)]);
     const el=new THREE.Group(); el.position.y=-0.31; sh.add(el); elbows.push(el);
-    const fore=[tintGeo(taper(0.046,0.036,0.18),longSleeve?outer:skin,0,-0.13,0,1,1,1,0,0.12)];
+    const fore=[tintGeo(muscle(0.049,0.052,0.035,0.18,0.25),longSleeve?outer:skin,0,-0.13,0,1,1,1,0,0.12), tintGeo(PG.sphL,longSleeve?outer:skin,0,0,0,0.049,0.05,0.049)];   // codo: sin hueco entre brazo y antebrazo
     if (longSleeve) fore.push(tintGeo(PG.cyl,shade(outer,0.8),0,-0.245,0,0.041,0.02,0.041));   // puño
     // mano: palma, dedos juntos algo doblados y pulgar
     fore.push(tintGeo(PG.rbox,skin,0,-0.3,0.004,0.06,0.085,0.035)); fore.push(tintGeo(PG.rbox,shade(skin,0.96),0,-0.36,0.012,0.056,0.05,0.03,0.35)); fore.push(tintGeo(capsule(0.011,0.03),skin,-sx*0.032,-0.305,0.022));
     both(el,fore,[tintGeo(taperL(0.046,0.036,0.18),foreC,0,-0.13,0), tintGeo(PG.box,skin,0,-0.32,0.006,0.055,0.12,0.035)]);
     if (sx===1){ wmHolder=new THREE.Group(); wmHolder.position.y=0.31; el.add(wmHolder); }
     const hp=new THREE.Group(); hp.position.set(sx*0.093,0.93,0); g.add(hp); legs.push(hp);
-    both(hp,[tintGeo(taper(0.082,0.062,0.26),thighC,0,-0.2,0,1,1,1,0,0.12)],[tintGeo(taperL(0.082,0.062,0.26),thighC,0,-0.2,0)]);
+    both(hp,[tintGeo(muscle(0.09,0.093,0.064,0.26,0.3),thighC,0,-0.2,0,1,1,1,0,0.12), tintGeo(PG.sphL,thighC,0,0.02,0,0.085,0.06,0.085)],[tintGeo(taperL(0.082,0.062,0.26),thighC,0,-0.2,0)]);
     const kn=new THREE.Group(); kn.position.y=-0.43; hp.add(kn); knees.push(kn);
-    const shin=[tintGeo(taper(0.061,0.045,0.28),(shorts||skirt)?skin:pants,0,-0.2,0,1,1,1,0,0.12)];
+    const shin=[tintGeo(muscle(0.064,0.069,0.043,0.28,0.28),(shorts||skirt)?skin:pants,0,-0.2,0,1,1,1,0,0.12), tintGeo(PG.sphL,(shorts||skirt)?skin:pants,0,0,0,0.066,0.06,0.068)];   // rodilla y gemelo
     if (!(shorts||skirt)) shin.push(tintGeo(PG.cyl,shade(pants,0.85),0,-0.39,0,0.052,0.03,0.052));   // bajo del pantalón
     // zapatilla: cuerpo redondeado, puntera, suela
     shin.push(tintGeo(PG.rbox,shoes,0,-0.448,0.035,0.105,0.075,0.235)); shin.push(tintGeo(PG.rbox,sole,0,-0.49,0.035,0.11,0.025,0.245)); shin.push(tintGeo(PG.box,shade(shoes,0.7),0,-0.43,0.1,0.07,0.012,0.06));

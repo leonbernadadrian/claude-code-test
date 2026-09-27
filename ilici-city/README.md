@@ -139,6 +139,25 @@ Los controles aparecen en pantalla al empezar (tecla I) y en el menú de pausa. 
 
 El centro (La Glorieta – carrer Aspe) es real. El resto del mapa se basa en la geografía de Elche, pero sus calles siguen una cuadrícula.
 
+## Fase de sistemas y calidad
+
+- **Estrellas por gravedad**: cada delito tiene un peso y un tope propios. Una pelea callejera se queda en 1 o 2 estrellas; disparar, matar o atracar puede llegar a 3; atacar a la policía, a 4; matar agentes, a 5. Varios golpes a la misma persona cuentan como un solo incidente, y solo cuenta lo que la policía sabe (lo ha visto, o un testigo o una cámara te han identificado).
+- **Perder la búsqueda**: mientras la policía tenga pista se mantienen las estrellas. Cuando la pierde, empieza una búsqueda activa y, si sigues oculto, todas las estrellas parpadean y desaparecen a la vez. Cuesta unos 20 s con 1 estrella, unos 60 s con 3 y unos 145 s con 5.
+- **Helicóptero policial**: espera en la comisaría y despega con 3 estrellas. Busca alrededor de la última pista sin saber dónde estás y solo te ve si tiene línea de visión (peor de noche). Lleva foco de búsqueda, rotativos y sonido de rotor, y vuelve a la base al bajar el nivel.
+- **Blindados**: solo con 5 estrellas y como mucho 2. Persiguen, apuntan con la torreta, disparan el cañón y aplastan coches; se retiran al bajar el nivel.
+- **Puñetazos por fases**: preparación, giro del torso, paso del peso, extensión hacia el objetivo, contacto sincronizado y vuelta a la guardia. Hay directo, gancho, uppercut y golpe cargado, y los NPC que pelean usan la misma animación.
+- **Aeropuerto**: base aérea vallada con guardias, refugio y un caza. Entrar sin permiso acaba en aviso a la policía y robar el caza da 4 estrellas. El helicóptero del aeropuerto se denuncia si te ven robarlo, y la avioneta del aeroclub es libre.
+- **Autobuses con pasajeros**: los vecinos esperan en las paradas, suben, viajan visibles tras las ventanas y bajan en su parada. Si robas el bus, siguen dentro.
+- **Acciones animadas**: bajar del coche por la puerta, sacar el móvil y recargar con cargador (tecla R).
+- **Armería y trapicheo** trasladados de verdad al palmeral del barrio Los Palmerales.
+- **Personajes más humanos**: brazos y piernas con volumen muscular, codos y rodillas sin huecos, pelo que deja la frente despejada y cejas finas (ya no parecen gafas de sol).
+- **Calles**: contenedores de reciclaje junto al bordillo.
+- **Rendimiento en vuelo**: no se dibuja nada más allá de la niebla ni los peatones lejanos, lo que reduce las llamadas de dibujo en un 40 % desde el aire.
+
+## Cómo seguir en local
+
+Todo el juego está en `ilici-city/index.html`, un único archivo. Clona el repositorio, cambia a la rama `claude/gracious-babbage-rbramm` (o a `main` si ya has fusionado el PR) y abre el archivo en el navegador, o sirve la carpeta con `python -m http.server`. Necesita internet para cargar three.js desde el CDN.
+
 ## Datos del centro real
 
 - Fuente: © colaboradores de OpenStreetMap, licencia ODbL (https://www.openstreetmap.org/copyright).
