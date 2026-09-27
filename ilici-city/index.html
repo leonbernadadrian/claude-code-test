@@ -2042,6 +2042,7 @@ class Ped{
     this.x=x; this.z=z; this.y=0; this.h=mrand(0,6.28); this.state='walk'; this.speed=mrand(1.1,1.6);
     this.phase=mrand(0,6); this.t=0; this.vx=0; this.vy=0; this.vz=0; this.hp=100; this.cop=cop; this.shootT=mrand(1,2); this.weapon=cop?copWeapon():null; if (cop) setWeaponModel(this.mesh,this.weapon); this.fx=0; this.fz=0;
     this.block=null; this.k=0; this.dir=Math.random()<0.5?1:-1; this.tx=x; this.tz=z; this.cross=false;
+    this.tough=cop?mrand(0.5,0.9):Math.random();   // aguante propio: no todos reaccionan igual a un golpe o un disparo
     peds.push(this);
   }
   home(){
@@ -2076,19 +2077,26 @@ class Ped{
     if (power>=2.3 || (bat && power>=1.7) || (this.hp<20 && Math.random()<0.4)){ this.knock(dx*(2+power*1.5),dz*(2+power*1.5),false); return false; }
     this.stagger(dx,dz,power); return false;
   }
-  gunHit(dmg,zone,dx,dz){
+  gunHit(dmg,zone,dx,dz){   // reacción según la zona, el daño y el aguante de cada uno
     if (this.state==='dead') return false;
-    this.hp-=dmg;
-    if (this.hp<=0){ const f=zone==='head'?2:zone==='leg'?4:3; this.knock(dx*f,dz*f,true); return true; }
-    if (zone==='leg'){ this.limp=true; if (Math.random()<0.65){ this.knock(dx*1.5,dz*1.5,false); return false; } this.stagger(dx,dz,0.6); return false; }
-    if (zone==='arm'){ this.stagger(dx*0.5,dz*0.5,0.5); return false; }
-    if (zone==='head'){ this.knock(dx*2,dz*2,false); return false; }
-    this.stagger(dx,dz,1.2); return false;
+    this.hp-=dmg; this.bleed(zone,dx,dz,dmg);
+    if (this.hp<=0){ const f=zone==='head'?0.6:zone==='leg'?4:3; this.knock(dx*f,dz*f,true,zone); return true; }   // en la cabeza: se desploma donde está
+    const T=this.tough??0.5, heavy=dmg>=30, side=(dx*Math.cos(this.h)-dz*Math.sin(this.h))>0?1:0;   // brazo del lado del impacto
+    if (zone==='leg'){ this.limp=true; if (Math.random()<(heavy?0.85:0.6)-T*0.35){ this.knock(dx*1.5,dz*1.5,false,'leg'); return false; } this.stagger(dx,dz,0.6,'leg',side); return false; }
+    if (zone==='arm'){ this.stagger(dx*0.5,dz*0.5,0.5+(1-T)*0.3,'arm',side); return false; }
+    if (zone==='head'){ this.knock(dx*2,dz*2,false,'head'); return false; }
+    if (heavy && Math.random()<0.65-T*0.45){ this.knock(dx*2.2,dz*2.2,false,'torso'); return false; }
+    this.stagger(dx,dz,1.2*(1-T*0.45),'torso',side); return false;
   }
-  stagger(dx,dz,power){
+  bleed(zone,dx,dz,dmg){   // sangre moderada en el punto del impacto
+    const y=this.y+(zone==='head'?1.65:zone==='leg'?0.55:zone==='arm'?1.3:1.15)+(this.state==='hit'||this.state==='dead'?-0.8:0);
+    bloodSpurt(this.x,Math.max(0.2,y),this.z,dx,dz,zone==='head'?7:Math.round(clamp(dmg/6,2,6)),2.2,this.y);
+  }
+  stagger(dx,dz,power,zone=null,side=1){
     if (this.state==='call') this.endCall(false);
     if (this.state==='dead'||this.state==='hit'||this.state==='dragged') return;
-    this.prevState=this.state==='stagger'?this.prevState:this.state; this.state='stagger'; this.t=0.45+0.3*power; this.stPow=power; this.bumpT=0;
+    this.stZone=zone; this.stSide=side; this.stVar=Math.random();   // cómo reacciona: doblarse, echarse atrás, agarrarse el brazo, hincar la rodilla…
+    this.prevState=this.state==='stagger'?this.prevState:this.state; this.state='stagger'; this.t=(0.45+0.3*power)*(zone==='leg'?1.8:zone==='arm'?1.3:1); this.stPow=power; this.bumpT=0;
     this.vx=dx*(1.6+power*1.2); this.vz=dz*(1.6+power*1.2); this.wob=Math.random()*6;
   }
   damage(dmg,dx,dz,melee){
@@ -2098,11 +2106,14 @@ class Ped{
     if (melee) this.knock(dx*4,dz*4,false); else if (this.state!=='cop') this.scare(player.x,player.z,7);
     return false;
   }
-  knock(vx,vz,kill){
+  knock(vx,vz,kill,zone){
     if (this.state==='call') this.endCall(false);
     if (this.state==='dead') return;
     if (!this.medic && (kill || Math.hypot(vx,vz)>6)) emsReport(this.x,this.z);   // muerto o herido de gravedad (atropello, explosión): alguien llama al 112
-    this.vx=vx; this.vz=vz; this.vy=kill?5:3; this.y=Math.max(this.y,0.01);
+    const sp=Math.hypot(vx,vz), along=vx*Math.sin(this.h)+vz*Math.cos(this.h);
+    this.fallDir = sp<1 ? (Math.random()<0.5?1:-1) : (along>0.2*sp?1:-1);   // empujado hacia delante: cae de bruces; hacia atrás: de espaldas
+    this.fallSide = kill&&zone==='head' ? mrand(-0.6,0.6) : mrand(-0.25,0.25);
+    this.vx=vx; this.vz=vz; this.vy=kill?(zone==='head'?1.2:5):3; this.y=Math.max(this.y,0.01); this.poolT=kill?mrand(0.4,0.9):0;
     this.state = kill ? 'dead' : 'hit'; this.t = kill ? 25 : 2.2;
   }
   update(dt){
@@ -2164,20 +2175,29 @@ class Ped{
       this.t-=dt; this.x+=this.vx*dt; this.z+=this.vz*dt; this.vx-=this.vx*Math.min(1,dt*5); this.vz-=this.vz*Math.min(1,dt*5); pushCircle(this,0.4);
       if (riverBlocked(this.x,this.z)){ this.x-=this.vx*dt*2; this.z-=this.vz*dt*2; }
       this.wob+=dt*14; const u=m.userData, k=Math.min(1,this.t*2)*Math.min(1,0.3+(this.stPow??1));   // un empujón leve apenas se nota
-      m.rotation.x=-0.28*k+Math.sin(this.wob)*0.05; m.rotation.z=Math.sin(this.wob*0.7)*0.12*k;
-      u.arms[0].rotation.x=u.arms[1].rotation.x=-2.3*k; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-1.9*k; u.legs[0].rotation.x=0.25*k; u.legs[1].rotation.x=-0.15*k;
-      m.position.set(this.x,this.y+(this.wgA!=null?0.06:this.block&&!this.cross?0.25:0.02),this.z); m.rotation.y=this.h;
-      if (this.t<=0){ m.rotation.x=0; m.rotation.z=0; if (this.cop && player.stars>0) this.state='cop'; else if ((this.stPow??1)<0.5 && this.prevState==='walk') this.state='walk'; else { this.state='flee'; this.t=6; this.fx=player.x; this.fz=player.z; } }
+      let yo=0, ry=0; const Z=this.stZone, sd=this.stSide??1, o=1-sd;
+      if (Z==='torso' && this.stVar<0.5){ m.rotation.x=0.38*k+Math.sin(this.wob)*0.04; m.rotation.z=Math.sin(this.wob*0.7)*0.08*k;   // se dobla sujetándose el vientre
+        u.arms[0].rotation.x=u.arms[1].rotation.x=-0.9*k; u.arms[0].rotation.z=0.35*k; u.arms[1].rotation.z=-0.35*k; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-1.7*k; u.legs[0].rotation.x=-0.2*k; u.knees[0].rotation.x=u.knees[1].rotation.x=0.35*k; yo=-0.06*k; }
+      else if (Z==='arm'){ m.rotation.x=-0.1*k; m.rotation.z=(sd?-1:1)*0.1*k; ry=(sd?-1:1)*0.4*k;   // se agarra el brazo herido y se gira
+        u.arms[sd].rotation.x=0.15; u.arms[sd].rotation.z=0; u.elbows[sd].rotation.x=-0.2; u.arms[o].rotation.x=-0.9*k; u.arms[o].rotation.z=(o?-1:1)*-0.9*k; u.elbows[o].rotation.x=-1.8*k; }
+      else if (Z==='leg'){ m.rotation.x=0.12*k; m.rotation.z=(sd?1:-1)*0.18*k; yo=-0.28*k;   // hinca la rodilla
+        u.legs[sd].rotation.x=-1.3*k; u.knees[sd].rotation.x=1.4*k; u.legs[o].rotation.x=0.3*k; u.knees[o].rotation.x=1.6*k; u.arms[0].rotation.x=u.arms[1].rotation.x=-0.6*k; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-0.8*k; }
+      else { m.rotation.x=-0.28*k+Math.sin(this.wob)*0.05; m.rotation.z=Math.sin(this.wob*0.7)*0.12*k;   // se echa atrás cubriéndose
+        u.arms[0].rotation.x=u.arms[1].rotation.x=-2.3*k; u.elbows[0].rotation.x=u.elbows[1].rotation.x=-1.9*k; u.legs[0].rotation.x=0.25*k; u.legs[1].rotation.x=-0.15*k; }
+      m.position.set(this.x,this.y+(this.wgA!=null?0.06:this.block&&!this.cross?0.25:0.02)+yo,this.z); m.rotation.y=this.h+ry;
+      if (this.t<=0){ m.rotation.x=0; m.rotation.z=0; u.arms[0].rotation.z=u.arms[1].rotation.z=0; this.stZone=null; if (this.cop && player.stars>0) this.state='cop'; else if ((this.stPow??1)<0.5 && this.prevState==='walk') this.state='walk'; else { this.state='flee'; this.t=6; this.fx=player.x; this.fz=player.z; } }
       return;
     }
     if (this.state==='dead' || this.state==='hit'){
       if (this.y>0 || this.vy>0){ this.vy-=22*dt; this.y+=this.vy*dt; if (this.y<=0){ this.y=0; this.vy=0; } }
       this.x+=this.vx*dt; this.z+=this.vz*dt; const f=this.y>0?0.3:4; this.vx-=this.vx*Math.min(1,f*dt); this.vz-=this.vz*Math.min(1,f*dt);
       pushCircle(this,0.4); if (riverBlocked(this.x,this.z)){ this.x-=this.vx*dt; this.z-=this.vz*dt; this.vx*=-0.3; this.vz*=-0.3; }
-      m.rotation.x = lerp(m.rotation.x,-Math.PI/2,Math.min(1,dt*8));
+      const fd=this.fallDir||-1; m.rotation.x = lerp(m.rotation.x,fd*Math.PI/2,Math.min(1,dt*8)); m.rotation.z=lerp(m.rotation.z,this.fallSide||0,Math.min(1,dt*6));
+      if (this.state==='dead'){ const u=m.userData, k=Math.min(1,Math.abs(m.rotation.x)/1.5); u.arms[0].rotation.z=0.5*k; u.arms[1].rotation.z=-0.7*k; u.arms[0].rotation.x=(fd<0?-2.2:-0.4)*k; u.arms[1].rotation.x=(fd<0?-1.8:-0.2)*k; u.knees[0].rotation.x=0.35*k; u.knees[1].rotation.x=0.1*k;
+        if (this.poolT>0 && this.y<=0){ this.poolT-=dt; if (this.poolT<=0) bloodSplat(this.x+Math.sin(this.h)*fd*0.75,0,this.z+Math.cos(this.h)*fd*0.75,mrand(0.5,0.8),4,90); } }   // charco bajo el cuerpo
       this.t-=dt;
-      if (this.state==='hit' && this.t<=0){ m.rotation.x=0; this.state=this.cop&&player.stars>0?'cop':'flee'; this.t=6; this.fx=player.x; this.fz=player.z; }
-      m.position.set(this.x,this.y+0.27+(m.rotation.x<-1?0.15:0),this.z);
+      if (this.state==='hit' && this.t<=0){ m.rotation.x=0; m.rotation.z=0; this.state=this.cop&&player.stars>0?'cop':'flee'; this.t=6; this.fx=player.x; this.fz=player.z; }
+      m.position.set(this.x,this.y+0.27+(Math.abs(m.rotation.x)>1?0.15:0),this.z);
       return;
     }
     if (this.state==='cop'){
@@ -3674,7 +3694,6 @@ function rayShot(ox,oz,a,range,dmg,oy=1.35,pitch=0){
     for (const [px,pz] of carCircles(c)){ const rx=px-ox, rz=pz-oz, t=rx*dx+rz*dz, lat=Math.abs(rx*dz-rz*dx); if (lat>=r) continue; const th=t-Math.sqrt(r*r-lat*lat); if (th>0 && th<bt){ bt=th; best=c; } } }
   const ex=ox+dx*bt, ez=oz+dz*bt; tracer(ox,oz,ex,ez); lastRayHit=best; lastHitZone=null;
   if (best instanceof Ped){
-    for (let i=0;i<5;i++) emit(smokeP,ex,1.2,ez,mrand(-1,1),mrand(0,2),mrand(-1,1),0.4,0.22,'#7a1010',6);
     const killed=best.gunHit(dmg*ZONES[zone].mult,zone,dx,dz); lastHitZone=zone;
     if (killed) onPedKilled(best); else if (best.cop && now-lastPoliceHit>3){ lastPoliceHit=now; addStars(1,'¡Has disparado a un policía!'); }
   } else if (best){
