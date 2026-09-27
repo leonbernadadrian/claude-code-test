@@ -1922,7 +1922,7 @@ const pedMesh=(parts,shadow)=>{ const m=new THREE.Mesh(mergeColored(parts),pedMa
 const PGL={sph:new THREE.SphereGeometry(1,7,5), cap:new THREE.SphereGeometry(1,7,3,0,Math.PI*2,0,Math.PI*0.56), cyl:new THREE.CylinderGeometry(1,1,1,6), box:PG.box};
 const torsoL=f=>PGL[f?'tF':'tM']||(PGL[f?'tF':'tM']=new THREE.LatheGeometry((f?TORSO_F:TORSO_M).filter((p,i)=>i%2===0||i===7),6));
 const taperL=(r0,r1,l)=>new THREE.CylinderGeometry(r0,r1,l+(r0+r1)*0.8,6,1);
-const pedMeshes=new Set(), _pv=new THREE.Vector3();
+const pedMeshes=new Set(), _pv=new THREE.Vector3(); let pedUid=0;
 let groundList=null; const _grc=new THREE.Raycaster(), _gB=new THREE.Box3(), _gB2=new THREE.Box3();
 function floorUnder(x,z){   // altura de la superficie visible bajo un punto (acera, calzada, césped, losa…); se usa al quedar tendido un cuerpo
   if (!groundList){ groundList=[]; const skip=new Set([...cars.map(c=>c.mesh),...AIRCRAFT.map(a=>a.mesh)]);
@@ -2098,7 +2098,7 @@ class Ped{
     this.x=x; this.z=z; this.y=0; this.h=mrand(0,6.28); this.state='walk'; this.speed=mrand(1.1,1.6);
     this.phase=mrand(0,6); this.t=0; this.vx=0; this.vy=0; this.vz=0; this.hp=100; if (this.age==='mayor') this.speed*=0.8; this.cop=cop; this.shootT=mrand(1,2); this.weapon=cop?copWeapon():null; if (cop) setWeaponModel(this.mesh,this.weapon); this.fx=0; this.fz=0;
     this.block=null; this.k=0; this.dir=Math.random()<0.5?1:-1; this.tx=x; this.tz=z; this.cross=false;
-    this.tough=cop?mrand(0.5,0.9):Math.random();   // aguante propio: no todos reaccionan igual a un golpe o un disparo
+    this.tough=cop?mrand(0.5,0.9):Math.random(); this.uid=++pedUid;   // aguante propio: no todos reaccionan igual a un golpe o un disparo
     peds.push(this);
   }
   home(){
@@ -2673,7 +2673,7 @@ function loadSlot(id){
   if (taxiRide){ const tc=taxiRide.car; taxiRide=null; exitCar(true,true); if (tc && tc.ai){ tc.driver='npc'; tc.ai.mode='cruise'; } } taxiCancel(); if (player.inCar) exitCar(true,true);
   save=Object.assign({money:150,done:[],dates:[]},S.profile); applyProfile();
   const W=S.world; player.w=clamp(W.w||0,0,player.owned.length-1); player.health=clamp(W.health||100,1,100); player.armor=W.armor||0;
-  player.stars=0; intel.inv=null; reports.length=0; gameMin=S.gameMin??gameMin;
+  player.stars=0; heat=0; evadeT=0; intel.inv=null; reports.length=0; gameMin=S.gameMin??gameMin;
   for (const c of cars.slice()) c.remove(); for (const p of peds.slice()) p.remove();
   player.x=W.x; player.z=W.z; player.h=W.h||0; player.y=0; player.vx=player.vz=0; player.downT=0;
   if (W.car){ const c=new Car(W.car.k,W.car.color); c.x=W.x; c.z=W.z; c.h=W.h||0; c.owned=W.car.owned; c.health=W.car.health??100; c.sync(); enterExitCar(c); }
@@ -3641,12 +3641,27 @@ function updateViewmodel(dt){
 let now=0, gameMin=17*60+30, camMode=0, camYaw=Math.PI, shakeA=0, state='title';
 const policeNear = r => cars.some(c=>c.driver==='police' && d2(c.x,c.z,player.x,player.z)<r*r);
 let starCool=0, lastPoliceHit=0, bustT=0, spawnT=0, policeSpawnT=0, regenT=0;
-const STAR_FADE=4;   // segundos que parpadea una estrella antes de perderse
-const starDecay=()=>10+player.stars*5;   // tiempo sin que te vean para perder la estrella de arriba
-let starLost={i:-1,t:-9};
-function addStars(n,why,noMark){
-  const before=player.stars; player.stars=clamp(player.stars+n,0,5); starCool=0; if (n>0){ intel.inv=null; if (!noMark) markSeen(); }
-  if (player.stars>before){ hud.stars.classList.add('flash'); setTimeout(()=>hud.stars.classList.remove('flash'),2500); if (why) toast(why,2.5); }
+/* ---- nivel de búsqueda ----
+   Cada delito aporta "calor" según su gravedad y tiene un tope de estrellas que puede provocar por sí solo: una pelea no pasa de 1–2 estrellas,
+   disparar o matar escala a 3, atacar a la policía a 4 y matar agentes a 5. Los golpes a una misma víctima cuentan como un solo incidente.
+   Solo cuenta lo que la policía sabe (lo ha visto, o un testigo o una cámara te han identificado).
+   Para perder la búsqueda: mientras la policía tenga pista (te ve, el helicóptero te sigue, te identifican) se mantiene; cuando la pierde empieza
+   una búsqueda activa y, si sigues oculto, TODAS las estrellas parpadean y desaparecen a la vez. Cuanto más nivel, más tiempo cuesta. */
+const CRIME_SEV={assault:[8,2],fightnpc:[8,2],vandalism:[5,1],carjack:[26,2],runover:[16,2],drugs:[26,2],cararson:[20,2],robbery:[30,3],shots:[26,3],explosion:[30,3],murder:[40,3],
+  copAssault:[15,3],copAim:[12,2],copRam:[12,3],copCar:[30,3],copShot:[30,4],copKill:[40,5],copCarDestroyed:[30,4]};   // [puntos, tope de estrellas]
+const HEAT_T=[0,1,25,50,75,100], SEARCH_T=[0,6,12,22,35,55], FADE_T=[0,4,6,9,13,18];
+const starsFor=h=>h>=100?5:h>=75?4:h>=50?3:h>=25?2:h>=1?1:0;
+let heat=0, evadeT=0; const heatInc=new Map();
+function flashStars(why,before){ if (player.stars>before){ hud.stars.classList.add('flash'); setTimeout(()=>hud.stars.classList.remove('flash'),2500); if (why) toast(why,2.5); } }
+function addCrime(type,why,key,noMark){   // delito conocido por la policía
+  const S=CRIME_SEV[type]||[10,1], before=player.stars; evadeT=0; intel.inv=null; if (!noMark) markSeen();
+  if (key){ const t=heatInc.get(key); heatInc.set(key,now); if (t!==undefined && now-t<25) return; }   // mismo incidente (p. ej. varios golpes a la misma persona)
+  const cap=S[1]>=5?160:HEAT_T[S[1]+1]-0.5; if (heat<cap) heat=Math.min(heat+S[0],cap);
+  player.stars=Math.max(player.stars,starsFor(heat)); flashStars(why,before);
+}
+function addStars(n,why,noMark){   // mínimo de estrellas impuesto (misiones, casos especiales)
+  const before=player.stars; player.stars=clamp(player.stars+n,0,5); heat=Math.max(heat,HEAT_T[player.stars]); evadeT=0; if (n>0){ intel.inv=null; if (!noMark) markSeen(); }
+  flashStars(why,before);
 }
 function shake(a){ shakeA=Math.max(shakeA,a); }
 function hurt(n,zone='torso',from=null){   // from: {x,z} de quien dispara o golpea (para la sangre y la caída)
@@ -3744,7 +3759,7 @@ function endJack(ok){
   if (J.p.state==='dragged'){ const G=jackGeo(J.c,J.side); J.p.knock(G.lx*2,G.lz*2,false); }
   if (!ok){ if (J.c.driver==='jacked') J.c.driver=null; player.mesh.visible=!fp; return; }
   const c=J.c; c.driver='player'; c.ai=null; player.inCar=c; player.mesh.visible=false; player.y=0; player.vy=0;
-  if (J.cop){ addStars(2,'¡Has robado un <em>coche patrulla</em>!'); markSeen(); }
+  if (J.cop){ addCrime('copCar','¡Has robado un <em>coche patrulla</em>!'); }
   else if (!crime('carjack',c.x,c.z,1,{victim:J.p,quiet:true}) && player.stars===0) toast('Coche robado. El conductor puede denunciarte',1.8);
   if (c.mission && mission.cur && mission.cur.steps[mission.step].type==='steal') advanceMission();
 }
@@ -3812,7 +3827,7 @@ function meleeHit(W){
     const dx=p.x-player.x, dz=p.z-player.z, L=Math.hypot(dx,dz);
     if (L<reach && (dx*fx+dz*fz)/Math.max(L,0.01)>(L<1.2?-0.1:0.4)){
       const killed=p.meleeHit(W.dmg*power,fx,fz,power,W.id==='bat'); hitAny=true;
-      if (killed) onPedKilled(p); else if (p.cop){ addStars(1,'¡Has agredido a un policía!'); markSeen(); } else crime('assault',player.x,player.z,1,{victim:p,care:0.8});
+      if (killed) onPedKilled(p); else if (p.cop){ addCrime('copAssault','¡Has agredido a un policía!','ca:'+(p.uid||(p.uid=++pedUid))); } else crime('assault',player.x,player.z,1,{victim:p,care:0.8});
       for (const q of peds) if (q!==p && q.state!=='brawl' && q.state!=='guard' && d2(q.x,q.z,player.x,player.z)<400) q.scare(player.x,player.z,6);
     }
   }
@@ -3885,11 +3900,11 @@ function rayShot(ox,oz,a,range,dmg,oy=1.35,pitch=0){
   const ex=ox+dx*bt, ez=oz+dz*bt; tracer(ox,oz,ex,ez); lastRayHit=best; lastHitZone=null;
   if (best instanceof Ped){
     const killed=best.gunHit(dmg*ZONES[zone].mult,zone,dx,dz); lastHitZone=zone;
-    if (killed) onPedKilled(best); else if (best.cop && now-lastPoliceHit>3){ lastPoliceHit=now; addStars(1,'¡Has disparado a un policía!'); }
+    if (killed) onPedKilled(best); else if (best.cop && now-lastPoliceHit>3){ lastPoliceHit=now; addCrime('copShot','¡Has disparado a un policía!'); }
   } else if (best){
     damageCar(best,dmg*0.3,0); best.hitByPlayer=now;
     for (let i=0;i<4;i++) emit(glowP,ex,1,ez,mrand(-3,3),mrand(1,4),mrand(-3,3),0.2,0.12,'#ffd27a',10);
-    if (best.driver==='police'){ if (now-lastPoliceHit>3){ lastPoliceHit=now; addStars(1,'¡Has disparado a la policía!'); } }
+    if (best.driver==='police'){ if (now-lastPoliceHit>3){ lastPoliceHit=now; addCrime('copShot','¡Has disparado a la policía!'); } }
     else if (best.driver==='npc' && Math.random()<0.2){ const p=new Ped(best.x-Math.cos(best.h)*2,best.z+Math.sin(best.h)*2); p.scare(player.x,player.z,8); best.driver=null; best.ai=null; }
   } else if (bt<range){ for (let i=0;i<3;i++) emit(glowP,ex,1.3,ez,mrand(-2,2),mrand(0,3),mrand(-2,2),0.15,0.1,'#ffe6a0',8); }
 }
@@ -4022,7 +4037,7 @@ function updatePickups(dt){
   }
 }
 function onPedKilled(p){
-  if (p.cop){ addStars(1,'Has abatido a un policía'); }
+  if (p.cop){ addCrime('copKill','Has abatido a un policía'); }
   else crime('murder',p.x,p.z,1,{copMsg:'Asesinato: la policía te busca',quiet:true});
   const x=p.x, z=p.z, j=()=>mrand(-0.9,0.9);
   spawnPickup('cash',x+j(),z+j(),{v:Math.round(p.cop?mrand(25,80):mrand(10,60))});
@@ -4408,16 +4423,17 @@ function detectRange(){   // a qué distancia te reconoce la policía
     else if (intel.car && player.inCar!==intel.car) r*=0.6; }            // has cambiado de vehículo
   return r;
 }
-function markSeen(){ const P=player.inCar||player; intel.x=P.x; intel.z=P.z; intel.vx=P.vx||0; intel.vz=P.vz||0; intel.t=intel.seenT=now; intel.car=player.inCar; }
+function markSeen(){ evadeT=0; const P=player.inCar||player; intel.x=P.x; intel.z=P.z; intel.vx=P.vx||0; intel.vz=P.vz||0; intel.t=intel.seenT=now; intel.car=player.inCar; }
 function resetIntel(){ intel.t=intel.seenT=-99; intel.car=null; intel.inv=null; reports.length=0; reportedCrimes.clear(); for (const p of peds) p.report=null; }
 function crime(type,x,z,stars,o={}){
   if (state!=='play') return false;
-  if (copCanSee(x,z,o.loud?70:50)){ addStars(stars,o.copMsg||'¡La policía te ha visto!'); markSeen(); return true; }
+  const vk=o.victim?type+':'+(o.victim.uid||(o.victim.uid=++pedUid)):null;
+  if (copCanSee(x,z,o.loud?70:50)){ addCrime(type,o.copMsg||'¡La policía te ha visto!',vk); return true; }
   const car=player.inCar||null, cid=++crimeSeq; let seen=0, heard=0;
   for (const cm of CAMS) if (d2(cm.x,cm.z,x,z)<900 && !losBlocked(cm.x,cm.z,x,z,2.2)){ reports.push({t:now+4,cam:true,id:true,stars,x,z,car,type,cid}); break; }
   for (const p of peds){ if (p.cop || p.state==='dead' || p.report) continue; const d=Math.hypot(p.x-x,p.z-z); if (d>60) continue;
     const sees=p===o.victim || (d<30 && !losBlocked(p.x,p.z,x,z,1.5));
-    if (sees && Math.random()<(o.care??1)){ p.report={t:now+mrand(1.5,3.5),id:true,stars,x,z,car,type,cid}; seen++; }
+    if (sees && Math.random()<(o.care??1)){ p.report={t:now+mrand(1.5,3.5),id:true,stars,x,z,car,type,cid,vk}; seen++; }
     else if (!sees && o.loud && d<55 && heard<2 && Math.random()<0.5){ p.report={t:now+mrand(3,6),id:false,stars,x,z,car:null,type,cid}; heard++; }
     if (seen>=6) break; }
   if (seen && !o.quiet) toast(seen>1?`${seen} testigos te han visto: pueden llamar a la policía`:'Un testigo te ha visto: puede llamar a la policía',2.2);
@@ -4426,10 +4442,10 @@ function crime(type,x,z,stars,o={}){
 function policeCall(r,cam){
   if (r.npc){ if (!reportedCrimes.has(r.cid)){ reportedCrimes.add(r.cid); emsCall('pol',r.x,r.z,{suspect:r.suspect,crime:r.type}); if (d2(player.x,player.z,r.x,r.z)<150*150) toast(`Un vecino ha denunciado ${CRIME_TXT[r.type]||'un delito'}: va una patrulla`,2.2); } return; }
   const dup=reportedCrimes.has(r.cid); if (r.id) reportedCrimes.add(r.cid);
-  if (r.id){ const n=dup||(r.type==='murder'&&player.stars>=2)?0:r.stars; const b=player.stars; addStars(n,cam?'Una cámara de seguridad te ha grabado':'Un testigo ha dado tu descripción a la policía',true);
-    if (player.stars===b && n===0 && player.stars>0) toast('Otro testigo ha llamado a la policía',1.6);
+  if (r.id){ const b=player.stars; if (!dup) addCrime(r.type,cam?'Una cámara de seguridad te ha grabado':'Un testigo ha dado tu descripción a la policía',r.vk||('c'+r.cid),true); else evadeT=0;
+    if (player.stars===b && player.stars>0) toast('Otro testigo ha llamado a la policía',1.6);
     if (intel.seenT<now-2){ intel.x=r.x; intel.z=r.z; intel.vx=intel.vz=0; intel.t=now-1.5; } if (r.car) intel.car=r.car; intel.inv=null; }
-  else if (!player.stars){ intel.inv={x:r.x,z:r.z,until:now+70,stars:r.stars}; toast(`Un vecino ha avisado de ${CRIME_TXT[r.type]||'algo raro'}: la policía investiga la zona`,2.6); }
+  else if (!player.stars){ intel.inv={x:r.x,z:r.z,until:now+70,stars:r.stars,type:r.type}; toast(`Un vecino ha avisado de ${CRIME_TXT[r.type]||'algo raro'}: la policía investiga la zona`,2.6); }
 }
 function suspicious(){   // lo que hace que un agente que investiga te reconozca
   const W=curW(), P=player.inCar||player; return (!W.melee && !W.throw) || (intel.inv && d2(P.x,P.z,intel.inv.x,intel.inv.z)<35*35) || player.health<60;
@@ -4438,7 +4454,7 @@ function updateIntel(dt){
   copSeeT-=dt; if (copSeeT>0) return; copSeeT=0.25;
   const P=player.inCar||player;
   copSeeing = (player.stars>0||intel.inv) && state==='play' ? copCanSee(P.x,P.z,detectRange()) : false;
-  if (copSeeing){ if (player.stars>0) markSeen(); else if (suspicious()){ const inv=intel.inv; intel.inv=null; addStars(inv.stars,'La policía que investigaba te ha reconocido'); } }
+  if (copSeeing){ if (player.stars>0) markSeen(); else if (suspicious()){ const inv=intel.inv; intel.inv=null; addCrime(inv.type||'assault','La policía que investigaba te ha reconocido'); } }
   if (intel.inv && now>intel.inv.until){ intel.inv=null; }
   for (const p of peds) if (p.report){
     if (p.state==='dead'){ p.report=null; continue; }
@@ -4485,7 +4501,7 @@ function perceiveWeapons(dt){
     if (d>(aimed?30:T.r)*(night?0.75:1)) continue;
     if (Math.abs(wrapA(Math.atan2(dx,dz)-p.h))>1.05 && d>4) continue;   // fuera de su campo de visión
     if (losBlocked(p.x,p.z,player.x,player.z,1.4)) continue;             // detrás de una pared
-    if (p.cop){ if (aimed && player.stars===0 && (p.aimedT=(p.aimedT||0)+0.2)>=1){ p.aimedT=0; say(p,'¡Suelta el arma!',1.8); addStars(1,'¡Has apuntado a un policía!'); } continue; }
+    if (p.cop){ if (aimed && player.stars===0 && (p.aimedT=(p.aimedT||0)+0.2)>=1){ p.aimedT=0; say(p,'¡Suelta el arma!',1.8); addCrime('copAim','¡Has apuntado a un policía!'); } continue; }
     reactToWeapon(p,aimed,d,T);
   }
 }
@@ -4653,11 +4669,14 @@ function manage(dt){
       const p=new Ped(c.x-Math.cos(c.h)*2.2,c.z+Math.sin(c.h)*2.2,true); p.state='cop'; p.h=c.h; c.driver=null; c.ai=null; break; }
   }
   const P=player.inCar||player;
+  // el calor sigue siempre la franja de las estrellas (si algo las fija directamente, el calor se ajusta)
+  if (player.stars===0) heat=0; else heat=clamp(heat,HEAT_T[player.stars],player.stars<5?HEAT_T[player.stars+1]-0.5:160);
   if (player.stars>0){
-    if (copSeeing) starCool=0; else starCool+=dt;
-    if (starCool>starDecay()){ player.stars--; starCool=0; starLost={i:player.stars,t:now}; tone(520,0.12,'triangle',0.035); tone(390,0.16,'triangle',0.03,0.1);   // se pierde una sola estrella cada vez
-      if (player.stars===0){ toast('Has despistado a la policía',2); resetIntel(); } }
-  }
+    if (copSeeing){ evadeT=0; if (player.stars>=2 && heat<74) heat=Math.min(74,heat+dt*0.3); player.stars=Math.max(player.stars,starsFor(heat)); }   // persecución larga: escala poco a poco (hasta 3★)
+    else { const K=intel, near=d2(P.x,P.z,K.x,K.z)<(40+player.stars*12)**2; evadeT+=dt*(near?0.5:1); }   // cerca de donde te vieron por última vez la policía peina la zona
+    const S=SEARCH_T[player.stars], F=FADE_T[player.stars];
+    if (evadeT>S+F){ player.stars=0; heat=0; evadeT=0; starCool=0; tone(520,0.12,'triangle',0.035); tone(390,0.16,'triangle',0.03,0.1); toast('Has despistado a la policía',2); resetIntel(); }   // se pierden todas a la vez
+  } else evadeT=0;
 }
 
 /* ---- misiones ---- */
@@ -4873,7 +4892,7 @@ function showHint(t){ hintMsg=t; }
 /* ---- detenido / muerto ---- */
 function respawn(p){
   if (player.inCar) exitCar(true,true);
-  player.x=p.x; player.z=p.z; player.h=Math.PI; camYaw=Math.PI; player.health=100; player.stars=0; resetIntel(); player.death=null; player.mesh.rotation.set(0,Math.PI,0); hurtFx=0;
+  player.x=p.x; player.z=p.z; player.h=Math.PI; camYaw=Math.PI; player.health=100; player.stars=0; heat=0; evadeT=0; resetIntel(); player.death=null; player.mesh.rotation.set(0,Math.PI,0); hurtFx=0;
   for (const c of cars.slice()) if (c.driver==='police') c.remove();
   for (const p of peds.slice()) if (p.cop) p.remove();
   for (const c of cars.slice()) if (!c.mission && d2(c.x,c.z,p.x,p.z)<400) c.remove();
@@ -5004,7 +5023,7 @@ function update(dt){
       if (vn>0){ a.vx-=nx*vn*0.8; a.vz-=nz*vn*0.8; b.vx+=nx*vn*0.8; b.vz+=nz*vn*0.8;
         if (vn>5){ damageCar(a,(vn-5)*1.6,vn); damageCar(b,(vn-5)*1.6,vn); }
         const pc=taxiRide?null:a===player.inCar?b:b===player.inCar?a:null; if (pc) pc.hitByPlayer=now;
-        if (pc && pc.driver==='police' && vn>4 && now-lastPoliceHit>4){ lastPoliceHit=now; addStars(1,'¡Has embestido a la policía!'); }
+        if (pc && pc.driver==='police' && vn>4 && now-lastPoliceHit>4){ lastPoliceHit=now; addCrime('copRam','¡Has embestido a la policía!'); }
       }
     }
   }
@@ -5023,7 +5042,7 @@ function update(dt){
       else if (I.sev<3.5) p.stagger(dx+(-fz)*s*0.8,dz+fx*s*0.8,1);   // a poca velocidad: empujón y tambaleo
       else p.knock(c.vx*0.6+dx*2,c.vz*0.6+dz*2,false);                // se cae, pero sobrevive
       c.vx*=1-Math.min(0.5,0.06*I.sev/I.mass); c.vz*=1-Math.min(0.5,0.06*I.sev/I.mass);
-      if (byP){ sfxCrash(Math.min(4,I.sev*0.5)); if (kill) onPedKilled(p); else if (I.sev>=3.5){ if (p.cop){ addStars(1,'¡Has atropellado a un policía!'); markSeen(); } else crime('runover',p.x,p.z,1,{victim:p,quiet:true}); }
+      if (byP){ sfxCrash(Math.min(4,I.sev*0.5)); if (kill) onPedKilled(p); else if (I.sev>=3.5){ if (p.cop){ addCrime('copAssault','¡Has atropellado a un policía!','ca:'+(p.uid||(p.uid=++pedUid))); } else crime('runover',p.x,p.z,1,{victim:p,quiet:true}); }
         if (c.T.bike && I.sev>=4.5 && Math.random()<0.25+I.sev*0.06) bikeFall(c.vx,c.vz,I.sev*0.6); }
       if (I.sev>=3.5) for (const q of peds) if (q!==p && d2(q.x,q.z,p.x,p.z)<400) q.scare(c.x,c.z,6);
     }
@@ -5198,10 +5217,9 @@ function updateHUD(dt){
   if (isTouch){ const tv=!player.inCar && !jack && !!freeTaxiNear(TAXI.hail); if ($('bTaxi').hidden===tv) $('bTaxi').hidden=!tv; if ($('bSkip').hidden===!!taxiRide) $('bSkip').hidden=!taxiRide; }
   shownMoney+=(player.money-shownMoney)*Math.min(1,dt*6); if (Math.abs(player.money-shownMoney)<1) shownMoney=player.money;
   hud.money.textContent='€'+String(Math.round(shownMoney)).padStart(8,'0');
-  { const T=starDecay(), fading=player.stars>0 && state==='play' && starCool>T-STAR_FADE;
-    [...hud.stars.children].forEach((s,i)=>{ const top=fading && i===player.stars-1;
-      s.classList.toggle('on',i<player.stars); s.classList.toggle('fade',top && starCool<T-1.2); s.classList.toggle('fade2',top && starCool>=T-1.2);
-      s.classList.toggle('lost',i===starLost.i && now-starLost.t<0.7); }); }
+  { const S=SEARCH_T[player.stars]||0, F=FADE_T[player.stars]||0, fading=player.stars>0 && state==='play' && evadeT>S, late=evadeT>S+F-1.5;   // la policía pierde la pista: parpadean todas
+    [...hud.stars.children].forEach((s,i)=>{ const on=i<player.stars;
+      s.classList.toggle('on',on); s.classList.toggle('fade',on && fading && !late); s.classList.toggle('fade2',on && fading && late); s.classList.remove('lost'); }); }
   hud.hp.style.width=player.health+'%';
   const h=Math.floor(gameMin/60), m=Math.floor(gameMin%60); hud.clock.textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
   if (player.inCar){ hud.speed.hidden=false; hud.speed.textContent=Math.round(player.inCar.speed*3.6)+' km/h'; } else hud.speed.hidden=true;
