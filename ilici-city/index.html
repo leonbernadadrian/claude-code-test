@@ -1659,6 +1659,7 @@ const TYPES={
   sports:{len:4.4,w:1.95,h:1.2,max:48,acc:21,grip:8,cols:['#e1261c','#f6c90e','#111111','#e8e8e8','#1f8a4c']},
   taxi:{len:4.6,w:1.85,h:1.45,max:34,acc:13,grip:7,cols:['#f4f4f0']},
   police:{len:4.7,w:1.9,h:1.5,max:44,acc:18,grip:8,cols:['#f4f6f8']},
+  tank:{len:7.2,w:3.3,h:2.6,max:15,acc:5,grip:10,cols:['#2e3a46'],heavy:true},   // unidad pesada de la policía: solo con 5 estrellas
   pickup:{len:5.2,w:1.95,h:1.75,max:32,acc:12,grip:6.5,cols:['#5b6770','#1d1d20','#8a1f1f','#e8e3d8','#3d5a3a'],eye:1.6},
   boxvan:{len:6.2,w:2.2,h:2.8,max:24,acc:7,grip:5.5,cols:['#e8e6df','#f2c230','#b8c3cc','#d7d2c4'],ws:1.1,eye:2.0,mirrorY:1.9},
   ambulance:{len:6.0,w:2.15,h:2.7,max:32,acc:9,grip:6,cols:['#f6f6f2'],ws:1.05,eye:1.95,mirrorY:1.9},
@@ -1782,8 +1783,28 @@ function buildBikeMesh(color){
   const fw=mk(0.55), rw=mk(-0.55);
   return {g,wheels:[fw,new THREE.Object3D(),rw,new THREE.Object3D()],painted,lights:null};
 }
+function buildTankMesh(color){   // blindado: casco inclinado, orugas con ruedas, torreta que gira y cañón
+  const g=new THREE.Group(), hull=paint(color), dk=lambert('#1b1f24'), tr=lambert('#15171a'), T=TYPES.tank;
+  const hb=new THREE.Mesh(new THREE.BoxGeometry(2.7,0.9,6.4),hull); hb.position.y=1.15; g.add(hb);
+  const glacis=new THREE.Mesh(new THREE.BoxGeometry(2.7,0.12,1.5),hull); glacis.position.set(0,1.45,3.0); glacis.rotation.x=0.45; g.add(glacis);
+  for (const sx of [-1,1]){ const track=new THREE.Mesh(new THREE.BoxGeometry(0.7,0.95,7.0),tr); track.position.set(sx*1.35,0.55,0); g.add(track);
+    const skirt=new THREE.Mesh(new THREE.BoxGeometry(0.08,0.5,6.6),hull); skirt.position.set(sx*1.72,1.0,0); g.add(skirt);
+    for (let i=0;i<6;i++){ const w=new THREE.Mesh(new THREE.CylinderGeometry(0.36,0.36,0.72,12).rotateZ(Math.PI/2),dk); w.position.set(sx*1.35,0.4,-2.6+i*1.04); g.add(w); } }
+  const turret=new THREE.Group(); turret.position.set(0,1.62,-0.3); g.add(turret);
+  const tb=new THREE.Mesh(new THREE.CylinderGeometry(1.15,1.35,0.75,10),hull); tb.position.y=0.35; turret.add(tb);
+  const hatch=new THREE.Mesh(new THREE.CylinderGeometry(0.35,0.35,0.15,10),dk); hatch.position.set(0.4,0.8,-0.3); turret.add(hatch);
+  const barrel=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.16,3.6,10).rotateX(Math.PI/2),dk); barrel.position.set(0,0.42,2.9); turret.add(barrel);
+  const mantle=new THREE.Mesh(new THREE.BoxGeometry(0.7,0.45,0.5),hull); mantle.position.set(0,0.42,1.1); turret.add(mantle);
+  const lb=[new THREE.Mesh(boxGeo,sirenB),new THREE.Mesh(boxGeo,sirenR)]; lb.forEach((m,i)=>{ m.scale.set(0.3,0.14,0.2); m.position.set(i?-0.5:0.5,0.82,-0.6); turret.add(m); });
+  const st=new THREE.Mesh(decalGeo,decalMat('POLICÍA','#f4f4f0','#1f4fa3')); st.scale.set(1.8,0.4,1); st.position.set(1.37,1.2,0.3); st.rotation.y=Math.PI/2; g.add(st); const st2=st.clone(); st2.position.x=-1.37; st2.rotation.y=-Math.PI/2; g.add(st2);
+  g.traverse(o=>{ if (o.isMesh) o.castShadow=true; });
+  const wheels=[0,1,2,3].map(()=>new THREE.Object3D()), fxo=()=>{ const o=new THREE.Object3D(); o.visible=false; return o; };
+  g.userData.turret=turret; g.userData.barrel=barrel;
+  return {g,wheels,painted:[hb,glacis,tb,mantle],lights:lb,fx:{brake:fxo(),indR:fxo(),indL:fxo()}};
+}
 function buildCarMesh(k,color){
   if (TYPES[k].bike) return buildBikeMesh(color);
+  if (k==='tank') return buildTankMesh(color);
   const T=TYPES[k], G=carGeos(k), g=new THREE.Group(), cm=paint(color), painted=[];
   const add=(geo,mat,shadow=true)=>{ const m=new THREE.Mesh(geo,mat); m.castShadow=shadow; g.add(m); return m; };
   painted.push(add(G.body,cm)); add(G.glass,glassMat,false); if (G.roof) painted.push(add(G.roof,cm,false));
@@ -2838,7 +2859,7 @@ function interactCandidates(){
   if (!mission.cur) for (const ms of MISSIONS){ if (inCar && !slow) continue; out.push({verb:'Empezar misión',name:ms.name,x:ms.start[0],z:ms.start[1],r:inCar?7:3,act:()=>startMission(ms)}); }
   for (const c of clients){ if (inCar && !slow) continue; out.push({verb:'Vender',name:'Cliente',x:c.x,z:c.z,r:inCar?6:2.4,act:()=>sellTo(c)}); }
   if (!inCar){
-    const c=nearestCar(4.2); if (c) out.push({verb:c.driver==='npc'||c.driver==='police'?'Robar':'Subir',name:c.k==='taxi'?'Taxi':c.T.bike?'Bici':'Coche',x:c.x,z:c.z,r:99,car:true,act:()=>enterCar(c)});
+    const c=nearestCar(4.2); if (c && c.k!=='tank') out.push({verb:c.driver==='npc'||c.driver==='police'?'Robar':'Subir',name:c.k==='taxi'?'Taxi':c.T.bike?'Bici':'Coche',x:c.x,z:c.z,r:99,car:true,act:()=>enterCar(c)});
     for (const p of peds){ if (p.state!=='walk' || p.cop) continue; const d=d2(p.x,p.z,player.x,player.z); if (d>2.4*2.4) continue; out.push({verb:'Hablar',name:p.fem?'Vecina':'Vecino',talk:true,x:p.x,z:p.z,r:2.4,act:()=>talkTo(p)}); }
   }
   for (const f of INTERACT_SOURCES) f(out);   // ampliable: puertas, máquinas, objetos...
@@ -3720,7 +3741,8 @@ function carAbandon(c){
   if (c===player.inCar || c.occ) return; const d=c.driver;
   if (d!=='npc' && d!=='police' && d!=='taxi'){ c.occ=[]; return; }
   c.occ=[{cop:d==='police',t:now+mrand(0.6,2.2)}]; for (let k=0;k<(c.pass||0);k++) c.occ.push({cop:d==='police',t:now+mrand(1,3)});
-  c.byPlayer=now-(c.hitByPlayer??-99)<10; resvDropAll(c); c.driver=null; c.ai=null; if (taxiCall&&taxiCall.car===c) taxiCall=null;
+  c.byPlayer=now-(c.hitByPlayer??-99)<10; if (c.byPlayer && d==='police') addCrime('copCarDestroyed',c.k==='tank'?'¡Has destruido un blindado de la policía!':'¡Has destrozado un coche patrulla!','cd:'+cars.indexOf(c)+':'+Math.round(c.x));
+  resvDropAll(c); c.driver=null; c.ai=null; if (taxiCall&&taxiCall.car===c) taxiCall=null;
 }
 function occupantOut(c,o,alive){
   const fx=Math.sin(c.h), fz=Math.cos(c.h), rx=-fz, rz=fx; let side=Math.random()<0.5?1:-1, x=0, z=0;
@@ -4632,7 +4654,7 @@ function bumpPeds(dt){
   if (hit) pushCircle(player,0.42,player.y+0.001);
 }
 /* ---- impactos de vehículos: dependen de la velocidad, el ángulo y el peso ---- */
-const MASS={bike:0.28,compact:0.9,sedan:1,taxi:1,sports:1,police:1.05,van:1.3,boxvan:1.5,pickup:1.3,truck:1.9,bus:2};
+const MASS={tank:8,bike:0.28,compact:0.9,sedan:1,taxi:1,sports:1,police:1.05,van:1.3,boxvan:1.5,pickup:1.3,truck:1.9,bus:2};
 function impact(c,x,z){
   let nx=x-c.x, nz=z-c.z; const L=Math.hypot(nx,nz)||1; nx/=L; nz/=L;
   const vn=Math.max(0,c.vx*nx+c.vz*nz), mass=MASS[c.k]||1;   // solo cuenta la velocidad hacia el peatón (de frente > de refilón)
@@ -4692,11 +4714,12 @@ function manage(dt){
   const cops=cars.filter(c=>c.driver==='police' && c.ai && c.ai.mode==='chase');
   policeSpawnT-=dt;
   if (cops.length<want && policeSpawnT<=0){ policeSpawnT=2.5; spawnCarNear('police'); }
+  updateHeavy(dt);
   if (player.stars===0 && !intel.inv) for (const c of cops) assignEdge(c);
   for (const c of cops) if (c.ai.slowT>8 && d2(c.x,c.z,player.x,player.z)>90*90){ c.remove(); }   // patrulla atascada lejos: se sustituye por otra
   if (player.stars>=1){   // se bajan del coche: para detenerte o para buscarte a pie por plazas y callejones
     const K=policeTarget(), Pp=player.inCar||player, onFoot=peds.filter(p=>p.cop&&p.state==='cop').length;
-    if (onFoot<Math.max(2,player.stars*2)) for (const c of cops){ const lim=inRZ(Pp.x,Pp.z)?70:22;
+    if (onFoot<Math.max(2,player.stars*2)) for (const c of cops){ if (c.k==='tank') continue; const lim=inRZ(Pp.x,Pp.z)?70:22;
       const ok=K.live ? player.stars>=2 && c.speed<3 && d2(c.x,c.z,Pp.x,Pp.z)<lim*lim : c.ai.search && c.speed<9 && d2(c.x,c.z,K.x,K.z)<100*100 && Math.random()<0.02;
       if (!ok) continue;
       const p=new Ped(c.x-Math.cos(c.h)*2.2,c.z+Math.sin(c.h)*2.2,true); p.state='cop'; p.h=c.h; c.driver=null; c.ai=null; break; }
@@ -4712,6 +4735,26 @@ function manage(dt){
   } else evadeT=0;
 }
 
+/* ---- unidades pesadas: solo con 5 estrellas ----
+   Máximo 1 blindado al llegar a 5 estrellas y 2 si la situación se mantiene; aparece fuera de la vista, persigue por la red de calles
+   (la misma IA que las patrullas) y dispara su cañón cuando te tiene a tiro. Al bajar el nivel se retira. */
+const HEAVY={t5:0,spawnT:0,max:2};
+function updateHeavy(dt){
+  const tanks=cars.filter(c=>c.k==='tank'&&!c.exploded);
+  if (player.stars>=5 && state==='play'){ HEAVY.t5+=dt; HEAVY.spawnT-=dt;
+    const want=HEAVY.t5>45?2:HEAVY.t5>12?1:0;
+    if (tanks.length<Math.min(HEAVY.max,want) && HEAVY.spawnT<=0){ const c=spawnCarNear('police','tank'); HEAVY.spawnT=30; if (c){ c.health=900; c.maxHealth=900; toast('⚠ La policía despliega una <em>unidad blindada</em>',3); } } }
+  else { HEAVY.t5=0; for (const c of tanks) if (!c.retreat){ c.driver='npc'; if (c.ai) c.ai.mode='cruise'; c.retreat=now; } }   // se retira
+  for (const c of tanks) if (c.retreat){ const P=player.inCar||player, d=Math.hypot(c.x-P.x,c.z-P.z), behind=(c.x-P.x)*Math.sin(camYaw)+(c.z-P.z)*Math.cos(camYaw)<0; if ((d>90 && behind) || d>160 || now-c.retreat>60) c.remove(); }   // y desaparece cuando ya no se ve
+  for (const c of tanks){ const tu=c.mesh.userData.turret; if (!tu) continue; const P=player.inCar||player, dx=P.x-c.x, dz=P.z-c.z, d=Math.hypot(dx,dz);
+    const aim=c.dead||c.retreat||d>90?0:wrapA(Math.atan2(dx,dz)-c.h); tu.rotation.y+=wrapA(aim-tu.rotation.y)*Math.min(1,dt*1.2);   // la torreta gira despacio hacia ti
+    c.gunT=(c.gunT??4)-dt;
+    if (!c.dead && !c.retreat && c.driver==='police' && d>14 && d<75 && Math.abs(wrapA(aim-tu.rotation.y))<0.08 && c.gunT<=0 && !losBlocked(c.x,c.z,P.x,P.z,2.2)){ c.gunT=mrand(5,7.5);
+      const a=c.h+tu.rotation.y, mx=c.x+Math.sin(a)*4.8, mz=c.z+Math.cos(a)*4.8, ex=P.x+mrand(-4,4)+(P.vx||0)*0.4, ez=P.z+mrand(-4,4)+(P.vz||0)*0.4;
+      for (let i=0;i<14;i++) emit(smokeP,mx,2.1,mz,Math.sin(a)*mrand(2,6)+mrand(-1,1),mrand(0.5,2),Math.cos(a)*mrand(2,6)+mrand(-1,1),mrand(0.8,1.6),mrand(0.5,1),'#8a8a88',0,0.8);
+      emit(glowP,mx,2.1,mz,0,0,0,0.12,1.4,'#ffd27a'); tracer(mx,mz,ex,ez,'#ffcf6a'); noise(0.6,0.7,300,'boom',{x:c.x,z:c.z}); shake(0.3);
+      setTimeout(()=>{ if (state==='play') explode(ex,ez,0.7,false); },Math.min(600,d*8)); } }
+}
 /* ---- misiones ---- */
 function startMission(ms){
   mission.cur=ms; mission.step=0; mission.timer=ms.time||0; mission.got=[]; mission.stopT=0;
@@ -5050,11 +5093,12 @@ function update(dt){
       const ca=carCircles(a), cb=carCircles(b), rr=(a.T.w+b.T.w)*0.55; let best=null, bp=0;
       for (const pa of ca) for (const pb of cb){ const dx=pb[0]-pa[0], dz=pb[1]-pa[1], dd=dx*dx+dz*dz; if (dd<rr*rr && dd>1e-6){ const pen=rr-Math.sqrt(dd); if (pen>bp){ bp=pen; best=[dx,dz]; } } }
       if (!best) continue;
-      const d=Math.hypot(best[0],best[1]), nx=best[0]/d, nz=best[1]/d, pen=bp/2;
-      a.x-=nx*pen; a.z-=nz*pen; b.x+=nx*pen; b.z+=nz*pen;
+      const d=Math.hypot(best[0],best[1]), nx=best[0]/d, nz=best[1]/d, ma=MASS[a.k]||1, mb=MASS[b.k]||1, wa=2*mb/(ma+mb), wb=2*ma/(ma+mb), pen=bp/2;   // el más pesado apenas se mueve
+      a.x-=nx*pen*wa; a.z-=nz*pen*wa; b.x+=nx*pen*wb; b.z+=nz*pen*wb;
       const vn=(a.vx-b.vx)*nx+(a.vz-b.vz)*nz;
-      if (vn>0){ a.vx-=nx*vn*0.8; a.vz-=nz*vn*0.8; b.vx+=nx*vn*0.8; b.vz+=nz*vn*0.8;
-        if (vn>5){ damageCar(a,(vn-5)*1.6,vn); damageCar(b,(vn-5)*1.6,vn); }
+      if (vn>0){ a.vx-=nx*vn*0.8*wa; a.vz-=nz*vn*0.8*wa; b.vx+=nx*vn*0.8*wb; b.vz+=nz*vn*0.8*wb;
+        if (a.k==='tank'||b.k==='tank'){ const o=a.k==='tank'?b:a; if (vn>1.5 && o.k!=='tank') damageCar(o,vn*9,vn); }   // un blindado aplasta lo que embiste
+        else if (vn>5){ damageCar(a,(vn-5)*1.6,vn); damageCar(b,(vn-5)*1.6,vn); }
         const pc=taxiRide?null:a===player.inCar?b:b===player.inCar?a:null; if (pc) pc.hitByPlayer=now;
         if (pc && pc.driver==='police' && vn>4 && now-lastPoliceHit>4){ lastPoliceHit=now; addCrime('copRam','¡Has embestido a la policía!'); }
       }
