@@ -2114,6 +2114,8 @@ function weaponPose(){
     const k=Math.min(1,meleeCharge/1.1), a=W.id==='bat'?1:(1-(player.punchArm??1)), o=1-a, sg=a?1:-1;
     if (W.id==='bat'){ A[1].rotation.x=-3.0-0.3*k; A[0].rotation.x=-2.7-0.3*k; A[1].rotation.z=0.5*k; }
     else { A[a].rotation.x=-0.62+0.85*k; E[a].rotation.x=-2.3; A[o].rotation.x=-0.62; E[o].rotation.x=-2.25; torsoPose(m,-sg*0.45*k,-0.04*k); const L=m.userData.legs, K=m.userData.knees; L[o].rotation.x=-0.2*k; K[o].rotation.x=0.25*k; K[a].rotation.x=0.3*k; }   // cargando: brazo atrás, torso girado, peso atrás
+  } else if (reloadT>0 && !W.melee && !W.throw){   // recarga: baja el arma, la otra mano cambia el cargador y la vuelve a subir
+    const f=1-reloadT/reloadDur, k=Math.sin(Math.min(1,f)*Math.PI); A[1].rotation.x=-0.9-0.25*k; E[1].rotation.x=-0.9; A[0].rotation.x=-0.5-0.7*k; E[0].rotation.x=-1.4-0.5*Math.sin(f*Math.PI*3)*k; A[1].rotation.z=0.25*k;
   } else if (aimT>0 && !W.melee && !W.throw){
     const ap=tpAim()?aimPitch:0; A[1].rotation.x=-1.5-ap; if (two){ A[0].rotation.x=-1.35-ap; A[0].rotation.z=-0.45; }
   } else if (W.id==='bat'){ A[1].rotation.x=-0.45; A[1].rotation.z=0.15; }
@@ -3637,6 +3639,7 @@ addEventListener('keydown',e=>{
   if (/^Digit[1-7]$/.test(e.code)){ const id=WEAPONS[+e.code.slice(5)-1].id, i=player.owned.indexOf(id); if (i>=0) selectWeapon(i); else toast(`No tienes ${W_BY[id].name.toLowerCase()}`,1.2); }
   if (e.code==='KeyH'){ horn(); hornDown(); }
   if (e.code==='KeyT') hailTaxi();
+  if (e.code==='KeyR' && !player.inCar) startReload();
   if (e.code==='KeyC' && !fp && !player.inAir) camMode=(camMode+1)%2;
   if (e.code==='KeyV') setFP(!fp);
   if (e.code==='KeyM') openMap();
@@ -3782,6 +3785,7 @@ function updateViewmodel(dt){
   }
   if (meleeCharge!==null && W.melee){ const k=Math.min(1,meleeCharge/1.1); if (W.id==='bat'){ rx+=0.5*k; rz+=0.3*k; } else if ((player.punchArm??1)===0){ pz+=0.12*k; ry2=0.25*k; } else { lz+=0.12*k; } }
   if (W.id==='bat' && !(player.punchT>0)){ rx+=0.35; rz+=0.25; }
+  if (reloadT>0){ const k=Math.sin(Math.min(1,1-reloadT/reloadDur)*Math.PI); py-=0.12*k; rx-=0.6*k; rz+=0.3*k; }   // recarga en primera persona
   vmRoot.position.set(px,py,pz); vmRoot.rotation.set(rx,ry2,rz);
   vmLeft.visible=W.id==='fist'; vmLeft.position.set(-0.4-Math.sin(vmBob)*0.01,-0.23-Math.abs(Math.cos(vmBob))*0.012,-0.08+lz);
   vmHemi.intensity=hemi.intensity; vmSun.intensity=sun.intensity*0.8;
@@ -3952,6 +3956,8 @@ function exitCar(forced,silent){
   }
   if (!placed){ player.x=c.x+rx*(c.T.w/2+1.1); player.z=c.z+rz*(c.T.w/2+1.1); }
   if (!c.dead) c.driver=null; player.h=c.h; camYaw=c.h; if (c.T.bike) c.mesh.rotation.z=0; player.mesh.rotation.set(0,player.h,0);
+  if (!forced && !c.T.bike){ const sx=c.x+(player.x-c.x)*0.45, sz=c.z+(player.z-c.z)*0.45;   // sale por la puerta: del asiento hacia fuera
+    player.exitA={t:0,sx,sz,ex:player.x,ez:player.z,h:Math.atan2(player.x-c.x,player.z-c.z)}; player.x=sx; player.z=sz; }
   player.inCar=null; player.mesh.visible=true;
   if (forced && !silent) hurt(25);
 }
@@ -4134,13 +4140,22 @@ function shoulderAim(ox,oz,oy){   // punto al que apunta la cruceta (centro de l
   const px=cx+_aimDir.x*T, py=cy+_aimDir.y*T, pz=cz+_aimDir.z*T, d=Math.max(0.5,Math.hypot(px-ox,pz-oz));
   return { yaw:Math.atan2(px-ox,pz-oz), pitch:Math.atan2(py-oy,d) };
 }
+const MAGS={pistol:12,deagle:7,smg:30,shotgun:6};   // capacidad del cargador (la munición total sigue siendo la misma)
+let reloadT=0, reloadDur=1;
+function startReload(W){ W=W||curW(); const M=MAGS[W.id]; if (!M||reloadT>0) return; player.mag=player.mag||{}; const have=player.mag[W.id]??M, tot=player.ammo[W.id]||0; if (have>=Math.min(M,tot)) return;
+  reloadDur=reloadT=W.id==='shotgun'?1.6:W.id==='smg'?1.4:1.1; player.reloadW=W.id; tone(420,0.05,'square',0.03); setTimeout(()=>tone(640,0.05,'square',0.03),reloadDur*700); }
+function updateReload(dt){ if (reloadT<=0) return; reloadT-=dt; const W=curW(); if (W.id!==player.reloadW){ reloadT=0; return; } if (reloadT<=0){ const M=MAGS[W.id]; player.mag[W.id]=Math.min(M,player.ammo[W.id]||0); } }
 function tryFire(){
   if (state!=='play'||player.health<=0||fireCd>0||jack||player.downT>0||taxiRide||player.inAir) return;
   const W=curW();
   if (player.inCar && (W.melee||W.throw)) return;
   if (W.melee) return; // los golpes se cargan y se sueltan en updateMelee()
   if (!(player.ammo[W.id]>0)){ fireCd=0.4; tone(180,0.05,'square',0.05); toast('Sin munición. Cómprala en la armería del Palmeral',1.6); return; }
+  if (reloadT>0) return;
+  const MAG=MAGS[W.id]; if (MAG){ player.mag=player.mag||{}; if (player.mag[W.id]===undefined) player.mag[W.id]=Math.min(MAG,player.ammo[W.id]);
+    if (player.mag[W.id]<=0){ startReload(W); return; } player.mag[W.id]--; }
   player.ammo[W.id]--; fireCd=W.rate;
+  if (MAG && player.mag[W.id]<=0 && player.ammo[W.id]>0) setTimeout(()=>{ if (curW()===W && reloadT<=0) startReload(W); },Math.max(120,W.rate*1000));
   if (W.throw) throwGrenade(); else shoot(W);
 }
 /* ---- objetos que sueltan los NPC ---- */
@@ -5123,6 +5138,9 @@ function update(dt){
   const ax=axis();
   if (fireCd>0) fireCd-=dt; if (aimT>0) aimT-=dt;
   if (player.hitT>0){ player.hitT-=dt; if (player.hitT<=0) meleeHit(player.hitW); }
+  updateReload(dt);
+  if (player.exitA){ const X=player.exitA; if (player.inCar || Math.hypot(player.x-(X.lx??X.sx),player.z-(X.lz??X.sz))>0.3) player.exitA=null;   // si algo mueve al jugador (misión, reaparición), se cancela
+    else { X.t+=dt; const k=Math.min(1,X.t/0.55), e=k*k*(3-2*k); player.x=X.lx=lerp(X.sx,X.ex,e); player.z=X.lz=lerp(X.sz,X.ez,e); player.vx=player.vz=0; if (k>=1) player.exitA=null; } }   // bajando del coche
   if (!player.inCar && !player.inAir){   // suelo bajo los pies: escalones y bordillos se suben solos; bancos, muretes y techos de coche, saltando
     const g=supportAt(player.x,player.z,player.y); player.gy=g.h;
     if (g.car && player.y<=g.h+0.02){ player.x+=g.car.vx*dt; player.z+=g.car.vz*dt; }   // encima de un coche en marcha, se mueve con él
@@ -5166,7 +5184,7 @@ function update(dt){
         player.vx=dx/L*spd; player.vz=dz/L*spd; const ox=player.x, oz=player.z; player.x+=player.vx*dt; player.z+=player.vz*dt;
         if (blockedAt(player.x,player.z)){ player.x=ox; player.z=oz; } player.phase+=dt*spd*4.2;
       } else { player.vx=player.vz=0; }
-    } else if (mag>0.12){
+    } else if (mag>0.12 && !player.exitA){
       const fx=Math.sin(camYaw), fz=Math.cos(camYaw), rx=-fz, rz=fx;
       const dx=fx*ax.y+rx*ax.x, dz=fz*ax.y+rz*ax.x, L=Math.hypot(dx,dz)||1;
       const want=Math.atan2(dx/L,dz/L); player.h+=wrapA(want-player.h)*Math.min(1,dt*10);
@@ -5423,7 +5441,7 @@ function updateHUD(dt){
   if (player.inCar){ hud.speed.hidden=false; hud.speed.textContent=Math.round(player.inCar.speed*3.6)+' km/h'; } else hud.speed.hidden=true;
   hud.dates.textContent=`Dátiles de oro ${save.dates.length}/12`;
   { const ch=$('charge'); ch.hidden=meleeCharge===null||meleeCharge<0.15; if (!ch.hidden) ch.firstElementChild.style.width=Math.min(100,meleeCharge/1.1*100)+'%'; }
-  { const W=curW(); hud.weapon.innerHTML=W.melee?W.name:`${W.name} <b>${player.ammo[W.id]||0}</b>`; }
+  { const W=curW(), M=MAGS[W.id], mg=M?(player.mag&&player.mag[W.id]!==undefined?player.mag[W.id]:Math.min(M,player.ammo[W.id]||0)):null; hud.weapon.innerHTML=W.melee?W.name:M?`${W.name} <b>${reloadT>0?'···':mg}</b><small>/${Math.max(0,(player.ammo[W.id]||0)-mg)}</small>`:`${W.name} <b>${player.ammo[W.id]||0}</b>`; }
   hud.armor.style.width=(player.armor||0)+'%'; $('armor').hidden=!(player.armor>0);
   hud.drugs.hidden=!(player.drugs>0); hud.drugs.textContent=`Paquetes: ${player.drugs}`;
   streetT-=dt; if (streetT<=0){ streetT=0.25; const P=player.inCar||player; hud.street.textContent=streetAt(P.x,P.z)||''; }
@@ -5520,10 +5538,13 @@ function phoneOpen(id,replace){ const a=PHONE_APPS.find(q=>q.id===id); if (!a) r
 function openPhone(){
   if (state!=='play' || player.health<=0) return;
   try{ document.exitPointerLock?.(); }catch(e){}
-  state='phone'; $('phone').hidden=false; const h=Math.floor(gameMin/60)%24, m=Math.floor(gameMin%60); $('phClock').textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+  state='phone'; $('phone').hidden=false; phonePose(true); const h=Math.floor(gameMin/60)%24, m=Math.floor(gameMin%60); $('phClock').textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
   phoneHome(); tone(1200,0.05,'sine',0.03);
 }
-function closePhone(){ if (state!=='phone') return; $('phone').hidden=true; state='play'; requestLock(true); }
+function phonePose(on){   // saca el móvil: en la mano, delante de la cara (se ve en tercera persona mientras usas el teléfono)
+  const m=player.mesh, u=m.userData; if (!u.phone){ u.phone=new THREE.Mesh(phoneGeo,phoneMat); u.phone.position.set(0,-0.33,0.03); u.elbows[0].add(u.phone); }
+  u.phone.visible=on; if (on){ setWeaponModel(m,null); u.arms[0].rotation.set(-1.15,0,0.25); u.elbows[0].rotation.x=-1.6; u.arms[1].rotation.set(-0.7,0,-0.1); u.elbows[1].rotation.x=-1.2; } }
+function closePhone(){ if (state!=='phone') return; $('phone').hidden=true; state='play'; phonePose(false); requestLock(true); }
 function phoneBack(){ if (phoneStack.length){ phoneHome(); } else closePhone(); }
 // taxi por teléfono: el taxi libre más cercano (o uno nuevo) viene a buscarte y se para a tu lado
 function taxiPickup(c,P){   // punto de recogida: de los cruces a menos de 45 m, el de ruta más corta para el taxi (con los sentidos únicos)
@@ -5826,6 +5847,7 @@ function frame(t){
       if (player.crouch){ const w=Math.sin(player.phase)*(sp>0.3?0.25:0); u.legs[0].rotation.x=-1.2+w; u.legs[1].rotation.x=-1.2-w; u.knees[0].rotation.x=u.knees[1].rotation.x=2.0; }
       else if (player.y>0.05){ u.legs[0].rotation.x=-0.5; u.legs[1].rotation.x=0.1; u.knees[0].rotation.x=0.9; u.knees[1].rotation.x=0.6; }
       weaponPose();
+      if (player.exitA){ const k=1-Math.min(1,player.exitA.t/0.55); u.legs[0].rotation.x=-1.1*k; u.legs[1].rotation.x=-0.5*k; u.knees[0].rotation.x=1.3*k; u.knees[1].rotation.x=0.6*k; player.mesh.position.y-=0.35*k; }   // se incorpora al salir del coche
       if (player.death) deathPose(dt);
       else if (player.downT>0){ const k=player.downT>0.4?1:player.downT/0.4; player.mesh.rotation.x=-1.45*k; player.mesh.position.y=0.25+0.12*k; u.arms[0].rotation.x=u.arms[1].rotation.x=-2.6*k; setWeaponModel(player.mesh,null); }
       else { player.mesh.rotation.x=0; player.mesh.rotation.z=0; const u2=player.mesh.userData; u2.legs[0].rotation.z=u2.legs[1].rotation.z=0; } }
