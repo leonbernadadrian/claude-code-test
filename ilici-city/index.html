@@ -557,8 +557,8 @@ function streetAt(x,z){ if (inRZ(x,z,3)){ let bn=null,bd2=9; for (const r of [..
   let best=null,bd=11; for (const e of edges){ const A=nodes[e.a],B=nodes[e.b]; const d=segDist(x,z,A.x,A.z,B.x,B.z); if (d<bd){bd=d;best=e;} } return best?best.name:null; }
 // Mercado negro del Palmeral
 const SHOPS=[
-  {id:'armas',name:'El Chatarrero',title:'Armería clandestina',pos:[165,378],color:'#e8464b'},
-  {id:'droga',name:'El Rata',title:'Trapicheo del Palmeral',pos:[385,282],color:'#b36bff'},
+  {id:'armas',name:'El Chatarrero',title:'Armería clandestina',pos:[578,262],color:'#e8464b'},   // dentro del palmeral del barrio Los Palmerales (manzana 550–660 × 220–330)
+  {id:'droga',name:'El Rata',title:'Trapicheo del Palmeral',pos:[628,300],color:'#b36bff'},
   {id:'bicis',name:'Bicis Elx',title:'Tienda de bicicletas',pos:[70,-84],color:'#34a364'},
   // actividades para ganar dinero (azul) y comercios que se pueden atracar (naranja)
   {id:'reparto',name:'Reparto Exprés',title:'Reparto Exprés Elx',pos:[339.2,-449.2],color:'#35c6e8',job:true,shirt:'#d9262c'},
